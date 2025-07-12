@@ -19,14 +19,18 @@ This is a Django-based tournament management web application for the online ches
 
 ### Getting Started
 ```bash
+# Start the required services (PostgreSQL, Redis, MailHog)
+docker-compose up -d
+
 # Enter the development environment (automatically sets up virtualenv and installs dependencies)
 nix develop
 
-# Create your local .env file from the example
-cp .env.example .env
+# Create your local .env file from the development template
+cp .env.dev .env
 
-# Edit .env with your local settings (database, redis, etc.)
-# The invoke tasks will automatically load the .env file
+# Run initial setup
+invoke migrate
+invoke createsuperuser
 ```
 
 ### Common Development Tasks

@@ -15,4 +15,6 @@ data
 /heltour/tournament/static/tournament/css/*.css
 /heltour/tournament/static/tournament/css/*.css.map
 backups
+.gems/
 
+logs

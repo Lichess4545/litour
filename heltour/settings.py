@@ -19,13 +19,15 @@ env = environ.Env(
     LINK_PROTOCOL=(str, 'https'),
     API_WORKER_HOST=(str, 'http://localhost:8880'),
     LICHESS_DOMAIN=(str, 'lichess.org'),
+    LICHESS_NAME=(str, 'lichess'),
+    LICHESS_TOPLEVEL=(str, 'org'),
     LICHESS_OAUTH_REDIRECT_SCHEME=(str, 'https'),
     HELTOUR_APP=(str, 'tournament'),
     HELTOUR_ENV=(str, 'dev'),
     SLACK_ANNOUNCE_CHANNEL=(str, ''),
     SLACK_TEAM_ID=(str, ''),
     CHESSTER_USER_ID=(str, ''),
-    JAVAFO_COMMAND=(str, '/usr/bin/java -jar /...javafo.jar'),
+    JAVAFO_COMMAND=(str, '/usr/bin/java -jar ./thirdparty/javafo.jar'),
     EMAIL_USE_TLS=(bool, True),
     EMAIL_PORT=(int, 587),
     CELERY_DEFAULT_QUEUE=(str, 'heltour-{}'),
@@ -33,6 +35,7 @@ env = environ.Env(
     REDIS_PORT=(int, 6379),
     REDIS_DB=(int, 0),
     CACHEOPS_REDIS_DB=(int, 3),
+    SLEEP_UNIT=(float, 1.0),
 )
 
 # Read .env file if it exists
@@ -43,6 +46,7 @@ SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
+STAGING = env('HELTOUR_ENV') == 'staging'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
@@ -53,6 +57,9 @@ LINK_PROTOCOL = env('LINK_PROTOCOL')
 # Admin configuration
 ADMINS = []
 
+# Sites framework
+SITE_ID = 1
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -61,6 +68,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',  # Required by django_comments
+    'static_precompiler',  # For SCSS compilation
     'bootstrap3',
     'ckeditor',
     'impersonate',
@@ -87,7 +96,6 @@ if DEBUG:
         'django.contrib.messages.middleware.MessageMiddleware',
         'impersonate.middleware.ImpersonateMiddleware',
         'django.middleware.clickjacking.XFrameOptionsMiddleware',
-        'heltour.tournament.middlewares.AuthenticationMiddleware',
     ]
 else:
     MIDDLEWARE = [
@@ -99,7 +107,6 @@ else:
         'django.contrib.messages.middleware.MessageMiddleware',
         'impersonate.middleware.ImpersonateMiddleware',
         'django.middleware.clickjacking.XFrameOptionsMiddleware',
-        'heltour.tournament.middlewares.AuthenticationMiddleware',
     ]
 
 ROOT_URLCONF = 'heltour.urls'
@@ -115,7 +122,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'heltour.tournament.context_processors.basic_settings',
+                'heltour.tournament.context_processors.common_settings',
             ],
         },
     },
@@ -157,10 +164,27 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.9/howto/static-files/
 STATIC_URL = '/static/'
-STATIC_ROOT = env('STATIC_ROOT', default=os.path.join(BASE_DIR, 'static'))
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = env('MEDIA_ROOT', default=os.path.join(BASE_DIR, 'media'))
+
+# Static precompiler settings for SCSS
+STATICFILES_FINDERS = (
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'static_precompiler.finders.StaticPrecompilerFinder',
+)
+
+# SCSS compiler configuration
+STATIC_PRECOMPILER_OUTPUT_DIR = '../heltour/tournament/static/'
+STATIC_PRECOMPILER_COMPILERS = (
+    ('static_precompiler.compilers.SCSS', {
+        'executable': os.path.join(BASE_DIR, '.gems/bin/sass'),  # Use local sass gem
+        'sourcemap_enabled': True,
+        'output_style': 'compact'
+    }),
+)
 
 # Email configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -169,8 +193,8 @@ EMAIL_PORT = env('EMAIL_PORT')
 EMAIL_USE_TLS = env('EMAIL_USE_TLS')
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-SERVER_EMAIL = env('SERVER_EMAIL', default='webmaster@lichess4545.com')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='webmaster@lichess4545.com')
+SERVER_EMAIL = env('SERVER_EMAIL', default='webmaster@lots.lichess.ca')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='webmaster@lots.lichess.ca')
 
 # Cache configuration
 REDIS_HOST = env('REDIS_HOST')
@@ -235,8 +259,10 @@ CACHEOPS = {
 
 # API Keys and External Services
 # Lichess OAuth
-LICHESS_OAUTH_CLIENTID = env('LICHESS_OAUTH_CLIENTID', default='lichess4545.com')
+LICHESS_OAUTH_CLIENTID = env('LICHESS_OAUTH_CLIENTID', default='lots.lichess.ca')
 LICHESS_DOMAIN = env('LICHESS_DOMAIN')
+LICHESS_NAME = env('LICHESS_NAME')
+LICHESS_TOPLEVEL = env('LICHESS_TOPLEVEL')
 LICHESS_OAUTH_REDIRECT_SCHEME = env('LICHESS_OAUTH_REDIRECT_SCHEME')
 
 # Google Service Account
@@ -262,8 +288,10 @@ HELTOUR_APP = env('HELTOUR_APP')
 API_WORKER_HOST = env('API_WORKER_HOST')
 JAVAFO_COMMAND = env('JAVAFO_COMMAND')
 
+# Sleep interval for alternates manager (in seconds)
+SLEEP_UNIT = env('SLEEP_UNIT', default=1.0)
+
 # Django Auth
-AUTH_USER_MODEL = 'tournament.Player'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 

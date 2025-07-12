@@ -44,6 +44,10 @@
             curl
             wget
             which
+            
+            # Ruby and sass for SCSS compilation
+            ruby_3_2
+            bundler
 
             # Modern CLI tools
             glow # Markdown viewer
@@ -69,6 +73,17 @@
           shellHook = ''
             export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:${pkgs.libjpeg}/lib:${pkgs.libpng}/lib:${pkgs.libtiff}/lib:${pkgs.libwebp}/lib:${pkgs.freetype}/lib:${pkgs.lcms2}/lib:${pkgs.openjpeg}/lib:$LD_LIBRARY_PATH"
             export LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:${pkgs.libjpeg}/lib:${pkgs.libpng}/lib:${pkgs.libtiff}/lib:${pkgs.libwebp}/lib:${pkgs.freetype}/lib:${pkgs.lcms2}/lib:${pkgs.openjpeg}/lib:$LIBRARY_PATH"
+            
+            # Set up Ruby gems directory
+            export GEM_HOME="$PWD/.gems"
+            export GEM_PATH="$GEM_HOME:$GEM_PATH"
+            export PATH="$GEM_HOME/bin:$PATH"
+            
+            # Install sass gem if not already installed
+            if ! gem list sass -i > /dev/null 2>&1; then
+              echo "Installing sass gem..."
+              gem install sass
+            fi
 
             # PostgreSQL client configuration
             export PGHOST=localhost

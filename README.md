@@ -1,33 +1,52 @@
 # heltour
-League management software for the Lichess4545 league.
+League management software for chess leagues on Lichess.
 
-# requirements
-* Python
-* Pip
-* poetry
-* Postgres (Ubuntu packages postgresql and postgresql-server-dev-9.5)
-* Fabric (pip install fabric)
-* Virtualenv (Ubuntu package virtualenv)
-* [Sass](https://sass-lang.com/install)
+# Quick Start
 
-# install
-These install instructions have been test on Arch and Ubuntu linux. Other OSes should work, but the install may vary slightly.
+## Prerequisites
+* Docker and Docker Compose
+* Nix (for development environment)
 
-1. Create a local settings file. In the heltour/local folder, copy one of the existing modules and name it "host_name.py" where "host_name" is your machine's hostname (with non-alphanumeric characters replaced by underscores).
-2. `./start.sh`
-3. `source env/bin/activate`
-4. `fab up`
-5. `fab createdb`
-6. `fab -R dev latestdb`
-8. `fab runserver`
+## Development Setup
 
-# development
-Use [4545vagrant](https://github.com/lakinwecker/4545vagrant) as development environment.
+```bash
+# 1. Start the required services (PostgreSQL, Redis, MailHog)
+docker-compose up -d
 
-Ensure that your editor has an [EditorConfig plugin](https://editorconfig.org/#download) enabled.
+# 2. Copy the development environment file
+cp .env.dev .env
 
-# create admin account
-Run `python manage.py createsuperuser` to create a new admin account.
+# 3. Enter the nix development environment
+nix develop
 
-### Optional Components
-- To generate pairings, download [JaVaFo](http://www.rrweb.org/javafo/current/javafo.jar) and set JAVAFO_COMMAND to 'java -jar /path/to/javafo.jar'
+# 4. Run database migrations
+invoke migrate
+
+# 5. Create a superuser account
+invoke createsuperuser
+
+# 6. Start the development server
+invoke runserver
+```
+
+The site will be available at http://localhost:8000
+
+### Additional Services
+- **MailHog Web UI**: http://localhost:8025 (view sent emails)
+- **API Worker** (optional): `invoke runapiworker` (in another terminal)
+- **Celery Worker** (optional): `celery -A heltour worker -l info` (in another terminal)
+
+## Development Tips
+
+- Ensure that your editor has an [EditorConfig plugin](https://editorconfig.org/#download) enabled.
+- JaVaFo pairing tool is included in `thirdparty/javafo.jar` (already configured in `.env.dev`)
+
+## Stopping Services
+
+```bash
+# Stop services but keep data
+docker-compose down
+
+# Stop services and remove all data
+docker-compose down -v
+```

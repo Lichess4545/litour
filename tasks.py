@@ -67,7 +67,7 @@ def createdb(c):
 def runserver(c):
     """Run the Django development server on 0.0.0.0:8000."""
     manage_py = project_relative("manage.py")
-    c.run(f"python {manage_py} runserver 0.0.0.0:8000")
+    c.run(f"python -u {manage_py} runserver 0.0.0.0:8000", pty=True)
 
 
 @task
@@ -139,4 +139,4 @@ def compilestatic(c):
 def createsuperuser(c):
     """Create a Django superuser."""
     manage_py = project_relative("manage.py")
-    c.run(f"python {manage_py} createsuperuser")
+    c.run(f"python {manage_py} createsuperuser", pty=True)
