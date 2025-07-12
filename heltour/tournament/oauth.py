@@ -163,7 +163,7 @@ def _code_challenge(verifier):
 
 
 def _get_redirect_uri(request):
-    http_url =  request.build_absolute_uri(reverse('lichess_auth'))
+    http_url = request.build_absolute_uri(reverse('lichess_auth'))
     return http_url.replace('http://', settings.LICHESS_OAUTH_REDIRECT_SCHEME)
 
 
