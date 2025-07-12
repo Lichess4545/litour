@@ -3,11 +3,11 @@ import sys
 from invoke import task
 from pathlib import Path
 
-# Set default environment
-os.environ.setdefault("HELTOUR_ENV", "LIVE")
-
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.absolute()
+
+# Note: .env file is automatically loaded by Django settings
+# No need to load it here to avoid duplication
 
 
 def project_relative(path):

@@ -15,7 +15,19 @@ This is a Django-based tournament management web application for the online ches
 - **Dependency Management**: Poetry
 - **Task Runner**: Invoke
 
-## Development Commands
+## Development Setup
+
+### Getting Started
+```bash
+# Enter the development environment (automatically sets up virtualenv and installs dependencies)
+nix develop
+
+# Create your local .env file from the example
+cp .env.example .env
+
+# Edit .env with your local settings (database, redis, etc.)
+# The invoke tasks will automatically load the .env file
+```
 
 ### Common Development Tasks
 
@@ -68,9 +80,10 @@ invoke status           # Check git status (alias: st)
 
 ### Environment Configuration
 
-- Create a file in `heltour/local/` named after your hostname for local settings
-- Environment variable `HELTOUR_ENV` controls which settings file is used
-- Settings hierarchy: `settings.py` → environment-specific settings → local overrides
+- All configuration is now handled via environment variables using django-environ
+- Copy `.env.example` to `.env` and configure for your environment
+- Settings are read from environment variables with sensible defaults
+- API keys are read directly from environment variables
 
 ### External Service Integrations
 

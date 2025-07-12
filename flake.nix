@@ -22,13 +22,21 @@
             fish
 
             # Python and package management
-            python39
+            python311 # Python 3.11 for compatibility
             poetry
 
             # Build dependencies for Python packages
             postgresql # For psycopg2 headers
             libffi # For cryptography
-            libjpeg # For Pillow
+
+            # Image libraries for Pillow
+            libjpeg # JPEG support
+            libpng # PNG support
+            libtiff # TIFF support
+            libwebp # WebP support
+            freetype # Font support
+            lcms2 # Color management
+            openjpeg # JPEG 2000 support
             zlib # Common dependency
 
             # Basic dev tools
@@ -53,15 +61,46 @@
             jq # JSON processing
             yq # YAML processing
             tree # Directory visualization
+
+            flatpak # For lakin's sanity
+            openssh # Fo lakin's saniyt
           ];
 
           shellHook = ''
-            export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:$LD_LIBRARY_PATH"
-            export LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:$LIBRARY_PATH"
+            export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:${pkgs.libjpeg}/lib:${pkgs.libpng}/lib:${pkgs.libtiff}/lib:${pkgs.libwebp}/lib:${pkgs.freetype}/lib:${pkgs.lcms2}/lib:${pkgs.openjpeg}/lib:$LD_LIBRARY_PATH"
+            export LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.postgresql.lib}/lib:${pkgs.libjpeg}/lib:${pkgs.libpng}/lib:${pkgs.libtiff}/lib:${pkgs.libwebp}/lib:${pkgs.freetype}/lib:${pkgs.lcms2}/lib:${pkgs.openjpeg}/lib:$LIBRARY_PATH"
 
             # PostgreSQL client configuration
             export PGHOST=localhost
             export PGPORT=5432
+
+            # Set up Python virtual environment
+            VENV_DIR=".venv"
+
+            # Check if we need to recreate the venv (e.g., Python version mismatch)
+            if [ -d "$VENV_DIR" ]; then
+              VENV_PYTHON=$("$VENV_DIR/bin/python" --version 2>/dev/null || echo "none")
+              EXPECTED_PYTHON=$(python3.11 --version)
+              if [ "$VENV_PYTHON" != "$EXPECTED_PYTHON" ]; then
+                echo "Python version mismatch. Recreating virtual environment..."
+                rm -rf "$VENV_DIR"
+              fi
+            fi
+
+            if [ ! -d "$VENV_DIR" ]; then
+              echo "Creating virtual environment..."
+              python3.11 -m venv "$VENV_DIR" --prompt="(litour)"
+            fi
+
+            # Activate virtual environment
+            source "$VENV_DIR/bin/activate"
+
+            # Install/update dependencies if needed
+            if [ ! -f "$VENV_DIR/.poetry_installed" ] || [ "pyproject.toml" -nt "$VENV_DIR/.poetry_installed" ]; then
+              echo "Installing/updating Python dependencies..."
+              poetry install
+              touch "$VENV_DIR/.poetry_installed"
+            fi
 
             # Initialize zoxide
             eval "$(zoxide init bash)"
@@ -83,10 +122,7 @@
             echo "================================"
             echo "Python: $(python --version)"
             echo "Poetry: $(poetry --version)"
-            echo ""
-            echo "To get started:"
-            echo "  poetry install    # Install Python dependencies"
-            echo "  poetry shell      # Activate virtual environment"
+            echo "Virtual environment: $VIRTUAL_ENV"
             echo ""
             echo "Common commands:"
             echo "  invoke runserver  # Run Django development server"
