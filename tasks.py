@@ -61,14 +61,15 @@ def shell(c):
     c.run(f"python {manage_py} shell")
 
 
-@task
-def test(c, path=None):
+@task(help={'test': 'Specific test module, class, or method to run'})
+def test(c, test=""):
     """Run Django tests. Optionally specify a specific test path."""
     manage_py = project_relative("manage.py")
-    if path:
-        c.run(f"python {manage_py} test {path}")
+    test_cmd = f"python {manage_py} test --settings=heltour.test_settings"
+    if test:
+        c.run(f"{test_cmd} {test}")
     else:
-        c.run(f"python {manage_py} test")
+        c.run(test_cmd)
 
 
 @task
