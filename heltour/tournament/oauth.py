@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 
-from heltour import settings
+from django.conf import settings
 from heltour.tournament import lichessapi
 from heltour.tournament.models import (
     LoginToken,
