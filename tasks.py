@@ -1,5 +1,3 @@
-import os
-import sys
 from invoke import task
 from pathlib import Path
 
@@ -15,52 +13,10 @@ def project_relative(path):
     return str(PROJECT_ROOT / path)
 
 
-def import_db_name():
-    """Import database name from Django settings."""
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from heltour.settings import DATABASES
-    return DATABASES['default']['NAME']
-
-
-def import_db_user():
-    """Import database user from Django settings."""
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from heltour.settings import DATABASES
-    return DATABASES['default']['USER']
-
-
-def get_password():
-    """Import database password from Django settings."""
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from heltour.settings import DATABASES
-    return DATABASES['default']['PASSWORD']
-
-
 @task
 def update(c):
     """Update all dependencies to their latest versions using poetry."""
     c.run("poetry update")
-
-
-@task
-def up(c):
-    """Alias for update - update all dependencies to their latest versions."""
-    update(c)
-
-
-@task
-def createdb(c):
-    """Create a new database for the project."""
-    database_name = import_db_name()
-    database_user = import_db_user()
-    password = get_password()
-    
-    # Create database
-    c.run(f"createdb -U {database_user} {database_name}", warn=True)
-    
-    # If password is set, we might need to handle it differently
-    if password:
-        print(f"Note: Database created. You may need to configure password access for user {database_user}")
 
 
 @task
@@ -79,15 +35,9 @@ def runapiworker(c):
 
 
 @task
-def status(c):
-    """Check git status of the repository."""
-    c.run("git status")
-
-
-@task
-def st(c):
-    """Alias for status - check git status of the repository."""
-    status(c)
+def celery(c):
+    """Run Celery worker for background tasks."""
+    c.run("celery -A heltour worker -l info", pty=True)
 
 
 @task
@@ -140,3 +90,21 @@ def createsuperuser(c):
     """Create a Django superuser."""
     manage_py = project_relative("manage.py")
     c.run(f"python {manage_py} createsuperuser", pty=True)
+
+
+@task
+def docker_up(c):
+    """Start Docker Compose services (PostgreSQL, Redis, MailHog)."""
+    c.run("docker compose up -d", pty=True)
+
+
+@task
+def docker_down(c):
+    """Stop Docker Compose services."""
+    c.run("docker compose down", pty=True)
+
+
+@task
+def docker_status(c):
+    """Show status of Docker Compose services."""
+    c.run("docker compose ps", pty=True)
