@@ -8,7 +8,7 @@ variable "REGISTRY" {
 
 function "tag" {
   params = [name]
-  result = ["${REGISTRY}${REGISTRY != "" ? "/" : ""}${name}:${TAG}"]
+  result = ["${lower(REGISTRY)}${REGISTRY != "" ? "/" : ""}${name}:${TAG}"]
 }
 
 group "default" {
@@ -32,6 +32,7 @@ target "verify" {
   contexts = {
     base = "target:base"
   }
+  cache-only = true
 }
 
 target "litour-web" {
