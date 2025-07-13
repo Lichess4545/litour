@@ -36,9 +36,15 @@ class RoundSeeder(BaseSeeder):
 
         # Create missing rounds
         for round_num in range(existing_rounds + 1, rounds_to_create + 1):
+            # Calculate round dates
+            round_start = season.start_date + (round_num - 1) * season.round_duration
+            round_end = round_start + season.round_duration
+            
             round_data = {
                 "season": season,
                 "number": round_num,
+                "start_date": round_start,
+                "end_date": round_end,
                 "is_completed": False,
                 "publish_pairings": False,
             }

@@ -151,14 +151,17 @@ class Command(BaseCommand):
                         # Create pairings for each round
                         total_pairings = 0
                         for round_obj in rounds:
-                            if round_obj.is_completed or (
-                                round_obj.publish_pairings and options["full"]
-                            ):
+                            if round_obj.is_completed or round_obj.publish_pairings:
                                 pairings = pairing_seeder.seed(round_obj)
                                 total_pairings += len(pairings)
 
                         if total_pairings > 0:
                             self.stdout.write(f"  ✓ Created {total_pairings} pairings")
+                    
+                    # Calculate scores for active and completed seasons
+                    if season.is_active or season.is_completed:
+                        season.calculate_scores()
+                        self.stdout.write(f"  ✓ Calculated scores")
 
                 # Summary
                 self.stdout.write(self.style.SUCCESS("\n" + "=" * 50))
