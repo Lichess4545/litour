@@ -67,48 +67,62 @@ class PairingSeeder(BaseSeeder):
             played_pairs.add((pairing.white_team_id, pairing.black_team_id))
             played_pairs.add((pairing.black_team_id, pairing.white_team_id))
 
-        # Simple pairing: try to pair teams that haven't played each other
-        available_teams = list(teams)
+        # Simple Swiss pairing - try to avoid repeat matchups
+        teams_to_pair = list(teams)
+        random.shuffle(teams_to_pair)  # Shuffle for variety
         pairings_for_round = []
 
-        while len(available_teams) >= 2:
-            team1 = available_teams[0]
-            paired = False
+        # Keep track of which teams we've paired this round
+        paired_teams = set()
 
-            # Try to find an opponent this team hasn't played
-            for i in range(1, len(available_teams)):
-                team2 = available_teams[i]
+        # First pass: try to pair teams that haven't played each other
+        for team1 in teams_to_pair:
+            if team1.id in paired_teams:
+                continue
+
+            for team2 in teams_to_pair:
+                if team2.id in paired_teams or team1.id == team2.id:
+                    continue
+
                 if (team1.id, team2.id) not in played_pairs:
                     # Found a valid pairing
                     pairings_for_round.append((team1, team2))
-                    available_teams.remove(team1)
-                    available_teams.remove(team2)
-                    paired = True
+                    paired_teams.add(team1.id)
+                    paired_teams.add(team2.id)
                     break
 
-            if not paired:
-                # If we can't find an unplayed opponent, just pair with next available
-                team2 = available_teams[1]
-                pairings_for_round.append((team1, team2))
-                available_teams.remove(team1)
-                available_teams.remove(team2)
+        # Second pass: pair any remaining unpaired teams
+        unpaired = [t for t in teams_to_pair if t.id not in paired_teams]
+        while len(unpaired) >= 2:
+            team1 = unpaired.pop(0)
+            team2 = unpaired.pop(0)
+            pairings_for_round.append((team1, team2))
+            paired_teams.add(team1.id)
+            paired_teams.add(team2.id)
+
+        # Sanity check - all teams should be paired
+        if len(paired_teams) != len(teams):
+            print(
+                f"WARNING: Round {round_num} - Only {len(paired_teams)} of {len(teams)} teams paired!"
+            )
+
+        print(
+            f"Round {round_num}: Creating {len(pairings_for_round)} pairings for {len(teams)} teams"
+        )
 
         # Create the pairings
-        paired_teams = []
-        for white_team, black_team in pairings_for_round:
+        for pairing_idx, (white_team, black_team) in enumerate(pairings_for_round):
 
             pairing_data = {
                 "round": round_obj,
                 "white_team": white_team,
                 "black_team": black_team,
-                "pairing_order": i // 2 + 1,
+                "pairing_order": pairing_idx + 1,
             }
             pairing_data.update(kwargs)
 
             team_pairing = TeamPairing.objects.create(**pairing_data)
             pairings.append(self._track_object(team_pairing))
-
-            paired_teams.extend([white_team, black_team])
 
             # Create player pairings for each board
             self._create_board_pairings(team_pairing, round_obj)
@@ -138,12 +152,22 @@ class PairingSeeder(BaseSeeder):
             black_member = black_members.filter(board_number=board_num).first()
 
             if not white_member or not black_member:
+                # Skip if either team is missing a player for this board
+                # This shouldn't happen with our team creation logic
                 continue
 
             # Determine game result
             result = self._generate_game_result(
                 round_obj, white_member.player, black_member.player
             )
+
+            # For completed rounds, ensure we always have a result
+            if round_obj.is_completed and not result["result"]:
+                # Default to a draw if no result was generated
+                result = {
+                    "result": "1/2-1/2",
+                    "game_link": f"https://lichess.org/{self.fake.lexify('????????')}",
+                }
 
             player_pairing = TeamPlayerPairing.objects.create(
                 team_pairing=team_pairing,
@@ -249,7 +273,7 @@ class PairingSeeder(BaseSeeder):
             result = "0-1"
             game_type = "loss"
         else:
-            result = "0.5-0.5"
+            result = "1/2-1/2"
             game_type = "draw"
 
         # Generate game link

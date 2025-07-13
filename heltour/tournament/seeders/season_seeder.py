@@ -5,7 +5,7 @@ Season seeder for creating test seasons.
 import random
 from typing import List
 from django.utils import timezone
-from heltour.tournament.models import Season, League, Round
+from heltour.tournament.models import Season, League
 from .base import BaseSeeder
 
 
@@ -94,34 +94,6 @@ class SeasonSeeder(BaseSeeder):
 
                 season = Season.objects.create(**season_data)
 
-                # Create rounds for active and completed seasons
-                if config["is_active"] or config["is_completed"]:
-                    self._create_rounds(season, config)
-
                 seasons.append(self._track_object(season))
 
         return seasons
-
-    def _create_rounds(self, season: Season, config: dict):
-        """Create rounds for a season."""
-        rounds_to_create = season.rounds
-
-        # For active seasons, only create rounds up to the current week
-        if config["is_active"]:
-            weeks_elapsed = max(0, -config["start_offset_days"] // 7)
-            rounds_to_create = min(rounds_to_create, weeks_elapsed + 1)
-
-        for round_num in range(1, rounds_to_create + 1):
-            # Calculate round start date based on season start date and round duration
-            round_start = season.start_date + (round_num - 1) * season.round_duration
-            round_end = round_start + season.round_duration
-            
-            Round.objects.create(
-                season=season,
-                number=round_num,
-                start_date=round_start,
-                end_date=round_end,
-                is_completed=config["is_completed"]
-                or (config["is_active"] and round_num < rounds_to_create),
-                publish_pairings=True,
-            )

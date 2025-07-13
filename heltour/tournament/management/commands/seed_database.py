@@ -34,11 +34,6 @@ class Command(BaseCommand):
             help="Number of players to create (default: 50)",
         )
         parser.add_argument(
-            "--clear",
-            action="store_true",
-            help="Clear existing data before seeding (USE WITH CAUTION!)",
-        )
-        parser.add_argument(
             "--minimal",
             action="store_true",
             help="Create minimal dataset for quick testing",
@@ -70,17 +65,6 @@ class Command(BaseCommand):
             num_players = options["players"]
 
         self.stdout.write(self.style.WARNING(f"Starting database seeding..."))
-
-        if options["clear"]:
-            if (
-                input(
-                    "This will DELETE existing data. Are you sure? (yes/no): "
-                ).lower()
-                != "yes"
-            ):
-                self.stdout.write(self.style.ERROR("Aborted."))
-                return
-            self._clear_data()
 
         try:
             with transaction.atomic():
@@ -122,6 +106,7 @@ class Command(BaseCommand):
 
                 # 4. Process each season
                 for season in all_seasons:
+                    print(season)
                     league_type = (
                         "team" if season.league.is_team_league() else "individual"
                     )
@@ -146,19 +131,18 @@ class Command(BaseCommand):
                         self.stdout.write(f"  ✓ Created {len(teams)} teams")
 
                     # Create rounds
-                    if season.is_active or season.is_completed:
-                        rounds = round_seeder.seed(season)
-                        self.stdout.write(f"  ✓ Created {len(rounds)} rounds")
+                    rounds = round_seeder.seed(season)
+                    self.stdout.write(f"  ✓ Created {len(rounds)} rounds")
 
-                        # Create pairings for each round
-                        total_pairings = 0
-                        for round_obj in rounds:
-                            if round_obj.is_completed or round_obj.publish_pairings:
-                                pairings = pairing_seeder.seed(round_obj)
-                                total_pairings += len(pairings)
+                    # Create pairings for each round
+                    total_pairings = 0
+                    for round_obj in rounds:
+                        if round_obj.is_completed or round_obj.publish_pairings:
+                            pairings = pairing_seeder.seed(round_obj)
+                            total_pairings += len(pairings)
 
-                        if total_pairings > 0:
-                            self.stdout.write(f"  ✓ Created {total_pairings} pairings")
+                    if total_pairings > 0:
+                        self.stdout.write(f"  ✓ Created {total_pairings} pairings")
 
                     # Calculate scores for active and completed seasons
                     if season.is_active or season.is_completed:
@@ -173,7 +157,7 @@ class Command(BaseCommand):
                                 team.get_teamscore()
 
                         season.calculate_scores()
-                        self.stdout.write(f"  ✓ Calculated scores")
+                        self.stdout.write("  ✓ Calculated scores")
 
                         # Debug info
                         if season.league.is_team_league():
@@ -201,41 +185,6 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error during seeding: {str(e)}"))
             raise
-
-    def _clear_data(self):
-        """Clear existing tournament data."""
-        from heltour.tournament.models import (
-            League,
-            Season,
-            Round,
-            Team,
-            Player,
-            Registration,
-            TeamPairing,
-            PlayerPairing,
-            SeasonPlayer,
-        )
-
-        self.stdout.write("Clearing existing data...")
-
-        # Delete in reverse dependency order
-        models_to_clear = [
-            PlayerPairing,
-            TeamPairing,
-            Registration,
-            Team,
-            Round,
-            Season,
-            SeasonPlayer,
-            Player,
-            League,
-        ]
-
-        for model in models_to_clear:
-            count = model.objects.count()
-            if count > 0:
-                model.objects.all().delete()
-                self.stdout.write(f"  ✓ Deleted {count} {model.__name__} objects")
 
     def _print_summary(self):
         """Print summary of created data."""

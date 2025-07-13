@@ -92,6 +92,10 @@ class TeamSeeder(BaseSeeder):
             num_teams, len(season_players) // boards
         )  # Can't exceed available players
 
+        # Ensure even number of teams (no byes)
+        if num_teams % 2 == 1:
+            num_teams -= 1  # Make it even
+
         # Shuffle players for random distribution
         random.shuffle(season_players)
 
