@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && 'write' || 'read' }}
+      packages: write
 
     steps:
       - name: Checkout code
