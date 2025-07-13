@@ -36,6 +36,7 @@ env = environ.Env(
     REDIS_DB=(int, 0),
     CACHEOPS_REDIS_DB=(int, 3),
     SLEEP_UNIT=(float, 1.0),
+    SECRET_KEY=(str, "this-is-only-for-testing"),
 )
 
 # Read .env file if it exists

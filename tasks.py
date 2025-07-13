@@ -61,7 +61,7 @@ def shell(c):
     c.run(f"python {manage_py} shell")
 
 
-@task(help={'test': 'Specific test module, class, or method to run'})
+@task(help={"test": "Specific test module, class, or method to run"})
 def test(c, test=""):
     """Run Django tests. Optionally specify a specific test path."""
     manage_py = project_relative("manage.py")
@@ -109,3 +109,44 @@ def docker_down(c):
 def docker_status(c):
     """Show status of Docker Compose services."""
     c.run("docker compose ps", pty=True)
+
+
+@task(
+    help={
+        "tag": "Tag for the images (default: latest)",
+        "registry": "Docker registry to prefix images with",
+        "target": "Specific target to build (default: all including verify)",
+        "push": "Push images after building",
+        "production": "Build only production images (skip verify)",
+    }
+)
+def docker_bake(c, tag="latest", registry="", target="", push=False, production=False):
+    """Build Docker images using docker buildx bake."""
+    env = {}
+
+    if tag:
+        env["TAG"] = tag
+
+    if registry:
+        env["REGISTRY"] = registry
+
+    cmd = "docker buildx bake -f docker/docker-bake.hcl"
+
+    if target:
+        cmd += f" {target}"
+    elif production:
+        cmd += " production"
+    # else: default group includes verify
+
+    if push:
+        cmd += " --push"
+
+    env_str = " ".join(f"{k}={v}" for k, v in env.items())
+    if env_str:
+        cmd = f"{env_str} {cmd}"
+
+    c.run(cmd, pty=True)
+
+
+# Alias
+docker_build = docker_bake

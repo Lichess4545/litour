@@ -106,7 +106,6 @@ result
 result-*
 
 # Docker
-Dockerfile*
 docker-compose*.yml
 .dockerignore
 
@@ -136,7 +135,7 @@ logs/
 !*/logs/
 
 # Poetry
-poetry.lock
+!poetry.lock
 !pyproject.toml
 
 # Misc
