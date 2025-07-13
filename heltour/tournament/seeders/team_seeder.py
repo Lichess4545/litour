@@ -83,7 +83,14 @@ class TeamSeeder(BaseSeeder):
         # Calculate number of teams based on players and boards
         boards = season.boards or 4
         num_teams = len(season_players) // boards  # Exactly one player per board
-        num_teams = min(num_teams, 16)  # Cap at 16 teams
+
+        # For Swiss tournaments, ensure we have enough teams
+        # At least 2x the number of rounds, preferably more
+        min_teams_needed = season.rounds * 2
+        num_teams = max(num_teams, min_teams_needed)
+        num_teams = min(
+            num_teams, len(season_players) // boards
+        )  # Can't exceed available players
 
         # Shuffle players for random distribution
         random.shuffle(season_players)

@@ -58,8 +58,10 @@ class Command(BaseCommand):
 
         # Adjust counts based on dataset size
         if options["minimal"]:
-            num_leagues = 1
-            num_players = 20
+            num_leagues = 2  # Create both team and individual league
+            num_players = (
+                80  # Enough for many teams (8 rounds * 2 * 4 boards = 64 minimum)
+            )
         elif options["full"]:
             num_leagues = 4
             num_players = 100
@@ -157,11 +159,37 @@ class Command(BaseCommand):
 
                         if total_pairings > 0:
                             self.stdout.write(f"  ✓ Created {total_pairings} pairings")
-                    
+
                     # Calculate scores for active and completed seasons
                     if season.is_active or season.is_completed:
+                        # For team leagues, ensure all teams have TeamScore objects
+                        if season.league.is_team_league():
+                            from heltour.tournament.models import Team, TeamScore
+
+                            for team in Team.objects.filter(
+                                season=season, is_active=True
+                            ):
+                                # This will create the TeamScore if it doesn't exist
+                                team.get_teamscore()
+
                         season.calculate_scores()
                         self.stdout.write(f"  ✓ Calculated scores")
+
+                        # Debug info
+                        if season.league.is_team_league():
+                            score_count = TeamScore.objects.filter(
+                                team__season=season
+                            ).count()
+                            self.stdout.write(f"  → TeamScore objects: {score_count}")
+                        else:
+                            from heltour.tournament.models import LonePlayerScore
+
+                            score_count = LonePlayerScore.objects.filter(
+                                season_player__season=season
+                            ).count()
+                            self.stdout.write(
+                                f"  → LonePlayerScore objects: {score_count}"
+                            )
 
                 # Summary
                 self.stdout.write(self.style.SUCCESS("\n" + "=" * 50))

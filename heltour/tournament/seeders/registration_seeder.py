@@ -30,18 +30,36 @@ class RegistrationSeeder(BaseSeeder):
             raise ValueError("No players found. Please create players first.")
 
         # Determine how many players to register based on season state
-        if season.is_completed:
-            # Completed seasons had full registration
-            num_registrations = min(len(players), random.randint(40, 60))
-        elif season.is_active:
-            # Active seasons have most players registered
-            num_registrations = min(len(players), random.randint(35, 50))
-        elif season.registration_open:
-            # Open registration - some have registered
-            num_registrations = min(len(players), random.randint(15, 30))
+        # For team leagues, we need enough for proper Swiss tournaments
+        if season.league.is_team_league():
+            boards = season.boards or 4
+            min_teams_needed = season.rounds * 2  # Swiss needs 2x rounds
+            min_players_needed = min_teams_needed * boards
+
+            if season.is_completed or season.is_active:
+                # Need enough players for all teams
+                num_registrations = min(
+                    len(players), max(min_players_needed, len(players) - 5)
+                )
+            elif season.registration_open:
+                # Open registration - some have registered
+                num_registrations = min(
+                    len(players),
+                    random.randint(min_players_needed // 2, min_players_needed),
+                )
+            else:
+                # Not open yet
+                return []
         else:
-            # Not open yet
-            return []
+            # Individual leagues
+            if season.is_completed:
+                num_registrations = min(len(players), random.randint(40, 60))
+            elif season.is_active:
+                num_registrations = min(len(players), random.randint(35, 50))
+            elif season.registration_open:
+                num_registrations = min(len(players), random.randint(15, 30))
+            else:
+                return []
 
         # Select random players to register
         selected_players = random.sample(players, num_registrations)
@@ -123,11 +141,17 @@ class RegistrationSeeder(BaseSeeder):
 
             # Create SeasonPlayer for approved registrations
             if status == "approved" and (season.is_active or season.is_completed):
+                # Get player's rating for this league
+                seed_rating = player.rating_for(season.league)
+
                 sp = SeasonPlayer.objects.create(
                     season=season,
                     player=player,
                     is_active=self.weighted_bool(0.95),
                     games_missed=random.randint(0, 2) if season.is_completed else 0,
+                    seed_rating=(
+                        seed_rating if not season.league.is_team_league() else None
+                    ),
                 )
 
                 # Some players are alternates

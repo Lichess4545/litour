@@ -49,11 +49,53 @@ class PairingSeeder(BaseSeeder):
         if len(teams) < 2:
             return pairings
 
-        # Simple pairing: 1v2, 3v4, etc.
+        # Simple Swiss-style pairing simulation
+        # In real Swiss, teams are paired based on score, but for seeding
+        # we'll simulate by having teams play different opponents each round
+        round_num = round_obj.number
+
+        # Get previous pairings to avoid repeat matchups
+        from heltour.tournament.models import TeamPairing
+
+        previous_pairings = TeamPairing.objects.filter(
+            round__season=round_obj.season, round__number__lt=round_num
+        )
+
+        # Build a set of who has played whom
+        played_pairs = set()
+        for pairing in previous_pairings:
+            played_pairs.add((pairing.white_team_id, pairing.black_team_id))
+            played_pairs.add((pairing.black_team_id, pairing.white_team_id))
+
+        # Simple pairing: try to pair teams that haven't played each other
+        available_teams = list(teams)
+        pairings_for_round = []
+
+        while len(available_teams) >= 2:
+            team1 = available_teams[0]
+            paired = False
+
+            # Try to find an opponent this team hasn't played
+            for i in range(1, len(available_teams)):
+                team2 = available_teams[i]
+                if (team1.id, team2.id) not in played_pairs:
+                    # Found a valid pairing
+                    pairings_for_round.append((team1, team2))
+                    available_teams.remove(team1)
+                    available_teams.remove(team2)
+                    paired = True
+                    break
+
+            if not paired:
+                # If we can't find an unplayed opponent, just pair with next available
+                team2 = available_teams[1]
+                pairings_for_round.append((team1, team2))
+                available_teams.remove(team1)
+                available_teams.remove(team2)
+
+        # Create the pairings
         paired_teams = []
-        for i in range(0, len(teams) - 1, 2):
-            white_team = teams[i]
-            black_team = teams[i + 1]
+        for white_team, black_team in pairings_for_round:
 
             pairing_data = {
                 "round": round_obj,
@@ -71,10 +113,15 @@ class PairingSeeder(BaseSeeder):
             # Create player pairings for each board
             self._create_board_pairings(team_pairing, round_obj)
 
+            # Refresh team pairing points after creating all board pairings
+            team_pairing.refresh_points()
+            team_pairing.save()  # Save to trigger score calculation
+
         # Handle odd team (gets a bye)
         if len(teams) % 2 == 1:
-            bye_team = teams[-1]
-            # You might want to create a bye pairing here
+            # In round-robin with odd teams, one team sits out each round
+            # The unpaired team is the one that would have been paired with the "ghost" team
+            pass
 
         return pairings
 
@@ -169,12 +216,12 @@ class PairingSeeder(BaseSeeder):
         self, round_obj: Round, white: "Player", black: "Player"
     ) -> dict:
         """Generate a realistic game result."""
-        if not round_obj.is_completed and not round_obj.publish_pairings:
+        # Only generate results for completed rounds
+        if not round_obj.is_completed:
             return {"result": "", "game_link": ""}
 
-        # For current rounds (published but not completed), some games might not be played yet
-        if not round_obj.is_completed and self.weighted_bool(0.3):
-            return {"result": "", "game_link": ""}
+        # Always generate a result for completed rounds
+        # (Remove the random chance of no result)
 
         # Calculate expected score based on rating difference
         white_rating = white.rating_for(round_obj.season.league)
