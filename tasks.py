@@ -150,3 +150,118 @@ def docker_bake(c, tag="latest", registry="", target="", push=False, production=
 
 # Alias
 docker_build = docker_bake
+
+
+@task(
+    help={
+        "minimal": "Create minimal dataset for quick testing",
+        "full": "Create full dataset with all features",
+        "clear": "Clear existing data before seeding (USE WITH CAUTION!)",
+        "leagues": "Number of leagues to create (default: 2)",
+        "players": "Number of players to create (default: 50)",
+    }
+)
+def seed(c, minimal=False, full=False, clear=False, leagues=2, players=50):
+    """Seed the database with test data for development."""
+    manage_py = project_relative("manage.py")
+
+    cmd = f"python {manage_py} seed_database"
+
+    if minimal:
+        cmd += " --minimal"
+    elif full:
+        cmd += " --full"
+    else:
+        cmd += f" --leagues {leagues} --players {players}"
+
+    if clear:
+        cmd += " --clear"
+
+    c.run(cmd, pty=True)
+
+
+@task
+def seed_minimal(c):
+    """Seed database with minimal test data."""
+    seed(c, minimal=True)
+
+
+@task
+def seed_full(c):
+    """Seed database with full test data."""
+    seed(c, full=True)
+
+
+@task
+def reset_db(c):
+    """Reset database to empty state with migrations applied."""
+    manage_py = project_relative("manage.py")
+
+    # Get confirmation
+    print("WARNING: This will DELETE ALL DATA in the database!")
+    confirm = input("Are you sure you want to reset the database? (yes/no): ")
+
+    if confirm.lower() != "yes":
+        print("Aborted.")
+        return
+
+    # Use Django's flush command which truncates all tables but keeps structure
+    print("Flushing database...")
+    c.run(f"python {manage_py} flush --no-input", pty=True)
+
+    # Run migrations to ensure everything is up to date
+    print("Running migrations...")
+    c.run(f"python {manage_py} migrate", pty=True)
+
+    print(
+        "Database reset complete. The database is now empty with all migrations applied."
+    )
+
+
+@task
+def reset_db_hard(c):
+    """Drop and recreate the database (PostgreSQL only)."""
+
+    print("WARNING: This will DROP and RECREATE the database!")
+    confirm = input(
+        "Are you sure you want to completely recreate the database? (yes/no): "
+    )
+
+    if confirm.lower() != "yes":
+        print("Aborted.")
+        return
+
+    # This requires appropriate PostgreSQL permissions
+    # and assumes DATABASE_URL is set correctly
+    print("Dropping and recreating database...")
+
+    # Get database name from DATABASE_URL
+    import os
+    from urllib.parse import urlparse
+
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        print("ERROR: DATABASE_URL not set")
+        return
+
+    parsed = urlparse(db_url)
+    db_name = parsed.path[1:]  # Remove leading slash
+
+    if not db_name:
+        print("ERROR: Could not parse database name from DATABASE_URL")
+        return
+
+    # Drop and recreate database
+    c.run(f"dropdb {db_name} --if-exists", warn=True)
+    c.run(f"createdb {db_name}")
+
+    # Run migrations
+    manage_py = project_relative("manage.py")
+    print("Running migrations...")
+    c.run(f"python {manage_py} migrate", pty=True)
+
+    print(f"Database '{db_name}' recreated and migrations applied.")
+
+
+# Shortcuts
+up = update
