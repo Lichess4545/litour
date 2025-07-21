@@ -38,7 +38,7 @@ def _do_lichess_api_call(
     retry_count=0,
 ) -> None:
     url = settings.LICHESS_DOMAIN  + path
-    token = _get_lichess_api_token()
+    token = settings.LICHESS_API_TOKEN
 
 
     logger.info('API call: %s' % url)
