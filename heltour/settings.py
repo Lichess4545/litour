@@ -264,7 +264,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "celery_is_up": {
         "task": "heltour.tournament.tasks.celery_is_up",
-        "schedule": timedelta(seconds=30.0),
+        "schedule": timedelta(minutes=5),
         "args": (),
     },
     "start_games": {
