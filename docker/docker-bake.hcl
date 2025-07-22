@@ -40,7 +40,7 @@ target "web-verify" {
 
 target "litour-web" {
   context = "."
-  dockerfile = "docker/Dockerfile.django"
+  dockerfile = "docker/Dockerfile.web"
   target = "web"
   tags = tag("litour-web")
   contexts = {
@@ -50,7 +50,7 @@ target "litour-web" {
 
 target "javafo-verify" {
   context = "."
-  dockerfile = "docker/Dockerfile.django"
+  dockerfile = "docker/Dockerfile.web"
   target = "web-verify"
   contexts = {
     base = "target:base"
