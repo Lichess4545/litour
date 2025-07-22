@@ -1,4 +1,15 @@
-FROM base
+FROM base AS web
+
+# Switch to root temporarily to install OpenJDK
+USER root
+
+# Install OpenJDK for javafo.jar
+RUN apt-get update && apt-get install -y \
+    openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch back to non-root user
+USER litour
 
 # Expose port
 EXPOSE 8000
@@ -19,3 +30,13 @@ CMD ["gunicorn", "heltour.wsgi:application", \
      "--log-file", "-", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]
+
+FROM web AS web-verify
+
+# Verify javafo.jar can be executed and produces expected output
+RUN output=$(java -jar /app/thirdparty/javafo.jar 2>&1) && \
+    echo "$output" | grep -q "JaVaFo (rrweb.org/javafo) - Rel. 2.2 (Build 3223)" || \
+    (echo "JavaFo test failed. Expected 'JaVaFo (rrweb.org/javafo) - Rel. 2.2 (Build 3223)', got: $output" && exit 1)
+
+# This stage is only for verification
+CMD ["echo", "Web verification complete"]
