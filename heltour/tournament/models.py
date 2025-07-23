@@ -232,14 +232,35 @@ class LeagueSetting(_BaseModel):
                    'Games are started in 5 minute batches.'))
     start_clocks = models.BooleanField(default=False,
                                        help_text='For games started by us, automatically start clocks too.')
-    start_clock_time = models.PositiveSmallIntegerField(default=6,
-        help_text=('For games started by us, start clocks n minutes later. Since we start games in 5 minute batches, '
-                   'a value of 5 will mean most games are started at the scheduled time. '
-                   'This also means that you should and cannot set this value below 5.'),
-                   validators=[MinValueValidator(5, message='Values below 5 would make clocks start before the scheduled time.'),
-                               MaxValueValidator(30, message=('Pick a value <= 30. If we start clocks too late, '
-                                                              'we might hit lichess api limits.'))]
-                                                                                                                                                                                                                                                                                                                                     )
+    start_clock_time = models.PositiveSmallIntegerField(
+        default=6,
+        help_text=(
+            "For games started by us, start clocks n minutes later. Since we start games in 5 minute batches, "
+            "a value of 5 will mean most games are started at the scheduled time. "
+            "This also means that you should and cannot set this value below 5."),
+        validators=[
+            MinValueValidator(
+                5,
+                message='Values below 5 would make clocks start before the scheduled time.',
+            ),
+            MaxValueValidator(
+                30,
+                message=(
+                    'Pick a value <= 30. If we start clocks too late, '
+                    'we might hit lichess api limits.'
+                ),
+            ),
+        ],
+    )
+    scheduling = models.BooleanField(
+        default=False,
+        help_text=(
+            "Do players schedule their games individually, "
+            "or are games started automatically or by an arbiter."
+        ),
+    )
+
+
 
     def __str__(self):
         return '%s Settings' % self.league
