@@ -1035,3 +1035,19 @@ def pairing_changed(instance, created, **kwargs):
         game_id = get_gameid_from_gamelink(instance.game_link)
         if game_id:
             lichessapi.add_watch(game_id)
+
+
+def _get_or_set_token(players: list[Player], tournament: str = "Lichess Tournament Pairings") -> dict[str, str]:
+    result = dict()
+    players_needing_tokens = list()
+    for player in players:
+        token = player.get_access_token()
+        if token is None:
+            players_needing_tokens.append(player.lichess_username)
+        else:
+            result[player.lichess_username] = token
+    if len(players_needing_tokens) > 0:
+        new_tokens = lichessapi.get_admin_token(lichess_usernames=players_needing_tokens, description=tournament)
+        result.update(new_tokens)
+    return result
+    
