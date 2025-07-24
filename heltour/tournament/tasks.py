@@ -34,6 +34,7 @@ from heltour.tournament.models import (
     Alternate,
     Broadcast,
     BroadcastRound,
+    League,
     LeagueChannel,
     LonePlayerPairing,
     Player,
@@ -469,6 +470,20 @@ def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, 
             pass
 
 
+def _init_start_league_games(*, league: League, tokens: list[str], league_games: QuerySet[LonePlayerPairing|TeamPlayerPairing]) -> None:
+    tokenstring = ",".join(tokens)
+    clock = league.time_control_initial()
+    increment = league.time_control_increment()
+    variant = league.rating_type
+    do_clockstart = league.get_leaguesetting().start_clocks
+    clockstart_in = league.get_leaguesetting().start_clock_time
+    clockstart = round((datetime.utcnow().timestamp()+clockstart_in*60)*1000) # now + 6 minutes in milliseconds
+    leaguename = league.name
+    _start_league_games(tokens=tokenstring, clock=clock, increment=increment, do_clockstart=do_clockstart, clockstart=clockstart, clockstart_in=clockstart_in, variant=variant, leaguename=leaguename, league_games=league_games)
+    round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
+    signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
+
+
 @app.task()
 def start_games():
     logger.info('[START] Checking for games to start.')
@@ -492,21 +507,58 @@ def start_games():
                     leagues[gameleague.name] = gameleague
                 token_dict[gameleague.name].append(f'{white_token}:{black_token}')
     for leaguename, league in leagues.items():
-        clock = league.time_control_initial()
-        increment = league.time_control_increment()
-        variant = league.rating_type
-        if variant in ['classical', 'rapid', 'blitz', 'bullet']:
-            variant = 'standard'
-        # filter games_to_start to the current league
-        league_games = games_to_start.filter(loneplayerpairing__round__season__league=league) | games_to_start.filter(teamplayerpairing__team_pairing__round__season__league=league)
-        # get tokens per game
-        tokens = ','.join(token_dict[leaguename])
-        do_clockstart = league.get_leaguesetting().start_clocks
-        clockstart_in = league.get_leaguesetting().start_clock_time
-        clockstart = round((datetime.utcnow().timestamp()+clockstart_in*60)*1000) # now + 6 minutes in milliseconds
-        _start_league_games(tokens=tokens, clock=clock, increment=increment, do_clockstart=do_clockstart, clockstart=clockstart, clockstart_in=clockstart_in, variant=variant, leaguename=leaguename, league_games=league_games)
-        round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
-        signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
+        _init_start_league_games(
+            league=league,
+            tokens=token_dict[leaguename],
+            league_games=games_to_start.filter(
+                loneplayerpairing__round__season__league=league
+            )
+            | games_to_start.filter(
+                teamplayerpairing__team_pairing__round__season__league=league
+            ),
+        )
+    logger.info('[FINISHED] Done trying to start games.')
+
+
+@app.task()
+def start_unscheduled_games(round_id: int) -> None:
+    round_ = Round.objects.get(pk=round_id)
+    league = round_.season.league
+    if league.is_team_league():
+        games_to_start = (
+            TeamPlayerPairing.objects.filter(
+                result="", game_link="", teampairing__round=round_
+            )
+            .exclude(white=None)
+            .exclude(black=None)
+            .select_related("white", "black")
+            .nocache()
+        )
+    else:
+        games_to_start = (
+            LonePlayerPairing.objects.filter(
+                result="", game_link="", round=round_
+            )
+            .exclude(white=None)
+            .exclude(black=None)
+            .select_related("white", "black")
+            .nocache()
+        )
+
+    token_dict = _get_or_set_token(
+        players=games_to_start.values_list(
+            "white__lichess_username",
+            "black__lichess_username"
+        ),
+        tournament=round_.season.league.name
+    )
+    tokens = []
+    for game in games_to_start:
+        tokens.append(
+            f"{token_dict[game.white.lichess_username]}:"
+            f"token_dict[game.black.lichess_username]"
+        )
+    _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
     logger.info('[FINISHED] Done trying to start games.')
 
 
