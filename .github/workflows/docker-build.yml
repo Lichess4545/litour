@@ -46,8 +46,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: crazy-max/ghaction-github-runtime@v1
-
       # For non-master branches: only run verification
       - name: Build and verify
         if: github.ref != 'refs/heads/master'
