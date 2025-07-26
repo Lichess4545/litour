@@ -55,8 +55,8 @@ jobs:
           targets: verify
           push: false
           set: |
-            *.cache-from=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}:buildcache
-            *.cache-to=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}:buildcache,mode=max
+            *.cache-from=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}/litour-cache:buildcache
+            *.cache-to=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}/litour-cache:buildcache,mode=max
         env:
           TAG: ${{ steps.tag.outputs.TAG }}
           REGISTRY: ghcr.io/${{ env.IMAGE_PREFIX }}
@@ -70,8 +70,8 @@ jobs:
           targets: default
           push: true
           set: |
-            *.cache-from=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}:buildcache
-            *.cache-to=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}:buildcache,mode=max
+            *.cache-from=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}/litour-cache:buildcache
+            *.cache-to=type=registry,ref=ghcr.io/${{ env.IMAGE_PREFIX }}/litour-cache:buildcache,mode=max
         env:
           TAG: ${{ steps.tag.outputs.TAG }}
           REGISTRY: ghcr.io/${{ env.IMAGE_PREFIX }}
