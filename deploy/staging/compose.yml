@@ -5,8 +5,8 @@ services:
     networks:
       - caddy
       - litour
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
 
   apiworker:
     image: ghcr.io/lichess4545/litour-api-worker:latest
