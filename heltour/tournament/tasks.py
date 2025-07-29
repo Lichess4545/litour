@@ -468,6 +468,7 @@ def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, 
             logger.info(f'[ERROR] For league {leaguename}, unexpected bulk pairing json response with error {e}')
         except TypeError: # if all tokens are rejected by lichess, result['games'] is None, resulting in a TypeError.
             pass
+    return result
 
 
 def _init_start_league_games(
@@ -475,7 +476,7 @@ def _init_start_league_games(
     league: League,
     tokens: list[str],
     league_games: QuerySet[LonePlayerPairing|TeamPlayerPairing]
-) -> None:
+) -> dict|None:
     tokenstring = ",".join(tokens)
     clock = league.time_control_initial()
     increment = league.time_control_increment()
@@ -484,7 +485,7 @@ def _init_start_league_games(
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round((datetime.utcnow().timestamp()+clockstart_in*60)*1000) # now + 6 minutes in milliseconds
     leaguename = league.name
-    _start_league_games(
+    result = _start_league_games(
         tokens=tokenstring,
         clock=clock,
         increment=increment,
@@ -497,6 +498,7 @@ def _init_start_league_games(
     )
     round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
     signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
+    return result
 
 
 @app.task()
@@ -536,7 +538,7 @@ def start_games():
 
 
 @app.task()
-def start_unscheduled_games(round_id: int) -> None:
+def do_start_unscheduled_games(round_id: int) -> None:
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
@@ -574,7 +576,11 @@ def start_unscheduled_games(round_id: int) -> None:
             f"{token_dict[game.white.lichess_username]}:"
             f"token_dict[game.black.lichess_username]"
         )
-    _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
+    result = _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
+    if result is None:
+        logger.warning("[FINISHED] Failed starting games.")
+#    else:
+#        round_.bulk_id = result["id"]
     logger.info('[FINISHED] Done trying to start games.')
 
 
@@ -960,6 +966,8 @@ def pairings_published(round_id, overwrite=False):
     signals.notify_mods_pairings_published.send(sender=pairings_published, round_=round_)
     signals.notify_players_round_start.send(sender=pairings_published, round_=round_)
     signals.notify_mods_round_start_done.send(sender=pairings_published, round_=round_)
+    if not league.get_leaguesetting().scheduling:
+        signals.do_start_unscheduled_games.send(sender=pairings_published, round_=round_)
     if season.create_broadcast:
         signals.do_create_broadcast_round.send(sender=pairings_published, round_=round_)
 

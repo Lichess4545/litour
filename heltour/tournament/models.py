@@ -739,6 +739,7 @@ class Round(_BaseModel):
     number = models.PositiveIntegerField(verbose_name='round number')
     start_date = models.DateTimeField(blank=True, null=True)
     end_date = models.DateTimeField(blank=True, null=True)
+#    bulk_id = models.SlugField(default="", null=True)
 
     publish_pairings = models.BooleanField(default=False)
     is_completed = models.BooleanField(default=False)
