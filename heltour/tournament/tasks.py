@@ -579,8 +579,8 @@ def do_start_unscheduled_games(round_id: int) -> None:
     result = _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
     if result is None:
         logger.warning("[FINISHED] Failed starting games.")
-#    else:
-#        round_.bulk_id = result["id"]
+    else:
+        round_.bulk_id = result["id"]
     logger.info('[FINISHED] Done trying to start games.')
 
 
@@ -816,6 +816,12 @@ def do_update_broadcast(season: Season, first_board: int = 1) -> None:
     _create_or_update_broadcast(
         season=season, broadcast_id=bcid, first_board=first_board
     )
+
+
+@app.task()
+def do_start_clocks(round_id: int) -> None:
+    round_ = Round.objects.get(pk=round_id)
+    lichessapi.bulk_start_clocks(bulkid=round_.bulk_id)
 
 
 # How late an event is allowed to run before it's discarded instead

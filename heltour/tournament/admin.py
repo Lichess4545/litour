@@ -684,6 +684,10 @@ class SeasonAdmin(_BaseAdmin):
 
         return HttpResponse(pgn)
 
+    def start_clocks(self, request, round_):
+        self.message_user(request, "Starting clocks.", messages.INFO)
+        signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
+
     def round_transition(self, request, queryset):
         if queryset.count() > 1:
             self.message_user(request, 'Rounds can only be transitioned one season at a time.',
