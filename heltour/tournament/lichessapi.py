@@ -172,10 +172,10 @@ def get_peak_rating(lichess_username, perf_type):
 def get_admin_token(
     *,
     lichess_usernames: list[str],
-    description: str = "Lichess Tournament Pairings", # ideally tournament name
-    priority=0,
-    max_retries=0,
-    timeout=30,
+    description: str = "Lichess Tournament Pairings",  # ideally tournament name
+    priority: int = 0,
+    max_retries: int = 0,
+    timeout: int = 30,
 ) -> dict[str, str]:
     usernames = ",".join(lichess_usernames)
     url = (
