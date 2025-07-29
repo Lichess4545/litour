@@ -470,7 +470,12 @@ def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, 
             pass
 
 
-def _init_start_league_games(*, league: League, tokens: list[str], league_games: QuerySet[LonePlayerPairing|TeamPlayerPairing]) -> None:
+def _init_start_league_games(
+    *,
+    league: League,
+    tokens: list[str],
+    league_games: QuerySet[LonePlayerPairing|TeamPlayerPairing]
+) -> None:
     tokenstring = ",".join(tokens)
     clock = league.time_control_initial()
     increment = league.time_control_increment()
@@ -479,7 +484,17 @@ def _init_start_league_games(*, league: League, tokens: list[str], league_games:
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round((datetime.utcnow().timestamp()+clockstart_in*60)*1000) # now + 6 minutes in milliseconds
     leaguename = league.name
-    _start_league_games(tokens=tokenstring, clock=clock, increment=increment, do_clockstart=do_clockstart, clockstart=clockstart, clockstart_in=clockstart_in, variant=variant, leaguename=leaguename, league_games=league_games)
+    _start_league_games(
+        tokens=tokenstring,
+        clock=clock,
+        increment=increment,
+        do_clockstart=do_clockstart,
+        clockstart=clockstart,
+        clockstart_in=clockstart_in,
+        variant=variant,
+        leaguename=leaguename,
+        league_games=league_games,
+    )
     round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
     signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
 
@@ -522,6 +537,7 @@ def start_games():
 
 @app.task()
 def start_unscheduled_games(round_id: int) -> None:
+    logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
     if league.is_team_league():
