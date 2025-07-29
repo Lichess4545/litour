@@ -360,6 +360,7 @@ def _expire_bad_tokens(*, league_games, bad_token):
 
 
 def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, clockstart_in, variant, leaguename, league_games):
+    result = None
     try:
         result = lichessapi.bulk_start_games(tokens=tokens, clock=clock, increment=increment, do_clockstart=do_clockstart, clockstart=clockstart, clockstart_in=clockstart_in, variant=variant, leaguename=leaguename)
     except lichessapi.ApiClientError as err:
@@ -384,7 +385,7 @@ def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, 
            if new_tokens:
                try:
                    # if there are still tokens to be paired, retry, and give up afterwards.
-                   result = lichessapi.bulk_start_games(tokens=new_tokens, clock=clock, increment=increment, clockstart=clockstart, variant=variant, leaguename=leaguename)
+                   result = lichessapi.bulk_start_games(tokens=new_tokens, clock=clock, increment=increment, do_clockstart=do_clockstart, clockstart=clockstart, clockstart_in=clockstart_in, variant=variant, leaguename=leaguename)
                except lichessapi.ApiClientError as err:
                    # give up.
                    logger.exception(f'[ERROR] Failed to bulk start games for league {leaguename} after removing rejected tokens.')
@@ -415,6 +416,7 @@ def _start_league_games(*, tokens, clock, increment, do_clockstart, clockstart, 
             logger.info(f'[ERROR] For league {leaguename}, unexpected bulk pairing json response with error {e}')
         except TypeError: # if all tokens are rejected by lichess, result['games'] is None, resulting in a TypeError.
             pass
+    return result
 
 
 def _init_start_league_games(
@@ -422,7 +424,7 @@ def _init_start_league_games(
     league: League,
     tokens: list[str],
     league_games: QuerySet[LonePlayerPairing|TeamPlayerPairing]
-) -> None:
+) -> dict|None:
     tokenstring = ",".join(tokens)
     clock = league.time_control_initial()
     increment = league.time_control_increment()
@@ -431,7 +433,7 @@ def _init_start_league_games(
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round((datetime.utcnow().timestamp()+clockstart_in*60)*1000) # now + 6 minutes in milliseconds
     leaguename = league.name
-    _start_league_games(
+    result = _start_league_games(
         tokens=tokenstring,
         clock=clock,
         increment=increment,
@@ -442,6 +444,7 @@ def _init_start_league_games(
         leaguename=leaguename,
         league_games=league_games,
     )
+    return result
 
 
 @app.task()
@@ -481,7 +484,7 @@ def start_games():
 
 
 @app.task()
-def start_unscheduled_games(round_id: int) -> None:
+def do_start_unscheduled_games(round_id: int) -> None:
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
@@ -519,7 +522,11 @@ def start_unscheduled_games(round_id: int) -> None:
             f"{token_dict[game.white.lichess_username]}:"
             f"token_dict[game.black.lichess_username]"
         )
-    _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
+    result = _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
+    if result is None:
+        logger.warning("[FINISHED] Failed starting games.")
+#    else:
+#        round_.bulk_id = result["id"]
     logger.info('[FINISHED] Done trying to start games.')
 
 
@@ -729,6 +736,8 @@ def pairings_published(round_id, overwrite=False):
     signals.notify_mods_pairings_published.send(sender=pairings_published, round_=round_)
     signals.notify_players_round_start.send(sender=pairings_published, round_=round_)
     signals.notify_mods_round_start_done.send(sender=pairings_published, round_=round_)
+    if not league.get_leaguesetting().scheduling:
+        signals.do_start_unscheduled_games.send(sender=pairings_published, round_=round_)
 
 
 @receiver(signals.do_pairings_published, dispatch_uid='heltour.tournament.tasks')
