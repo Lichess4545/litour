@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 
 def _apicall(
     url: str,
-    timeout: int=1800,
-    check_interval: float=0.1,
-    post_data: str="",
-    post: bool=False
+    timeout: int = 1800,
+    check_interval: float = 0.1,
+    post_data: str = "",
+    post: bool = False
 ) -> str:
     # Make a request to the local API worker to put the result of a lichess API call into the redis cache
     if post_data or post:
