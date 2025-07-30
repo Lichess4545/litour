@@ -10,7 +10,6 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
 def _apicall(
     url: str,
     timeout: int = 1800,
@@ -18,9 +17,6 @@ def _apicall(
     post_data: str = "",
     post: bool = False
 ) -> str:
-=======
-def _apicall(url, timeout=1800, check_interval=0.1, post_data=None, post=False):
->>>>>>> 924006b6 (add starting clocks to lichessapi.py)
     # Make a request to the local API worker to put the result of a lichess API call into the redis cache
     if post_data or post:
         r = requests.post(url, data=post_data)
