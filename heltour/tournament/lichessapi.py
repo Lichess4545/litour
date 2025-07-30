@@ -206,7 +206,7 @@ def bulk_start_clocks(
     timeout: int = 30,
 ) -> dict[str, str]:
     url = (
-        f"{settings.API_WORKER_HOST}/lichessapi/api/bulk-pairing/{bulkid}start-clocks?"
+        f"{settings.API_WORKER_HOST}/lichessapi/api/bulk-pairing/{bulkid}/start-clocks?"
         f"priority={priority}&max_retries={max_retries}&content_type="
         "application/x-www-form-urlencoded"
     )
