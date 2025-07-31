@@ -5,8 +5,8 @@ services:
     networks:
       - caddy
       - litour
-    # ports:
-    #   - "8000:8000"
+    ports:
+      - "8000:8000"
 
   apiworker:
     image: ghcr.io/lichess4545/litour-api-worker:latest
@@ -14,8 +14,6 @@ services:
     environment:
       HELTOUR_ENV: STAGING
       HELTOUR_APP: api_worker
-    depends_on:
-      - postgres
     networks:
       - litour
 
@@ -70,4 +68,5 @@ networks:
   caddy:
     external: true
   litour:
+    # driver: overlay
     driver: bridge
