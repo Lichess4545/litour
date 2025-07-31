@@ -488,6 +488,9 @@ def do_start_unscheduled_games(round_id: int) -> None:
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
+    if league.is_scheduling_league():
+        logger.error("[ERROR] Tried to start unscheduled games in a scheduling league.")
+        return
     if league.is_team_league():
         games_to_start = (
             TeamPlayerPairing.objects.filter(
@@ -533,6 +536,9 @@ def do_start_unscheduled_games(round_id: int) -> None:
 @app.task()
 def do_start_clocks(round_id: int) -> None:
     round_ = Round.objects.get(pk=round_id)
+    if round_.is_scheduling_league():
+        logger.error("[ERROR] Tried to start clocks in a scheduling league.")
+        return
     lichessapi.bulk_start_clocks(bulkid=round_.bulk_id)
 
 
