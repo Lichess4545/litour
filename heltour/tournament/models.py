@@ -169,6 +169,9 @@ class League(_BaseModel):
         
     def is_team_league(self):
         return self.competitor_type == 'team'
+    
+    def is_scheduling_league(self) -> bool:
+        return self.get_leaguesetting().scheduling
 
     def get_active_players(self):
         def loneteam_query() -> str:
@@ -255,8 +258,8 @@ class LeagueSetting(_BaseModel):
     scheduling = models.BooleanField(
         default=False,
         help_text=(
-            "Do players schedule their games individually, "
-            "or are games started automatically or by an arbiter."
+            "Do players schedule their games individually (check), "
+            "or are games started automatically or by an arbiter (no check)."
         ),
     )
 
@@ -663,6 +666,9 @@ class Season(_BaseModel):
                 return bc[0].lichess_id
         return ""
 
+    def is_scheduling_league(self) -> bool:
+        return self.league.is_scheduling_league()
+
     @classmethod
     def get_registration_season(cls, league, season=None):
         if season is not None and season.registration_open:
@@ -779,6 +785,7 @@ class Round(_BaseModel):
     def is_team_league(self):
         return self.season.league.is_team_league()
 
+<<<<<<< HEAD
     def get_broadcast_id(self, first_board: int = 1) -> str:
         return self.season.get_broadcast_id(first_board=first_board)
 
@@ -791,6 +798,10 @@ class Round(_BaseModel):
             return bcr[0].lichess_id
         else:
             return ""
+=======
+    def is_scheduling_league(self) -> bool:
+        return self.get_league().is_scheduling_league()
+>>>>>>> 282da021 (add getters for scheudling setting)
 
     def __str__(self):
         return "%s - Round %d" % (self.season, self.number)
