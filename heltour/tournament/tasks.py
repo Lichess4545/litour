@@ -484,7 +484,7 @@ def start_games():
 
 
 @app.task()
-def do_start_unscheduled_games(round_id: int) -> None:
+def _start_unscheduled_games(round_id: int) -> None:
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
@@ -533,13 +533,23 @@ def do_start_unscheduled_games(round_id: int) -> None:
     logger.info('[FINISHED] Done trying to start games.')
 
 
+@receiver(signals.do_start_unscheduled_games, dispatch_uid='heltour.tournament.tasks')
+def do_start_unscheduled_games(sender, round_id: int, **kwargs) -> None:
+    _start_clocks.apply_async(args=[round_id])
+
+
 @app.task()
-def do_start_clocks(round_id: int) -> None:
+def _start_clocks(round_id: int) -> None:
     round_ = Round.objects.get(pk=round_id)
     if round_.is_scheduling_league():
         logger.error("[ERROR] Tried to start clocks in a scheduling league.")
         return
     lichessapi.bulk_start_clocks(bulkid=round_.bulk_id)
+
+
+@receiver(signals.do_start_clocks, dispatch_uid='heltour.tournament.tasks')
+def do_start_clocks(sender, round_id: int, **kwargs) -> None:
+    _start_unscheduled_games.apply_async(args=[round_id])
 
 
 # How late an event is allowed to run before it's discarded instead
