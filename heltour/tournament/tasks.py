@@ -37,6 +37,7 @@ from heltour.tournament.models import (
     League,
     LeagueChannel,
     LonePlayerPairing,
+    OauthToken,
     Player,
     PlayerBye,
     PlayerPairing,
@@ -539,6 +540,7 @@ def start_games():
 
 @app.task()
 def _start_unscheduled_games(round_id: int) -> None:
+    result = None
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
@@ -565,25 +567,32 @@ def _start_unscheduled_games(round_id: int) -> None:
             .select_related("white", "black")
             .nocache()
         )
-
+    # get a flat list from the queryset
+    playerpks = [
+        pk
+        for sidename in games_to_start.values_list(
+            "white",
+            "black",
+        )
+        for pk in sidename
+    ]
+    playerslist = list(Player.objects.filter(pk__in=playerpks))
     token_dict = _get_or_set_token(
-        players=games_to_start.values_list(
-            "white__lichess_username",
-            "black__lichess_username"
-        ),
+        players=playerslist,
         tournament=round_.season.league.name
     )
     tokens = []
     for game in games_to_start:
         tokens.append(
             f"{token_dict[game.white.lichess_username]}:"
-            f"token_dict[game.black.lichess_username]"
+            f"{token_dict[game.black.lichess_username]}"
         )
     result = _init_start_league_games(league=league, tokens=tokens, league_games=games_to_start)
     if result is None:
         logger.warning("[FINISHED] Failed starting games.")
     else:
         round_.bulk_id = result["id"]
+        round_.save()
     logger.info('[FINISHED] Done trying to start games.')
 
 
@@ -1139,13 +1148,25 @@ def _get_or_set_token(players: list[Player], tournament: str = "Lichess Tourname
     result = dict()
     players_needing_tokens = list()
     for player in players:
-        token = player.get_access_token()
-        if token is None:
+        if not player.token_valid():
             players_needing_tokens.append(player.lichess_username)
         else:
+            token = player.get_access_token()
             result[player.lichess_username] = token
     if len(players_needing_tokens) > 0:
         new_tokens = lichessapi.get_admin_token(lichess_usernames=players_needing_tokens, description=tournament)
         result.update(new_tokens)
+    for player in players:
+        if player.lichess_username in players_needing_tokens:
+            token = OauthToken(
+                access_token=result[player.lichess_username],
+                token_type="admin challenge token",
+                expires=timezone.now() + timedelta(days=28),
+                account_username=player.lichess_username,
+                scope="challenge:write",
+            )
+            token.save()
+            player.oauth_token = token
+            player.save()
     return result
     
