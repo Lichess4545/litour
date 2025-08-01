@@ -768,7 +768,10 @@ def pairings_published(round_id, overwrite=False):
     signals.notify_players_round_start.send(sender=pairings_published, round_=round_)
     signals.notify_mods_round_start_done.send(sender=pairings_published, round_=round_)
     if not league.get_leaguesetting().scheduling:
-        signals.do_start_unscheduled_games.send(sender=pairings_published, round_=round_)
+        signals.do_start_unscheduled_games.send(
+            sender=pairings_published,
+            round_id=round_id,
+        )
 
 
 @receiver(signals.do_pairings_published, dispatch_uid='heltour.tournament.tasks')
