@@ -34,10 +34,13 @@ def runapiworker(c):
         c.run(f"python {manage_py} runserver 0.0.0.0:8880")
 
 
-@task
-def celery(c):
+@task(help={"purge": "Delete all heltour tasks."})
+def celery(c, purge=False):
     """Run Celery worker for background tasks."""
-    c.run("celery -A heltour worker -l info", pty=True)
+    if purge:
+        c.run("celery -A heltour purge")
+    else:
+        c.run("celery -A heltour worker -l info", pty=True)
 
 
 @task(
