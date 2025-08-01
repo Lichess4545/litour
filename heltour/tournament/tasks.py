@@ -535,7 +535,7 @@ def _start_unscheduled_games(round_id: int) -> None:
 
 @receiver(signals.do_start_unscheduled_games, dispatch_uid='heltour.tournament.tasks')
 def do_start_unscheduled_games(sender, round_id: int, **kwargs) -> None:
-    _start_clocks.apply_async(args=[round_id])
+    _start_unscheduled_games.apply_async(args=[round_id])
 
 
 @app.task()
@@ -549,7 +549,7 @@ def _start_clocks(round_id: int) -> None:
 
 @receiver(signals.do_start_clocks, dispatch_uid='heltour.tournament.tasks')
 def do_start_clocks(sender, round_id: int, **kwargs) -> None:
-    _start_unscheduled_games.apply_async(args=[round_id])
+    _start_clocks.apply_async(args=[round_id])
 
 
 # How late an event is allowed to run before it's discarded instead
