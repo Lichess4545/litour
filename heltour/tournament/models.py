@@ -169,6 +169,9 @@ class League(_BaseModel):
         
     def is_team_league(self):
         return self.competitor_type == 'team'
+    
+    def is_scheduling_league(self) -> bool:
+        return self.get_leaguesetting().scheduling
 
     def get_active_players(self):
         def loneteam_query() -> str:
@@ -232,14 +235,35 @@ class LeagueSetting(_BaseModel):
                    'Games are started in 5 minute batches.'))
     start_clocks = models.BooleanField(default=False,
                                        help_text='For games started by us, automatically start clocks too.')
-    start_clock_time = models.PositiveSmallIntegerField(default=6,
-        help_text=('For games started by us, start clocks n minutes later. Since we start games in 5 minute batches, '
-                   'a value of 5 will mean most games are started at the scheduled time. '
-                   'This also means that you should and cannot set this value below 5.'),
-                   validators=[MinValueValidator(5, message='Values below 5 would make clocks start before the scheduled time.'),
-                               MaxValueValidator(30, message=('Pick a value <= 30. If we start clocks too late, '
-                                                              'we might hit lichess api limits.'))]
-                                                                                                                                                                                                                                                                                                                                     )
+    start_clock_time = models.PositiveSmallIntegerField(
+        default=6,
+        help_text=(
+            "For games started by us, start clocks n minutes later. Since we start games in 5 minute batches, "
+            "a value of 5 will mean most games are started at the scheduled time. "
+            "This also means that you should and cannot set this value below 5."),
+        validators=[
+            MinValueValidator(
+                5,
+                message='Values below 5 would make clocks start before the scheduled time.',
+            ),
+            MaxValueValidator(
+                30,
+                message=(
+                    'Pick a value <= 30. If we start clocks too late, '
+                    'we might hit lichess api limits.'
+                ),
+            ),
+        ],
+    )
+    scheduling = models.BooleanField(
+        default=False,
+        help_text=(
+            "Do players schedule their games individually (check), "
+            "or are games started automatically or by an arbiter (no check)."
+        ),
+    )
+
+
 
     def __str__(self):
         return '%s Settings' % self.league
@@ -623,6 +647,9 @@ class Season(_BaseModel):
             return self.name
         return self.section.section_group.name
 
+    def is_scheduling_league(self) -> bool:
+        return self.league.is_scheduling_league()
+
     @classmethod
     def get_registration_season(cls, league, season=None):
         if season is not None and season.registration_open:
@@ -699,6 +726,7 @@ class Round(_BaseModel):
     number = models.PositiveIntegerField(verbose_name='round number')
     start_date = models.DateTimeField(blank=True, null=True)
     end_date = models.DateTimeField(blank=True, null=True)
+    bulk_id = models.SlugField(default="", null=True, blank=True)
 
     publish_pairings = models.BooleanField(default=False)
     is_completed = models.BooleanField(default=False)
@@ -737,6 +765,9 @@ class Round(_BaseModel):
 
     def is_team_league(self):
         return self.season.league.is_team_league()
+
+    def is_scheduling_league(self) -> bool:
+        return self.get_league().is_scheduling_league()
 
     def __str__(self):
         return "%s - Round %d" % (self.season, self.number)
@@ -960,6 +991,8 @@ class Player(_BaseModel):
         return self.oauth_token.access_token
 
     def token_valid(self):
+        if self.oauth_token is None:
+            return False
         return self.oauth_token.is_valid()
 
     def __str__(self):

@@ -7,6 +7,8 @@ do_schedule_publish = Signal()
 do_pairings_published = Signal()
 do_validate_registration = Signal()
 do_create_team_channel = Signal()
+do_start_unscheduled_games = Signal()
+do_start_clocks = Signal()
 
 # Signals that send notifications
 pairing_forfeit_changed = Signal()

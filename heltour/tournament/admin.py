@@ -1341,7 +1341,7 @@ class SeasonAdmin(_BaseAdmin):
 @admin.register(Round)
 class RoundAdmin(_BaseAdmin):
     list_filter = ('season',)
-    actions = ['generate_pairings', 'simulate_results']
+    actions = ["generate_pairings", "simulate_results", "start_games", "start_clocks"]
     league_id_field = 'season__league_id'
     search_fields = ['season__tag']
 
@@ -1377,6 +1377,42 @@ class RoundAdmin(_BaseAdmin):
         simulation.simulate_round(round_)
         self.message_user(request, 'Simulation complete.', messages.INFO)
         return redirect('admin:tournament_round_changelist')
+
+    def start_games(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(request, "Can only start games one round at a time", messages.ERROR)
+            return
+        round_ = queryset[0]
+        if round_.is_scheduling_league():
+            self.message_user(
+                request,
+                "Attempting to start games for a scheduling league. Change league setting first.",
+                messages.ERROR,
+            )
+            return
+        self.message_user(request, "Starting games.", messages.INFO)
+        signals.do_start_unscheduled_games.send(sender=request.user, round_id=round_.pk)
+
+    def start_clocks(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Starting the clock for more than one round at a time does not make sense.",
+                messages.ERROR,
+            )
+            return
+        round_ = queryset[0]
+        if round_.is_scheduling_league():
+            self.message_user(
+                request,
+                "This round is part of a league where players schedule themselves.\n"
+                "Change the 'scheduling' league setting to enable starting clocks.",
+                messages.INFO,
+            )
+            return
+        self.message_user(request, "Starting clocks.", messages.INFO)
+        signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
+
 
     def generate_pairings_view(self, request, object_id):
         round_ = get_object_or_404(Round, pk=object_id)
