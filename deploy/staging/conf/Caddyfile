@@ -1,8 +1,4 @@
 :80 {
-    log {
-        level DEBUG
-    }
-
     root * /public
 
     @notStatic {

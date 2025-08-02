@@ -1,8 +1,8 @@
 services:
   caddy:
-    image: litour-caddy
-    ports:
-      - 8000:80
+    image: ghcr.io/lichess4545/litour-caddy:latest
+    # ports:
+    #   - 8000:80
     volumes:
       - ./conf:/etc/caddy
       - caddy_data:/data
@@ -16,8 +16,6 @@ services:
     env_file: ".env"
     networks:
       - litour
-    # ports:
-    #   - 8000:8000
 
   apiworker:
     image: ghcr.io/lichess4545/litour-api-worker:latest
@@ -81,5 +79,5 @@ networks:
   caddy:
     external: true
   litour:
-    # driver: overlay
-    driver: bridge
+    driver: overlay
+    # driver: bridge
