@@ -1,40 +1,34 @@
 services:
-  web:
-    build:
-      context: ../..
-      dockerfile: docker/Dockerfile.base
-    env_file: "../../.env.dev"
-    environment:
-      DJANGO_SETTINGS_MODULE: heltour.settings
-      PYTHONUNBUFFERED: 1
-    command: gunicorn heltour.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --access-logfile - --error-logfile -
+  caddy:
+    image: ghcr.io/lichess4545/litour-caddy:latest
+    # ports:
+    #   - 8000:80
+    volumes:
+      - ./conf:/etc/caddy
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - caddy
       - litour
-    # ports:
-    #   - "8000:8000"
+
+  web:
+    image: ghcr.io/lichess4545/litour-web:latest
+    env_file: ".env"
+    networks:
+      - litour
 
   apiworker:
-    build:
-      context: ../..
-      dockerfile: docker/Dockerfile.base
-    env_file: "../../.env.dev"
+    image: ghcr.io/lichess4545/litour-api-worker:latest
+    env_file: ".env"
     environment:
-      PYTHONUNBUFFERED: 1
       HELTOUR_ENV: STAGING
       HELTOUR_APP: api_worker
-    depends_on:
-      - postgres
-    command: gunicorn heltour.wsgi:application --bind 0.0.0.0:8880 --workers 4 --threads 2 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --access-logfile - --error-logfile -
     networks:
       - litour
 
   celery:
-    build:
-      context: ../..
-      dockerfile: docker/Dockerfile.base
-    env_file: "../../.env.dev"
-    command: celery --app heltour worker --loglevel=info -E -B
+    image: ghcr.io/lichess4545/litour-celery:latest
+    env_file: ".env"
     networks:
       - litour
 
@@ -78,9 +72,12 @@ volumes:
     name: litour_postgres_data
   redis_data:
     name: litour_redis_data
+  caddy_data:
+  caddy_config:
 
 networks:
   caddy:
     external: true
   litour:
-    driver: bridge
+    driver: overlay
+    # driver: bridge
