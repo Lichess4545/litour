@@ -34,17 +34,27 @@ def runapiworker(c):
         c.run(f"python {manage_py} runserver 0.0.0.0:8880")
 
 
-@task
-def celery(c):
+@task(help={"purge": "Delete all heltour tasks."})
+def celery(c, purge=False):
     """Run Celery worker for background tasks."""
-    c.run("celery -A heltour worker -l info", pty=True)
+    if purge:
+        c.run("celery -A heltour purge")
+    else:
+        c.run("celery -A heltour worker -l info", pty=True)
 
 
-@task
-def migrate(c):
+@task(
+    optional=["app"],
+    help={"app": "Optionally specify app or specific migration, e.g. 'invoke migrate -a \"tournament 0001\"'"},
+)
+def migrate(c, app=None):
     """Run Django database migrations."""
     manage_py = project_relative("manage.py")
-    c.run(f"python {manage_py} migrate")
+    migrate_cmd = f"python {manage_py} migrate"
+    if app:
+        c.run(f"{migrate_cmd} {app}")
+    else:
+        c.run(migrate_cmd)
 
 
 @task
@@ -52,6 +62,20 @@ def makemigrations(c):
     """Create new Django migrations."""
     manage_py = project_relative("manage.py")
     c.run(f"python {manage_py} makemigrations")
+
+
+@task(
+    optional=["app"],
+    help={"app": "Optionally specify app."}
+)
+def showmigrations(c, app=None):
+    """Show Django database migrations."""
+    manage_py = project_relative("manage.py")
+    show_cmd = f"python {manage_py} showmigrations"
+    if app:
+        c.run(f"{show_cmd} {app}")
+    else:
+        c.run(show_cmd)
 
 
 @task
