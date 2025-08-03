@@ -1492,38 +1492,36 @@ class RoundAdmin(_BaseAdmin):
         return redirect('admin:tournament_round_changelist')
 
     def start_games(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(request, "Can only start games one round at a time", messages.ERROR)
-            return
-        round_ = queryset[0]
-        if round_.is_player_scheduled_league():
-            self.message_user(
-                request,
-                "Attempting to start games for a scheduling league. Change league setting first.",
-                messages.ERROR,
+        try:
+            require(len(queryset) == 1, "Can only start games one round at a time.")
+            round_ = queryset[0]
+            require(
+                not round_.is_player_scheduled_league(),
+                "Attempting to start games for a scheduling league."
+                " Change league setting first.",
             )
+        except PreconditionError as e:
+            self.message_user(request, str(e), messages.ERROR)
             return
-        self.message_user(request, "Starting games.", messages.INFO)
+        self.message_user(request, "Attempting to start games.", messages.INFO)
         signals.do_start_unscheduled_games.send(sender=request.user, round_id=round_.pk)
 
     def start_clocks(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(
-                request,
+        try:
+            require(
+                len(queryset) == 1,
                 "Starting the clock for more than one round at a time is currently not possible.",
-                messages.ERROR,
             )
-            return
-        round_ = queryset[0]
-        if round_.is_player_scheduled_league():
-            self.message_user(
-                request,
+            round_ = queryset[0]
+            require(
+                not round_.is_player_scheduled_league(),
                 "This round is part of a league where players schedule themselves.\n"
                 "Change the 'scheduling' league setting to enable starting clocks.",
-                messages.INFO,
             )
+        except PreconditionError as e:
+            self.message_user(request, str(e), messages.ERROR)
             return
-        self.message_user(request, "Starting clocks.", messages.INFO)
+        self.message_user(request, "Attempting to start clocks.", messages.INFO)
         signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
 
 

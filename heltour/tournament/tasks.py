@@ -499,6 +499,8 @@ def _init_start_league_games(
         leaguename=leaguename,
         league_games=league_games,
     )
+    round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
+    signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
     return result
 
 
@@ -535,9 +537,6 @@ def start_games():
                 teamplayerpairing__team_pairing__round__season__league=league
             ),
         )
-        # TODO: Unsure about these two lines
-        round_ = Round.objects.filter(season__league=league, is_completed=False, publish_pairings=True).first()
-        signals.do_update_broadcast_round.send(sender="start_games", round_=round_)
     logger.info('[FINISHED] Done trying to start games.')
 
 
