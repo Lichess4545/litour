@@ -29,9 +29,9 @@ from heltour.tournament.tasks import (
     create_broadcast_round,
     create_team_channel,
     fetch_players_to_update,
-    start_games,
     update_broadcast,
     update_broadcast_round,
+    start_games,
     update_player_ratings,
     update_tv_state,
 )
