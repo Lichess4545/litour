@@ -54,9 +54,6 @@ jobs:
           files: docker/docker-bake.hcl
           targets: verify
           push: false
-          set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
         env:
           TAG: ${{ steps.tag.outputs.TAG }}
           REGISTRY: ghcr.io/${{ env.IMAGE_PREFIX }}
@@ -70,9 +67,6 @@ jobs:
           files: docker/docker-bake.hcl
           targets: default
           push: true
-          set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
         env:
           TAG: ${{ steps.tag.outputs.TAG }}
           REGISTRY: ghcr.io/${{ env.IMAGE_PREFIX }}
