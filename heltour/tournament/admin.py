@@ -1510,7 +1510,7 @@ class RoundAdmin(_BaseAdmin):
         if queryset.count() != 1:
             self.message_user(
                 request,
-                "Starting the clock for more than one round at a time does not make sense.",
+                "Starting the clock for more than one round at a time is currently not possible.",
                 messages.ERROR,
             )
             return

@@ -1169,7 +1169,6 @@ def _get_or_set_token(players: list[Player], tournament: str = "Lichess Tourname
                 scope="challenge:write",
             )
             token.save()
-            player.oauth_token = token
-            player.save()
+            Player.objects.filter(pk=player.id).update(oauth_token=token)
     return result
     
