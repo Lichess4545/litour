@@ -47,14 +47,11 @@ def celery(c, purge=False):
     optional=["app"],
     help={"app": "Optionally specify app or specific migration, e.g. 'invoke migrate -a \"tournament 0001\"'"},
 )
-def migrate(c, app=None):
+def migrate(c, app=""):
     """Run Django database migrations."""
     manage_py = project_relative("manage.py")
     migrate_cmd = f"python {manage_py} migrate"
-    if app:
-        c.run(f"{migrate_cmd} {app}")
-    else:
-        c.run(migrate_cmd)
+    c.run(f"{migrate_cmd} {app}")
 
 
 @task
@@ -68,14 +65,11 @@ def makemigrations(c):
     optional=["app"],
     help={"app": "Optionally specify app."}
 )
-def showmigrations(c, app=None):
+def showmigrations(c, app=""):
     """Show Django database migrations."""
     manage_py = project_relative("manage.py")
     show_cmd = f"python {manage_py} showmigrations"
-    if app:
-        c.run(f"{show_cmd} {app}")
-    else:
-        c.run(show_cmd)
+    c.run(f"{show_cmd} {app}")
 
 
 @task
