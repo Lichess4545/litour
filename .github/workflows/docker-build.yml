@@ -17,13 +17,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: depot/setup-action@v1
 
       - name: Generate tag
         id: tag
@@ -48,7 +48,7 @@ jobs:
       # For non-master branches: only run verification
       - name: Build and verify
         if: github.ref != 'refs/heads/master'
-        uses: docker/bake-action@v5
+        uses: depot/bake-action@v1
         with:
           files: docker/docker-bake.hcl
           targets: verify
@@ -63,7 +63,7 @@ jobs:
       # For master branch: build all images including verify, then push production images
       - name: Build and push all images
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: docker/bake-action@v5
+        uses: depot/bake-action@v1
         with:
           files: docker/docker-bake.hcl
           targets: default
