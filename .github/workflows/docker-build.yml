@@ -50,6 +50,7 @@ jobs:
         if: github.ref != 'refs/heads/master'
         uses: depot/bake-action@v1
         with:
+          project: xbvvkq413k
           files: docker/docker-bake.hcl
           targets: verify
           push: false
@@ -65,6 +66,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: depot/bake-action@v1
         with:
+          project: xbvvkq413k
           files: docker/docker-bake.hcl
           targets: default
           push: true
