@@ -11,18 +11,19 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="leaguesetting",
-            name="scheduling",
-            field=models.BooleanField(
-                default=False,
-                help_text=(
-                    "Do players schedule their games individually, "
-                    "or are games started automatically or by an arbiter."
-                ),
+            name="schedule_type",
+            field=models.PositiveSmallIntegerField(
+                choices=[
+                    (1, "Fixed Time - All games start at set times"),
+                    (2, "Time Window - Players schedule within deadline"),
+                ],
+                default=1,
+                help_text="How game scheduling is handled for this league",
             ),
         ),
         migrations.AddField(
             model_name="round",
             name="bulk_id",
-            field=models.SlugField(default="", null=True),
+            field=models.SlugField(blank=True, default="", null=True),
         ),
     ]

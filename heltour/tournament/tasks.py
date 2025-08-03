@@ -544,7 +544,7 @@ def _start_unscheduled_games(round_id: int) -> None:
     logger.info('[START] Trying to start games.')
     round_ = Round.objects.get(pk=round_id)
     league = round_.season.league
-    if league.is_scheduling_league():
+    if league.is_player_scheduled_league():
         logger.error("[ERROR] Tried to start unscheduled games in a scheduling league.")
         return
     if league.is_team_league():
@@ -838,7 +838,7 @@ def do_start_unscheduled_games(sender, round_id: int, **kwargs) -> None:
 @app.task()
 def _start_clocks(round_id: int) -> None:
     round_ = Round.objects.get(pk=round_id)
-    if round_.is_scheduling_league():
+    if round_.is_player_scheduled_league():
         logger.error("[ERROR] Tried to start clocks in a scheduling league.")
         return
     lichessapi.bulk_start_clocks(bulkid=round_.bulk_id)
@@ -997,7 +997,7 @@ def pairings_published(round_id, overwrite=False):
     signals.notify_mods_pairings_published.send(sender=pairings_published, round_=round_)
     signals.notify_players_round_start.send(sender=pairings_published, round_=round_)
     signals.notify_mods_round_start_done.send(sender=pairings_published, round_=round_)
-    if not league.get_leaguesetting().scheduling:
+    if not league.is_player_scheduled_league():
         signals.do_start_unscheduled_games.send(
             sender=pairings_published,
             round_id=round_id,

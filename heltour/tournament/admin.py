@@ -1496,7 +1496,7 @@ class RoundAdmin(_BaseAdmin):
             self.message_user(request, "Can only start games one round at a time", messages.ERROR)
             return
         round_ = queryset[0]
-        if round_.is_scheduling_league():
+        if round_.is_player_scheduled_league():
             self.message_user(
                 request,
                 "Attempting to start games for a scheduling league. Change league setting first.",
@@ -1515,7 +1515,7 @@ class RoundAdmin(_BaseAdmin):
             )
             return
         round_ = queryset[0]
-        if round_.is_scheduling_league():
+        if round_.is_player_scheduled_league():
             self.message_user(
                 request,
                 "This round is part of a league where players schedule themselves.\n"

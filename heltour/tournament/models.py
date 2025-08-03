@@ -170,8 +170,8 @@ class League(_BaseModel):
     def is_team_league(self):
         return self.competitor_type == 'team'
     
-    def is_scheduling_league(self) -> bool:
-        return self.get_leaguesetting().scheduling
+    def is_player_scheduled_league(self) -> bool:
+        return self.get_leaguesetting().schedule_type == 2
 
     def get_active_players(self):
         def loneteam_query() -> str:
@@ -255,15 +255,18 @@ class LeagueSetting(_BaseModel):
             ),
         ],
     )
-    scheduling = models.BooleanField(
-        default=False,
-        help_text=(
-            "Do players schedule their games individually (check), "
-            "or are games started automatically or by an arbiter (no check)."
-        ),
+
+
+    class ScheduleType(models.IntegerChoices):
+        FIXED_TIME = 1, "Fixed Time - All games start at set times"
+        TIME_WINDOW = 2, "Time Window - Players schedule within deadline"
+
+
+    schedule_type = models.PositiveSmallIntegerField(
+        choices=ScheduleType.choices,
+        default=ScheduleType.FIXED_TIME,
+        help_text="How game scheduling is handled for this league",
     )
-
-
 
     def __str__(self):
         return '%s Settings' % self.league
@@ -669,6 +672,9 @@ class Season(_BaseModel):
     def is_scheduling_league(self) -> bool:
         return self.league.is_scheduling_league()
 
+    def is_player_scheduled_league(self) -> bool:
+        return self.league.is_player_scheduled_league()
+
     @classmethod
     def get_registration_season(cls, league, season=None):
         if season is not None and season.registration_open:
@@ -786,6 +792,7 @@ class Round(_BaseModel):
         return self.season.league.is_team_league()
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     def get_broadcast_id(self, first_board: int = 1) -> str:
         return self.season.get_broadcast_id(first_board=first_board)
 
@@ -802,6 +809,10 @@ class Round(_BaseModel):
     def is_scheduling_league(self) -> bool:
         return self.get_league().is_scheduling_league()
 >>>>>>> 282da021 (add getters for scheudling setting)
+=======
+    def is_player_scheduled_league(self) -> bool:
+        return self.get_league().is_player_scheduled_league()
+>>>>>>> fa50812b (change leaguesetting name and type)
 
     def __str__(self):
         return "%s - Round %d" % (self.season, self.number)
