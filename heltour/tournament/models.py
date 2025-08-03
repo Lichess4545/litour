@@ -171,7 +171,7 @@ class League(_BaseModel):
         return self.competitor_type == 'team'
     
     def is_player_scheduled_league(self) -> bool:
-        return self.get_leaguesetting().schedule_type == 2
+        return self.get_leaguesetting().schedule_type == LeagueSetting.ScheduleType.TIME_WINDOW
 
     def get_active_players(self):
         def loneteam_query() -> str:
