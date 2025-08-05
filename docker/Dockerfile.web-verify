@@ -28,7 +28,6 @@ ENV DJANGO_SETTINGS_MODULE=heltour.test_settings \
     REDIS_PORT=6379 \
     REDIS_DB=0 \
     CACHEOPS_REDIS_DB=1 \
-    LOG_FILE=/app/logs/test.log \
     CSRF_TRUSTED_ORIGINS=http://localhost:8000 \
     LINK_PROTOCOL=http \
     EMAIL_PORT=1025 \
