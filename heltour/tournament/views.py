@@ -1590,7 +1590,7 @@ class ContactSuccessView(LeagueView):
 class AboutView(LeagueView):
     def view(self):
         context = {
-            'version': HELTOUR_VERSION,
+            'version': settings.HELTOUR_VERSION,
         }
         return self.render('tournament/about.html', context)
 
