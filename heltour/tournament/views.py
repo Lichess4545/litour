@@ -24,7 +24,7 @@ from django.utils.text import slugify
 from django.views.generic import View
 from icalendar import Calendar, Event
 
-from heltour.settings import HELTOUR_VERSION
+from django.conf import HELTOUR_VERSION
 from heltour.tournament import alternates_manager, lichessapi, oauth, uptime
 from heltour.tournament.forms import (
     ContactForm,
