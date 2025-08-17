@@ -63,7 +63,8 @@ class RegistrationForm(forms.ModelForm):
                 required=True,
                 label=_('Invite Code'),
                 help_text=_('Please enter the invite code you received'),
-                widget=forms.TextInput(attrs={'placeholder': 'CHESS-KNIGHT-ABC12345'})
+                widget=forms.TextInput(attrs={'placeholder': 'CHESS-KNIGHT-ABC12345'}),
+                error_messages={'required': _('Invite code is required for this league')}
             )
             # Move invite_code to the beginning of the field order
             field_order = ['invite_code'] + [
@@ -258,8 +259,12 @@ class RegistrationForm(forms.ModelForm):
         return code
 
     def clean_weeks_unavailable(self):
+        # If the field was deleted from the form, skip validation
+        if 'weeks_unavailable' not in self.fields:
+            return ''
+            
         upcoming_rounds = [r for r in self.season.round_set.order_by('number') if
-                           r.start_date > timezone.now()]
+                           r.start_date and r.start_date > timezone.now()]
         upcoming_rounds_available = [r for r in upcoming_rounds if
                                      str(r.number) not in self.cleaned_data['weeks_unavailable']]
         upcoming_rounds_unavailable = [r for r in upcoming_rounds if
@@ -270,6 +275,10 @@ class RegistrationForm(forms.ModelForm):
         return ','.join(self.cleaned_data['weeks_unavailable'])
 
     def clean_section_preference(self):
+        # If the field was deleted from the form, skip validation
+        if 'section_preference' not in self.fields:
+            return None
+            
         if self.cleaned_data['section_preference'] == '':
             return None
         return Section.objects.get(pk=int(self.cleaned_data['section_preference']))
