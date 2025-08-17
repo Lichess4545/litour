@@ -22,6 +22,7 @@ from heltour.tournament.models import (
     PlayerPairing,
     Round,
     SeasonPlayer,
+    Team,
     TeamMember,
     find,
     logger,
@@ -492,6 +493,54 @@ class ApproveRegistrationWorkflow():
                 if last_sp is not None and last_sp.games_missed >= 2 and self.league.get_leaguesetting().carry_over_red_cards_as_yellow:
                     sp.games_missed = 1
                     sp.save()
+                
+                # Handle team creation/assignment for invite-only leagues
+                if season.league.is_invite_only() and season.league.competitor_type == 'team' and reg.invite_code_used:
+                    invite_code = reg.invite_code_used
+                    
+                    if invite_code.code_type == 'captain':
+                        # Create a new team with this player as captain
+                        team_number = Team.objects.filter(season=season).count() + 1
+                        team_name = f"Team {player.lichess_username}"
+                        
+                        team = Team.objects.create(
+                            season=season,
+                            number=team_number,
+                            name=team_name,
+                            is_active=True,
+                            slack_channel=''
+                        )
+                        
+                        # Create TeamMember entry with captain role
+                        TeamMember.objects.create(
+                            team=team,
+                            player=player,
+                            board_number=1,
+                            is_captain=True,
+                            is_vice_captain=False
+                        )
+                        
+                        modeladmin.message_user(request, f'Created new team "{team_name}" with {player.lichess_username} as captain')
+                        
+                    elif invite_code.code_type == 'team_member' and invite_code.team:
+                        # Add player to existing team
+                        team = invite_code.team
+                        
+                        # Find appropriate board number
+                        existing_members = TeamMember.objects.filter(team=team).order_by('-board_number')
+                        next_board = 1
+                        if existing_members.exists():
+                            next_board = existing_members.first().board_number + 1
+                        
+                        TeamMember.objects.create(
+                            team=team,
+                            player=player,
+                            board_number=next_board,
+                            is_captain=False,
+                            is_vice_captain=False
+                        )
+                        
+                        modeladmin.message_user(request, f'Added {player.lichess_username} to team "{team.name}"')
 
         # Set availability
         ''' weeks that are set unavailable already will not be switched back to available here. 
