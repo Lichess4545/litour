@@ -35,6 +35,13 @@ class InviteCodeIntegrationTestCase(TestCase):
             is_staff=True
         )
         
+        # Create system user for auto-approvals
+        cls.system_user = User.objects.create(
+            username='system',
+            first_name='System',
+            last_name='Auto-Approval'
+        )
+        
         # Create invite-only team league
         cls.league = League.objects.create(
             name='Integration Test League',
@@ -101,23 +108,9 @@ class InviteCodeIntegrationTestCase(TestCase):
         with Shush():
             reg1 = form.save()
         
-        # Step 3: Approve captain registration
-        request = self.rf.post('/')
-        request.user = self.admin_user
-        
-        workflow = ApproveRegistrationWorkflow(reg1)
-        modeladmin = Mock()
-        
-        with Shush():
-            workflow.approve_reg(
-                request=request,
-                modeladmin=modeladmin,
-                send_confirm_email=False,
-                invite_to_slack=False,
-                season=self.season,
-                retroactive_byes=0,
-                late_join_points=0
-            )
+        # Step 3: Verify captain registration was auto-approved
+        reg1.refresh_from_db()
+        self.assertEqual(reg1.status, 'approved')
         
         # Verify team 1 was created
         team1 = Team.objects.get(season=self.season, number=1)
@@ -165,18 +158,9 @@ class InviteCodeIntegrationTestCase(TestCase):
             with Shush():
                 reg = form.save()
             
-            # Approve member registration
-            workflow = ApproveRegistrationWorkflow(reg)
-            with Shush():
-                workflow.approve_reg(
-                    request=request,
-                    modeladmin=modeladmin,
-                    send_confirm_email=False,
-                    invite_to_slack=False,
-                    season=self.season,
-                    retroactive_byes=0,
-                    late_join_points=0
-                )
+            # Verify member registration was auto-approved
+            reg.refresh_from_db()
+            self.assertEqual(reg.status, 'approved')
         
         # Step 6: Verify team composition
         team1.refresh_from_db()
@@ -216,17 +200,9 @@ class InviteCodeIntegrationTestCase(TestCase):
         with Shush():
             reg2 = form.save()
         
-        workflow = ApproveRegistrationWorkflow(reg2)
-        with Shush():
-            workflow.approve_reg(
-                request=request,
-                modeladmin=modeladmin,
-                send_confirm_email=False,
-                invite_to_slack=False,
-                season=self.season,
-                retroactive_byes=0,
-                late_join_points=0
-            )
+        # Verify captain2 registration was auto-approved
+        reg2.refresh_from_db()
+        self.assertEqual(reg2.status, 'approved')
         
         # Verify team 2 was created
         team2 = Team.objects.get(season=self.season, number=2)
@@ -284,15 +260,9 @@ class InviteCodeIntegrationTestCase(TestCase):
         with Shush():
             reg = form.save()
         
-        request = self.rf.post('/')
-        request.user = self.admin_user
-        workflow = ApproveRegistrationWorkflow(reg)
-        modeladmin = Mock()
-        
-        with Shush():
-            workflow.approve_reg(
-                request, modeladmin, False, False, self.season, 0, 0
-            )
+        # Verify auto-approval
+        reg.refresh_from_db()
+        self.assertEqual(reg.status, 'approved')
         
         team = Team.objects.get(season=self.season)
         
@@ -342,11 +312,9 @@ class InviteCodeIntegrationTestCase(TestCase):
             with Shush():
                 reg = form.save()
             
-            workflow = ApproveRegistrationWorkflow(reg)
-            with Shush():
-                workflow.approve_reg(
-                    request, modeladmin, False, False, self.season, 0, 0
-                )
+            # Verify auto-approval
+            reg.refresh_from_db()
+            self.assertEqual(reg.status, 'approved')
         
         # Verify team is full
         self.assertEqual(TeamMember.objects.filter(team=team).count(), self.season.boards)
@@ -364,3 +332,155 @@ class InviteCodeIntegrationTestCase(TestCase):
         original_member.refresh_from_db()
         self.assertEqual(original_member.player.lichess_username, 'changed_username')
         self.assertEqual(original_member.team, team)
+
+    def test_auto_approval_with_valid_invite_codes(self):
+        """Test that registrations with valid invite codes are automatically approved"""
+        # Step 1: Create captain code
+        captain_code = InviteCode.objects.create(
+            league=self.league,
+            season=self.season,
+            code='AUTO-CAPTAIN-001',
+            code_type='captain',
+            created_by=self.admin_user
+        )
+        
+        # Step 2: Register with captain code - should be auto-approved
+        captain = Player.objects.create(lichess_username='autocaptain', rating=1850)
+        
+        form_data = {
+            'email': 'autocaptain@example.com',
+            'has_played_20_games': True,
+            'can_commit': True,
+            'agreed_to_rules': True,
+            'agreed_to_tos': True,
+            'alternate_preference': 'full_time',
+            'invite_code': captain_code.code
+        }
+        
+        form = RegistrationForm(
+            data=form_data,
+            season=self.season,
+            player=captain
+        )
+        self.assertTrue(form.is_valid())
+        
+        with Shush():
+            reg = form.save()
+        
+        # Verify registration was auto-approved
+        reg.refresh_from_db()
+        self.assertEqual(reg.status, 'approved')
+        
+        # Verify team was created automatically
+        team = Team.objects.get(season=self.season)
+        self.assertEqual(team.name, 'Team autocaptain')
+        
+        # Verify captain was added to team
+        self.assertTrue(TeamMember.objects.filter(
+            team=team, player=captain, is_captain=True, board_number=1
+        ).exists())
+        
+        # Verify SeasonPlayer was created
+        self.assertTrue(SeasonPlayer.objects.filter(
+            season=self.season, player=captain, is_active=True
+        ).exists())
+        
+        # Step 3: Create team member code
+        member_code = InviteCode.objects.create(
+            league=self.league,
+            season=self.season,
+            code='AUTO-MEMBER-001',
+            code_type='team_member',
+            team=team,
+            created_by=self.admin_user
+        )
+        
+        # Step 4: Register team member - should be auto-approved
+        member = Player.objects.create(lichess_username='automember', rating=1700)
+        
+        form_data['email'] = 'automember@example.com'
+        form_data['invite_code'] = member_code.code
+        
+        form = RegistrationForm(
+            data=form_data,
+            season=self.season,
+            player=member
+        )
+        self.assertTrue(form.is_valid())
+        
+        with Shush():
+            reg2 = form.save()
+        
+        # Verify member registration was auto-approved
+        reg2.refresh_from_db()
+        self.assertEqual(reg2.status, 'approved')
+        
+        # Verify member was added to team
+        self.assertTrue(TeamMember.objects.filter(
+            team=team, player=member, is_captain=False, board_number=2
+        ).exists())
+        
+        # Verify SeasonPlayer was created for member
+        self.assertTrue(SeasonPlayer.objects.filter(
+            season=self.season, player=member, is_active=True
+        ).exists())
+        
+        # Step 5: Verify codes are marked as used
+        captain_code.refresh_from_db()
+        self.assertEqual(captain_code.used_by, captain)
+        self.assertIsNotNone(captain_code.used_at)
+        
+        member_code.refresh_from_db()
+        self.assertEqual(member_code.used_by, member)
+        self.assertIsNotNone(member_code.used_at)
+
+    def test_no_auto_approval_without_invite_code(self):
+        """Test that registrations without invite codes remain pending"""
+        # Test 1: Registration in a non-invite-only league
+        open_league = League.objects.create(
+            name='Open League',
+            tag='open',
+            competitor_type='team',
+            rating_type='classical',
+            registration_mode=RegistrationMode.OPEN
+        )
+        open_season = Season.objects.create(
+            league=open_league,
+            name='Open Season',
+            tag='openseason',
+            rounds=8,
+            boards=4
+        )
+        
+        player = Player.objects.create(lichess_username='openplayer', rating=1600)
+        
+        form_data = {
+            'email': 'open@example.com',
+            'has_played_20_games': True,
+            'can_commit': True,
+            'agreed_to_rules': True,
+            'agreed_to_tos': True,
+            'alternate_preference': 'full_time'
+        }
+        
+        form = RegistrationForm(
+            data=form_data,
+            season=open_season,
+            player=player
+        )
+        self.assertTrue(form.is_valid())
+        
+        with Shush():
+            reg = form.save()
+        
+        # Verify registration remains pending (no auto-approval without invite code)
+        reg.refresh_from_db()
+        self.assertEqual(reg.status, 'pending')
+        
+        # Verify no team was created
+        self.assertEqual(Team.objects.filter(season=open_season).count(), 0)
+        
+        # Verify no SeasonPlayer was created
+        self.assertFalse(SeasonPlayer.objects.filter(
+            season=open_season, player=player
+        ).exists())

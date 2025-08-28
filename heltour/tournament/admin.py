@@ -151,6 +151,41 @@ def comment_saved(instance, created, **kwargs):
     signals.league_comment.send(sender=comment_saved, league=league, comment=instance)
 
 
+@receiver(post_save, sender=Registration, dispatch_uid='heltour.tournament.admin.registration_auto_approval')
+def registration_saved(instance, created, **kwargs):
+    """Auto-approve registrations with valid invite codes in invite-only leagues"""
+    if not created:
+        return
+    
+    # Check if this is a new approved registration with an invite code
+    if (instance.status == 'approved' and 
+        instance.invite_code_used and 
+        instance.season.league.registration_mode == RegistrationMode.INVITE_ONLY):
+        
+        # Import here to avoid circular imports
+        from heltour.tournament.workflows import create_team_with_captain, add_player_to_team
+        
+        # Create SeasonPlayer
+        season_player, _ = SeasonPlayer.objects.get_or_create(
+            season=instance.season,
+            player=instance.player,
+            defaults={
+                'is_active': True,
+                'registration': instance
+            }
+        )
+        
+        # Handle team creation/assignment based on invite code type
+        invite_code = instance.invite_code_used
+        if invite_code.code_type == 'captain':
+            create_team_with_captain(instance.player, instance.season)
+        elif invite_code.code_type == 'team_member' and invite_code.team:
+            add_player_to_team(instance.player, invite_code.team)
+        
+        # Email sending would happen here if the template existed
+        # TODO: Add email template and enable email sending
+
+
 # -------------------------------------------------------------------------------
 class _BaseAdmin(VersionAdmin):
     change_form_template = 'tournament/admin/change_form_with_comments.html'

@@ -29,6 +29,46 @@ from heltour.tournament.models import (
 )
 
 
+def create_team_with_captain(player, season):
+    """Create a new team with the given player as captain."""
+    team_number = Team.objects.filter(season=season).count() + 1
+    team_name = f"Team {player.lichess_username}"
+    
+    team = Team.objects.create(
+        season=season,
+        number=team_number,
+        name=team_name,
+        is_active=True,
+        slack_channel=''
+    )
+    
+    TeamMember.objects.create(
+        team=team,
+        player=player,
+        board_number=1,
+        is_captain=True,
+        is_vice_captain=False
+    )
+    
+    return team
+
+
+def add_player_to_team(player, team):
+    """Add a player to an existing team."""
+    existing_members = TeamMember.objects.filter(team=team).order_by('-board_number')
+    next_board = 1
+    if existing_members.exists():
+        next_board = existing_members.first().board_number + 1
+    
+    return TeamMember.objects.create(
+        team=team,
+        player=player,
+        board_number=next_board,
+        is_captain=False,
+        is_vice_captain=False
+    )
+
+
 class RoundTransitionWorkflow():
 
     def __init__(self, season):
@@ -499,48 +539,9 @@ class ApproveRegistrationWorkflow():
                     invite_code = reg.invite_code_used
                     
                     if invite_code.code_type == 'captain':
-                        # Create a new team with this player as captain
-                        team_number = Team.objects.filter(season=season).count() + 1
-                        team_name = f"Team {player.lichess_username}"
-                        
-                        team = Team.objects.create(
-                            season=season,
-                            number=team_number,
-                            name=team_name,
-                            is_active=True,
-                            slack_channel=''
-                        )
-                        
-                        # Create TeamMember entry with captain role
-                        TeamMember.objects.create(
-                            team=team,
-                            player=player,
-                            board_number=1,
-                            is_captain=True,
-                            is_vice_captain=False
-                        )
-                        
-                        modeladmin.message_user(request, f'Created new team "{team_name}" with {player.lichess_username} as captain')
-                        
+                        self._handle_captain_invite(player, season, modeladmin, request)
                     elif invite_code.code_type == 'team_member' and invite_code.team:
-                        # Add player to existing team
-                        team = invite_code.team
-                        
-                        # Find appropriate board number
-                        existing_members = TeamMember.objects.filter(team=team).order_by('-board_number')
-                        next_board = 1
-                        if existing_members.exists():
-                            next_board = existing_members.first().board_number + 1
-                        
-                        TeamMember.objects.create(
-                            team=team,
-                            player=player,
-                            board_number=next_board,
-                            is_captain=False,
-                            is_vice_captain=False
-                        )
-                        
-                        modeladmin.message_user(request, f'Added {player.lichess_username} to team "{team.name}"')
+                        self._handle_team_member_invite(player, invite_code.team, modeladmin, request)
 
         # Set availability
         ''' weeks that are set unavailable already will not be switched back to available here. 
@@ -639,6 +640,18 @@ class ApproveRegistrationWorkflow():
             modeladmin.message_user(request,
                                     'Registration for "%s" approved.' % reg.lichess_username,
                                     messages.INFO)
+
+    def _handle_captain_invite(self, player, season, modeladmin, request):
+        """Handle creation of a new team when a captain invite code is used."""
+        team = create_team_with_captain(player, season)
+        if modeladmin:
+            modeladmin.message_user(request, f'Created new team "{team.name}" with {player.lichess_username} as captain')
+
+    def _handle_team_member_invite(self, player, team, modeladmin, request):
+        """Handle adding a player to an existing team when a team member invite code is used."""
+        add_player_to_team(player, team)
+        if modeladmin:
+            modeladmin.message_user(request, f'Added {player.lichess_username} to team "{team.name}"')
 
 
 class MoveLateRegWorkflow():

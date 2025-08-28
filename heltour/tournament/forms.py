@@ -23,7 +23,6 @@ from heltour.tournament.models import (
     normalize_gamelink,
     username_validator,
 )
-from heltour.tournament.workflows import ApproveRegistrationWorkflow
 
 YES_NO_OPTIONS = (
     (True, 'Yes',),
@@ -208,7 +207,14 @@ class RegistrationForm(forms.ModelForm):
             "weeks_unavailable",
         }
 
-        if is_new or fields_changed:
+        # Auto-approve registrations with valid invite codes
+        should_auto_approve = (is_new and hasattr(self, 'invite_code_obj') and 
+                             self.invite_code_obj and 
+                             self.season.league.registration_mode == RegistrationMode.INVITE_ONLY)
+        
+        if should_auto_approve:
+            registration.status = "approved"
+        elif is_new or fields_changed:
             registration.status = "pending"
 
         if commit:
@@ -216,6 +222,7 @@ class RegistrationForm(forms.ModelForm):
             # Mark the invite code as used after saving the registration
             if hasattr(self, 'invite_code_obj') and self.invite_code_obj:
                 self.invite_code_obj.mark_used(self.player)
+            
                 
         registration.player.agreed_to_tos()
         return registration

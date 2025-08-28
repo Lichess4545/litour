@@ -52,6 +52,13 @@ class InviteCodeTestCase(TestCase):
             is_staff=True
         )
         
+        # Create system user for auto-approvals
+        cls.system_user = User.objects.create(
+            username='system',
+            first_name='System',
+            last_name='Auto-Approval'
+        )
+        
         cls.rf = RequestFactory()
         
         # Create rounds with start dates to avoid clean_weeks_unavailable errors
@@ -156,25 +163,11 @@ class InviteCodeTestCase(TestCase):
         # Verify the invite code was stored
         self.assertEqual(registration.invite_code_used, captain_code)
         
-        # Approve the registration
-        request = self.rf.post('/')
-        request.user = self.superuser
+        # Verify registration was auto-approved
+        registration.refresh_from_db()
+        self.assertEqual(registration.status, 'approved')
         
-        workflow = ApproveRegistrationWorkflow(registration)
-        modeladmin = Mock()
-        
-        with Shush():
-            workflow.approve_reg(
-                request=request,
-                modeladmin=modeladmin,
-                send_confirm_email=False,
-                invite_to_slack=False,
-                season=self.season,
-                retroactive_byes=0,
-                late_join_points=0
-            )
-        
-        # Verify team was created
+        # Verify team was created automatically
         teams = Team.objects.filter(season=self.season)
         self.assertEqual(teams.count(), 1)
         
@@ -279,23 +272,9 @@ class InviteCodeTestCase(TestCase):
         with Shush():
             registration = form.save()
         
-        # Approve the registration
-        request = self.rf.post('/')
-        request.user = self.superuser
-        
-        workflow = ApproveRegistrationWorkflow(registration)
-        modeladmin = Mock()
-        
-        with Shush():
-            workflow.approve_reg(
-                request=request,
-                modeladmin=modeladmin,
-                send_confirm_email=False,
-                invite_to_slack=False,
-                season=self.season,
-                retroactive_byes=0,
-                late_join_points=0
-            )
+        # Verify registration was auto-approved
+        registration.refresh_from_db()
+        self.assertEqual(registration.status, 'approved')
         
         # Verify no new team was created
         self.assertEqual(Team.objects.filter(season=self.season).count(), 1)
