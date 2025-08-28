@@ -311,6 +311,10 @@ class Season(_BaseModel):
     is_completed = models.BooleanField(default=False)
     registration_open = models.BooleanField(default=False)
     nominations_open = models.BooleanField(default=False)
+    codes_per_captain_limit = models.PositiveIntegerField(
+        default=20,
+        help_text='Maximum number of invite codes each captain can create'
+    )
 
     create_broadcast = models.BooleanField(
         default=False,
@@ -1959,12 +1963,16 @@ class InviteCode(_BaseModel):
     # Creation tracking
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='created_invite_codes')
+    created_by_captain = models.ForeignKey('Player', on_delete=models.SET_NULL, null=True, blank=True,
+                                        related_name='captain_created_invite_codes',
+                                        help_text='Captain who created this invite code')
     notes = models.TextField(blank=True, help_text='Internal notes about this invite code')
     
     class Meta:
         unique_together = [['league', 'season', 'code']]
         indexes = [
             models.Index(fields=['league', 'season', 'used_by']),
+            models.Index(fields=['created_by_captain']),
         ]
     
     def __str__(self):

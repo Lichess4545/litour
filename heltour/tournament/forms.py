@@ -564,3 +564,73 @@ class CreateTeamsForm(forms.Form):
 
         self.fields[
             'confirm_create'].label = f"Yes, I'm sure. Delete {team_count} teams and regenerate"
+
+
+class GenerateTeamInviteCodeForm(forms.Form):
+    """Form for team captains to generate invite codes for their team"""
+    
+    count = forms.IntegerField(
+        min_value=1,
+        max_value=5,
+        initial=1,
+        label='Number of codes',
+        help_text='Generate 1-5 invite codes at once'
+    )
+    
+    def __init__(self, *args, team=None, season=None, player=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.team = team
+        self.season = season
+        self.player = player
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        if self.player and not hasattr(self, 'skip_limit_check'):
+            # Check if captain hasn't exceeded their limit
+            existing_codes = InviteCode.objects.filter(
+                season=self.season,
+                created_by_captain=self.player
+            ).count()
+            
+            requested_count = cleaned_data.get('count', 0)
+            
+            if existing_codes + requested_count > self.season.codes_per_captain_limit:
+                remaining = self.season.codes_per_captain_limit - existing_codes
+                if remaining == 0:
+                    raise forms.ValidationError(
+                        f'You have reached your limit of {self.season.codes_per_captain_limit} invite codes.'
+                    )
+                else:
+                    raise forms.ValidationError(
+                        f'You can only create {remaining} more invite code{"s" if remaining != 1 else ""}. '
+                        f'You have created {existing_codes} out of {self.season.codes_per_captain_limit} allowed.'
+                    )
+        
+        return cleaned_data
+    
+    def save(self, created_by):
+        """Generate the invite codes"""
+        count = self.cleaned_data['count']
+        codes = []
+        
+        for _ in range(count):
+            code = InviteCode(
+                league=self.team.season.league,
+                season=self.season,
+                code=InviteCode.generate_code(),
+                code_type='team_member',
+                team=self.team,
+                created_by=created_by if created_by.is_staff else None,
+                created_by_captain=self.player if self.player else None,
+                notes=f'Created for team {self.team.name}'
+            )
+            
+            # Ensure unique code
+            while InviteCode.objects.filter(code=code.code).exists():
+                code.code = InviteCode.generate_code()
+            
+            code.save()
+            codes.append(code)
+        
+        return codes

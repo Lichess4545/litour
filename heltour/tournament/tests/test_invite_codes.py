@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.test.client import RequestFactory
 from django.utils import timezone
 
-from heltour.tournament.forms import RegistrationForm
+from heltour.tournament.forms import GenerateTeamInviteCodeForm, RegistrationForm
 from heltour.tournament.models import (
     InviteCode,
     League,
@@ -411,3 +411,120 @@ class InviteCodeTestCase(TestCase):
         )
         
         self.assertNotIn('invite_code', form.fields)
+    
+    def test_captain_created_invite_codes(self):
+        """Test that captain-created invite codes are tracked properly"""
+        captain_player = Player.objects.create(lichess_username='test_captain', rating=1800)
+        
+        # Create a team for the captain
+        team = Team.objects.create(
+            season=self.season,
+            number=1,
+            name='Captain Test Team'
+        )
+        
+        # Create invite code as captain
+        code = InviteCode.objects.create(
+            league=self.league,
+            season=self.season,
+            code='CAPTAIN-MADE-001',
+            code_type='team_member',
+            team=team,  # Required for team_member type
+            created_by_captain=captain_player,
+            notes='Created by captain'
+        )
+        
+        # Verify tracking
+        self.assertEqual(code.created_by_captain, captain_player)
+        self.assertIsNone(code.created_by)
+        
+        # Test captain's created codes count
+        captain_codes = InviteCode.objects.filter(
+            season=self.season,
+            created_by_captain=captain_player
+        ).count()
+        self.assertEqual(captain_codes, 1)
+    
+    def test_codes_per_captain_limit(self):
+        """Test that the codes per captain limit is enforced"""
+        # Set a low limit for testing
+        self.season.codes_per_captain_limit = 3
+        self.season.save()
+        
+        captain = Player.objects.create(lichess_username='limited_captain', rating=1900)
+        team = Team.objects.create(
+            season=self.season,
+            number=1,
+            name='Test Team'
+        )
+        
+        # Create codes up to the limit
+        for i in range(3):
+            InviteCode.objects.create(
+                league=self.league,
+                season=self.season,
+                code=f'LIMIT-TEST-{i}',
+                code_type='team_member',
+                team=team,
+                created_by_captain=captain
+            )
+        
+        # Verify form validation prevents creating more
+        form = GenerateTeamInviteCodeForm(
+            data={'count': 1},
+            team=team,
+            season=self.season,
+            player=captain
+        )
+        
+        self.assertFalse(form.is_valid())
+        self.assertIn('You have reached your limit of 3 invite codes', str(form.errors))
+    
+    def test_admin_bypass_captain_limit(self):
+        """Test that admins are not subject to captain code limits"""
+        self.season.codes_per_captain_limit = 1
+        self.season.save()
+        
+        team = Team.objects.create(
+            season=self.season,
+            number=1,
+            name='Admin Test Team'
+        )
+        
+        # Admin should be able to create codes without limit
+        form = GenerateTeamInviteCodeForm(
+            data={'count': 5},
+            team=team,
+            season=self.season,
+            player=None  # No player when admin
+        )
+        
+        self.assertTrue(form.is_valid())
+    
+    def test_code_generation_form(self):
+        """Test the GenerateTeamInviteCodeForm functionality"""
+        captain = Player.objects.create(lichess_username='form_captain', rating=1850)
+        team = Team.objects.create(
+            season=self.season,
+            number=1,
+            name='Form Test Team'
+        )
+        
+        form = GenerateTeamInviteCodeForm(
+            data={'count': 3},
+            team=team,
+            season=self.season,
+            player=captain
+        )
+        
+        self.assertTrue(form.is_valid())
+        
+        # Save should create the codes
+        codes = form.save(created_by=self.system_user)
+        
+        self.assertEqual(len(codes), 3)
+        for code in codes:
+            self.assertEqual(code.code_type, 'team_member')
+            self.assertEqual(code.team, team)
+            self.assertEqual(code.created_by_captain, captain)
+            self.assertTrue(code.is_available())

@@ -44,6 +44,7 @@ from heltour.tournament.models import (
     AlternateBucket,
     Document,
     GameNomination,
+    InviteCode,
     League,
     LeagueDocument,
     LonePlayerPairing,
@@ -1795,12 +1796,171 @@ class TeamProfileView(LeagueView):
             if pairing is not None:
                 matches.append((round_, pairing))
 
+        # Check if user can manage this team
+        can_manage_team = False
+        if self.request.user.is_authenticated:
+            if self.request.user.is_staff:
+                can_manage_team = True
+            else:
+                player = Player.get_or_create(self.request.user.username)
+                if player:
+                    team_member = TeamMember.objects.filter(
+                        player=player,
+                        team=team
+                    ).first()
+                    if team_member and (team_member.is_captain or team_member.is_vice_captain):
+                        can_manage_team = True
+        
         context = {
             'team': team,
             'prev_members': prev_members,
             'matches': matches,
+            'can_manage_team': can_manage_team,
         }
         return self.render('tournament/team_profile.html', context)
+
+
+class TeamManageView(LoginRequiredMixin, SeasonView):
+    def can_manage_team(self, team):
+        """Check if the current user can manage this team"""
+        if self.request.user.is_staff:
+            return True
+        
+        player = self.player
+        if not player:
+            return False
+            
+        team_member = TeamMember.objects.filter(
+            player=player,
+            team=team
+        ).first()
+        
+        return team_member and (team_member.is_captain or team_member.is_vice_captain)
+    
+    def view(self, team_number):
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm
+        
+        team = get_object_or_404(Team, season=self.season, number=team_number)
+        
+        # Check permissions
+        if not self.can_manage_team(team):
+            raise Http404("You don't have permission to manage this team")
+        
+        # Get team members with their registration status
+        team_members = team.teammember_set.select_related('player').order_by('board_number')
+        
+        # Get invite codes for this team
+        invite_codes = InviteCode.objects.filter(
+            team=team,
+            code_type='team_member'
+        ).select_related('used_by', 'created_by', 'created_by_captain').order_by('-date_created')
+        
+        # Count codes created by this captain
+        captain_codes_count = 0
+        if not self.request.user.is_staff:
+            captain_codes_count = InviteCode.objects.filter(
+                season=self.season,
+                created_by_captain=self.player
+            ).count()
+        
+        # Check if captain can create more codes
+        can_create_codes = (
+            self.request.user.is_staff or 
+            captain_codes_count < self.season.codes_per_captain_limit
+        )
+        
+        context = {
+            'team': team,
+            'team_members': team_members,
+            'invite_codes': invite_codes,
+            'can_create_codes': can_create_codes,
+            'codes_remaining': self.season.codes_per_captain_limit - captain_codes_count,
+            'codes_used': captain_codes_count,
+            'codes_limit': self.season.codes_per_captain_limit,
+            'is_admin': self.request.user.is_staff,
+        }
+        
+        return self.render('tournament/team_manage.html', context)
+    
+    def view_post(self, team_number):
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm
+        
+        team = get_object_or_404(Team, season=self.season, number=team_number)
+        
+        # Check permissions
+        if not self.can_manage_team(team):
+            raise Http404("You don't have permission to manage this team")
+        
+        action = self.request.POST.get('action')
+        form = None  # Initialize form variable
+        
+        if action == 'generate_codes':
+            # Generate new codes
+            form = GenerateTeamInviteCodeForm(
+                self.request.POST,
+                team=team,
+                season=self.season,
+                player=self.player if not self.request.user.is_staff else None
+            )
+            
+            if form.is_valid():
+                form.save(created_by=self.request.user)
+                return redirect('by_league:by_season:team_manage', 
+                               league_tag=self.league.tag, 
+                               season_tag=self.season.tag,
+                               team_number=team_number)
+        
+        elif action == 'delete_code':
+            # Delete unused code
+            code_id = self.request.POST.get('code_id')
+            code = get_object_or_404(InviteCode, pk=code_id, team=team)
+            
+            if code.is_available():
+                code.delete()
+            
+            return redirect('by_league:by_season:team_manage',
+                           league_tag=self.league.tag,
+                           season_tag=self.season.tag,
+                           team_number=team_number)
+        
+        # If we get here, re-render the page (either no action or form was invalid)
+        # Need to rebuild the context with form errors if applicable
+        team = get_object_or_404(Team, season=self.season, number=team_number)
+        team_members = team.teammember_set.select_related('player').order_by('board_number')
+        invite_codes = InviteCode.objects.filter(
+            team=team,
+            code_type='team_member'
+        ).select_related('used_by', 'created_by', 'created_by_captain').order_by('-date_created')
+        
+        captain_codes_count = 0
+        if not self.request.user.is_staff:
+            captain_codes_count = InviteCode.objects.filter(
+                season=self.season,
+                created_by_captain=self.player
+            ).count()
+        
+        can_create_codes = (
+            self.request.user.is_staff or 
+            captain_codes_count < self.season.codes_per_captain_limit
+        )
+        
+        context = {
+            'team': team,
+            'team_members': team_members,
+            'invite_codes': invite_codes,
+            'can_create_codes': can_create_codes,
+            'codes_remaining': self.season.codes_per_captain_limit - captain_codes_count,
+            'codes_used': captain_codes_count,
+            'codes_limit': self.season.codes_per_captain_limit,
+            'is_admin': self.request.user.is_staff,
+        }
+        
+        # Add form with errors if it exists
+        if form is not None and not form.is_valid():
+            context['form'] = form
+            context['form_errors'] = form.errors
+        
+        return self.render('tournament/team_manage.html', context)
 
 
 class NominateView(LoginRequiredMixin, SeasonView):

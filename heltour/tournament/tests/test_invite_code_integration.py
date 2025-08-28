@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase, RequestFactory
 from django.utils import timezone
 
-from heltour.tournament.forms import RegistrationForm
+from heltour.tournament.forms import GenerateTeamInviteCodeForm, RegistrationForm
 from heltour.tournament.models import (
     InviteCode,
     League,
@@ -484,3 +484,146 @@ class InviteCodeIntegrationTestCase(TestCase):
         self.assertFalse(SeasonPlayer.objects.filter(
             season=open_season, player=player
         ).exists())
+    
+    def test_captain_workflow_with_code_management(self):
+        """Test complete captain workflow including code creation and management"""
+        # Step 1: Create captain code and register captain
+        captain_code = InviteCode.objects.create(
+            league=self.league,
+            season=self.season,
+            code='CAPTAIN-WORKFLOW-001',
+            code_type='captain',
+            created_by=self.admin_user
+        )
+        
+        captain = Player.objects.create(lichess_username='workflow_captain', rating=1900)
+        
+        form_data = {
+            'email': 'workflow_captain@example.com',
+            'has_played_20_games': True,
+            'can_commit': True,
+            'agreed_to_rules': True,
+            'agreed_to_tos': True,
+            'alternate_preference': 'full_time',
+            'invite_code': captain_code.code
+        }
+        
+        form = RegistrationForm(
+            data=form_data,
+            season=self.season,
+            player=captain
+        )
+        self.assertTrue(form.is_valid())
+        
+        with Shush():
+            reg = form.save()
+        
+        # Verify captain registration was auto-approved
+        reg.refresh_from_db()
+        self.assertEqual(reg.status, 'approved')
+        
+        # Get the created team
+        team = Team.objects.get(season=self.season)
+        self.assertEqual(team.name, f'Team {captain.lichess_username}')
+        
+        # Step 2: Captain creates invite codes for team members
+        # Simulate captain creating codes (normally done through the view)
+        codes = []
+        for i in range(3):
+            code = InviteCode.objects.create(
+                league=self.league,
+                season=self.season,
+                code=f'TEAM-{team.number}-MEMBER-{i+1}',
+                code_type='team_member',
+                team=team,
+                created_by_captain=captain,
+                notes=f'Created by captain for team {team.name}'
+            )
+            codes.append(code)
+        
+        # Verify codes are properly linked
+        team_codes = InviteCode.objects.filter(team=team, created_by_captain=captain)
+        self.assertEqual(team_codes.count(), 3)
+        
+        # Step 3: Team members join using captain's codes
+        members = []
+        for i, code in enumerate(codes[:2]):  # Only use 2 of 3 codes
+            member = Player.objects.create(
+                lichess_username=f'team_member_{i+1}',
+                rating=1700 + i * 50
+            )
+            
+            form_data['email'] = f'member{i+1}@example.com'
+            form_data['invite_code'] = code.code
+            
+            form = RegistrationForm(
+                data=form_data,
+                season=self.season,
+                player=member
+            )
+            self.assertTrue(form.is_valid())
+            
+            with Shush():
+                member_reg = form.save()
+            
+            # Verify auto-approval
+            member_reg.refresh_from_db()
+            self.assertEqual(member_reg.status, 'approved')
+            
+            members.append(member)
+        
+        # Step 4: Verify team composition
+        team.refresh_from_db()
+        team_members = TeamMember.objects.filter(team=team).order_by('board_number')
+        
+        self.assertEqual(team_members.count(), 3)  # Captain + 2 members
+        
+        # Verify captain is board 1
+        self.assertEqual(team_members[0].player, captain)
+        self.assertTrue(team_members[0].is_captain)
+        self.assertEqual(team_members[0].board_number, 1)
+        
+        # Verify members
+        self.assertEqual(team_members[1].player, members[0])
+        self.assertEqual(team_members[1].board_number, 2)
+        self.assertEqual(team_members[2].player, members[1])
+        self.assertEqual(team_members[2].board_number, 3)
+        
+        # Step 5: Verify code usage tracking
+        for i, code in enumerate(codes[:2]):
+            code.refresh_from_db()
+            self.assertFalse(code.is_available())
+            self.assertEqual(code.used_by, members[i])
+            self.assertIsNotNone(code.used_at)
+        
+        # Verify unused code remains available
+        codes[2].refresh_from_db()
+        self.assertTrue(codes[2].is_available())
+        self.assertIsNone(codes[2].used_by)
+        
+        # Step 6: Test captain code limit enforcement
+        self.season.codes_per_captain_limit = 5
+        self.season.save()
+        
+        # Captain has created 3 codes, should be able to create 2 more
+        remaining_codes = self.season.codes_per_captain_limit - team_codes.count()
+        self.assertEqual(remaining_codes, 2)
+        
+        # Try to create more codes within limit
+        form = GenerateTeamInviteCodeForm(
+            data={'count': 2},
+            team=team,
+            season=self.season,
+            player=captain
+        )
+        self.assertTrue(form.is_valid())
+        
+        # Try to exceed limit
+        form = GenerateTeamInviteCodeForm(
+            data={'count': 3},
+            team=team,
+            season=self.season,
+            player=captain
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('You can only create 2 more invite codes', str(form.errors))
