@@ -1838,7 +1838,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         return team_member and (team_member.is_captain or team_member.is_vice_captain)
     
     def view(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm
         
         team = get_object_or_404(Team, season=self.season, number=team_number)
         
@@ -1869,6 +1869,11 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             captain_codes_count < self.season.codes_per_captain_limit
         )
         
+        # Get upcoming round and deadline info
+        upcoming_round = team.get_upcoming_round()
+        board_order_form = BoardOrderForm(team=team, user=self.request.user, upcoming_round=upcoming_round)
+        can_update_boards = upcoming_round.is_board_update_allowed() if upcoming_round else True
+        
         context = {
             'team': team,
             'team_members': team_members,
@@ -1878,12 +1883,16 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             'codes_used': captain_codes_count,
             'codes_limit': self.season.codes_per_captain_limit,
             'is_admin': self.request.user.is_staff,
+            'board_order_form': board_order_form,
+            'upcoming_round': upcoming_round,
+            'can_update_boards': can_update_boards or self.request.user.is_staff,
+            'board_update_deadline': upcoming_round.get_board_update_deadline() if upcoming_round else None,
         }
         
         return self.render('tournament/team_manage.html', context)
     
     def view_post(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm
         
         team = get_object_or_404(Team, season=self.season, number=team_number)
         
@@ -1894,7 +1903,27 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         action = self.request.POST.get('action')
         form = None  # Initialize form variable
         
-        if action == 'generate_codes':
+        if action == 'update_boards':
+            # Handle board order update
+            upcoming_round = team.get_upcoming_round()
+            board_form = BoardOrderForm(
+                self.request.POST,
+                team=team,
+                user=self.request.user,
+                upcoming_round=upcoming_round
+            )
+            
+            if board_form.is_valid():
+                board_form.save()
+                return redirect('by_league:by_season:team_manage',
+                               league_tag=self.league.tag,
+                               season_tag=self.season.tag,
+                               team_number=team_number)
+            else:
+                # Re-render page with form errors
+                form = board_form
+        
+        elif action == 'generate_codes':
             # Generate new codes
             form = GenerateTeamInviteCodeForm(
                 self.request.POST,
@@ -1944,6 +1973,9 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             captain_codes_count < self.season.codes_per_captain_limit
         )
         
+        # Get upcoming round for board updates
+        upcoming_round = team.get_upcoming_round()
+        
         context = {
             'team': team,
             'team_members': team_members,
@@ -1953,12 +1985,22 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             'codes_used': captain_codes_count,
             'codes_limit': self.season.codes_per_captain_limit,
             'is_admin': self.request.user.is_staff,
+            'upcoming_round': upcoming_round,
+            'can_update_boards': (upcoming_round.is_board_update_allowed() if upcoming_round else True) or self.request.user.is_staff,
+            'board_update_deadline': upcoming_round.get_board_update_deadline() if upcoming_round else None,
         }
         
         # Add form with errors if it exists
         if form is not None and not form.is_valid():
-            context['form'] = form
-            context['form_errors'] = form.errors
+            if action == 'generate_codes':
+                context['form'] = form
+                context['form_errors'] = form.errors
+            elif action == 'update_boards':
+                context['board_order_form'] = form
+                context['board_form_errors'] = form.errors
+        else:
+            # Default board form if no errors
+            context['board_order_form'] = BoardOrderForm(team=team, user=self.request.user, upcoming_round=upcoming_round)
         
         return self.render('tournament/team_manage.html', context)
 

@@ -282,6 +282,11 @@ class LeagueSetting(_BaseModel):
         default=ScheduleType.FIXED_TIME,
         help_text="How game scheduling is handled for this league",
     )
+    
+    board_update_deadline_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text="Minutes before round start when team board assignments are locked"
+    )
 
     def __str__(self):
         return '%s Settings' % self.league
@@ -822,6 +827,27 @@ class Round(_BaseModel):
 
     def is_player_scheduled_league(self) -> bool:
         return self.get_league().is_player_scheduled_league()
+    
+    def get_board_update_deadline(self):
+        """Get the deadline for board updates for this round"""
+        if not self.start_date:
+            return None
+        
+        try:
+            league_setting = self.season.league.leaguesetting
+            deadline_minutes = league_setting.board_update_deadline_minutes
+        except LeagueSetting.DoesNotExist:
+            deadline_minutes = 15  # Default fallback
+        
+        return self.start_date - timedelta(minutes=deadline_minutes)
+    
+    def is_board_update_allowed(self):
+        """Check if board updates are allowed for this round"""
+        deadline = self.get_board_update_deadline()
+        if not deadline:
+            return True  # No start date means no restrictions
+        
+        return timezone.now() < deadline
 
     def __str__(self):
         return "%s - Round %d" % (self.season, self.number)
@@ -1318,6 +1344,20 @@ class Team(_BaseModel):
     @property
     def pairings(self):
         return self.pairings_as_white.all() | self.pairings_as_black.all()
+    
+    def get_upcoming_round(self):
+        """Get the next upcoming round for this team (including currently active rounds)"""
+        return Round.objects.filter(
+            season=self.season,
+            is_completed=False,
+            start_date__isnull=False
+        ).order_by('start_date').first()
+    
+    @property
+    def open_board_numbers(self):
+        """Get list of board numbers without assigned players"""
+        assigned_boards = set(self.teammember_set.values_list('board_number', flat=True))
+        return [n for n in range(1, self.season.boards + 1) if n not in assigned_boards]
 
     def __str__(self):
         return "%s - %s" % (self.season, self.name)

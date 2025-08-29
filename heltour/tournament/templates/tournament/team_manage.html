@@ -20,45 +20,146 @@
         <div class="col-md-6">
             <div class="well">
                 <div class="well-head">
-                    <h3>Team Roster</h3>
+                    <h3>Team Roster & Board Order</h3>
+                    {% if upcoming_round %}
+                        {% if can_update_boards %}
+                            <button class="btn btn-sm btn-primary pull-right" onclick="toggleBoardEdit()">
+                                <span class="glyphicon glyphicon-edit"></span> Edit Board Order
+                            </button>
+                        {% else %}
+                            <span class="text-danger pull-right">
+                                <small>Board order locked for Round {{ upcoming_round.number }}</small>
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        {% if team_members %}
+                            <button class="btn btn-sm btn-primary pull-right" onclick="toggleBoardEdit()">
+                                <span class="glyphicon glyphicon-edit"></span> Edit Board Order
+                            </button>
+                        {% endif %}
+                    {% endif %}
                 </div>
                 <div class="well-body">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Board</th>
-                                <th>Player</th>
-                                <th>Role</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for team_member in team_members %}
-                            <tr>
-                                <td>{{ team_member.board_number }}</td>
-                                <td>
-                                    <a href="{% leagueurl 'player_profile' league.tag season.tag team_member.player.lichess_username %}">
-                                        {{ team_member.player.lichess_username }}
-                                    </a>
-                                </td>
-                                <td>
-                                    {% if team_member.is_captain %}
-                                        <span class="label label-primary">Captain</span>
-                                    {% elif team_member.is_vice_captain %}
-                                        <span class="label label-info">Vice Captain</span>
-                                    {% else %}
-                                        Member
+                    <!-- Board deadline info -->
+                    {% if upcoming_round and board_update_deadline %}
+                    <div class="alert alert-info">
+                        <strong>Next Round:</strong> Round {{ upcoming_round.number }} starts {{ upcoming_round.start_date|date:"M d, H:i e" }}<br>
+                        <strong>Board Update Deadline:</strong> {{ board_update_deadline|date:"M d, H:i e" }}
+                        {% if can_update_boards and not is_admin %}
+                            <span id="deadline-countdown" class="pull-right"></span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Board order form (hidden by default) -->
+                    <div id="board-edit-form" style="display: none;">
+                        <form method="post" id="board-order-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="update_boards">
+                            
+                            {% if board_form_errors %}
+                            <div class="alert alert-danger">
+                                {% if board_form_errors.non_field_errors %}
+                                    {% for error in board_form_errors.non_field_errors %}
+                                        {{ error }}<br>
+                                    {% endfor %}
+                                {% endif %}
+                                {% for field, errors in board_form_errors.items %}
+                                    {% if field != "__all__" %}
+                                        {% for error in errors %}
+                                            {{ error }}<br>
+                                        {% endfor %}
                                     {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                            {% for n in team.open_board_numbers %}
-                            <tr class="text-muted">
-                                <td>{{ n }}</td>
-                                <td colspan="2"><em>Open Position</em></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            
+                            <table class="table" id="board-order-table">
+                                <thead>
+                                    <tr>
+                                        <th width="50">Board</th>
+                                        <th>Player</th>
+                                        <th width="40">Move</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sortable-boards">
+                                    {% for team_member in team_members %}
+                                    <tr data-player-id="{{ team_member.player.id }}" data-player-name="{{ team_member.player.lichess_username }}">
+                                        <td>
+                                            <input type="number" name="player_{{ team_member.player.id }}" 
+                                                   value="{{ team_member.board_number }}" 
+                                                   min="1" max="{{ season.boards }}" 
+                                                   class="form-control input-sm board-number-input" 
+                                                   readonly>
+                                        </td>
+                                        <td>
+                                            <strong>{{ team_member.player.lichess_username }}</strong>
+                                            {% if team_member.is_captain %}
+                                                <span class="label label-primary">Captain</span>
+                                            {% elif team_member.is_vice_captain %}
+                                                <span class="label label-info">Vice Captain</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="drag-handle" style="cursor: move;">
+                                                <span class="glyphicon glyphicon-menu-hamburger"></span>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            
+                            <div class="form-group">
+                                <button type="submit" class="btn btn-success" {% if not can_update_boards %}disabled{% endif %}>
+                                    Save Board Order
+                                </button>
+                                <button type="button" class="btn btn-default" onclick="toggleBoardEdit()">
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Regular roster display -->
+                    <div id="board-display">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Board</th>
+                                    <th>Player</th>
+                                    <th>Role</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for team_member in team_members %}
+                                <tr>
+                                    <td>{{ team_member.board_number }}</td>
+                                    <td>
+                                        <a href="{% leagueurl 'player_profile' league.tag season.tag team_member.player.lichess_username %}">
+                                            {{ team_member.player.lichess_username }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if team_member.is_captain %}
+                                            <span class="label label-primary">Captain</span>
+                                        {% elif team_member.is_vice_captain %}
+                                            <span class="label label-info">Vice Captain</span>
+                                        {% else %}
+                                            Member
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% for n in team.open_board_numbers %}
+                                <tr class="text-muted">
+                                    <td>{{ n }}</td>
+                                    <td colspan="2"><em>Open Position</em></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -203,6 +304,9 @@
     </div>
 </div>
 
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+
 <script>
 function copyCode(code) {
     navigator.clipboard.writeText(code).then(function() {
@@ -245,5 +349,72 @@ function copyAllAvailableCodes() {
         alert('Failed to copy codes: ' + err);
     });
 }
+
+// Board ordering functions
+function toggleBoardEdit() {
+    $('#board-display').toggle();
+    $('#board-edit-form').toggle();
+    
+    // Update board numbers when showing the form
+    if ($('#board-edit-form').is(':visible')) {
+        updateBoardNumbers();
+    }
+}
+
+function updateBoardNumbers() {
+    $('#sortable-boards tr').each(function(index) {
+        $(this).find('.board-number-input').val(index + 1);
+    });
+}
+
+$(document).ready(function() {
+    // Make the table sortable
+    $("#sortable-boards").sortable({
+        handle: '.drag-handle',
+        stop: function(event, ui) {
+            updateBoardNumbers();
+        }
+    });
+    
+    // Show board edit form if there are errors
+    {% if board_form_errors %}
+    toggleBoardEdit();
+    {% endif %}
+    
+    // Deadline countdown
+    {% if upcoming_round and board_update_deadline and can_update_boards and not is_admin %}
+    var deadline = new Date('{{ board_update_deadline|date:"c" }}');
+    
+    function updateCountdown() {
+        var now = new Date();
+        var diff = deadline - now;
+        
+        if (diff <= 0) {
+            $('#deadline-countdown').html('<strong class="text-danger">Deadline passed</strong>');
+            $('button[type="submit"]').prop('disabled', true);
+            clearInterval(countdownInterval);
+        } else {
+            var hours = Math.floor(diff / (1000 * 60 * 60));
+            var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            var seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            var timeStr = '';
+            if (hours > 0) {
+                timeStr = hours + 'h ' + minutes + 'm';
+            } else if (minutes > 0) {
+                timeStr = minutes + 'm ' + seconds + 's';
+            } else {
+                timeStr = seconds + 's';
+            }
+            
+            var colorClass = diff < 300000 ? 'text-danger' : (diff < 900000 ? 'text-warning' : '');
+            $('#deadline-countdown').html('<strong class="' + colorClass + '">Time remaining: ' + timeStr + '</strong>');
+        }
+    }
+    
+    updateCountdown();
+    var countdownInterval = setInterval(updateCountdown, 1000);
+    {% endif %}
+});
 </script>
 {% endblock %}

@@ -3,6 +3,7 @@ from datetime import timedelta
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 from django import forms
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -634,3 +635,88 @@ class GenerateTeamInviteCodeForm(forms.Form):
             codes.append(code)
         
         return codes
+
+
+class BoardOrderForm(forms.Form):
+    """Form for reordering team board assignments"""
+    
+    def __init__(self, *args, **kwargs):
+        self.team = kwargs.pop('team')
+        self.user = kwargs.pop('user')
+        self.upcoming_round = kwargs.pop('upcoming_round', None)
+        super().__init__(*args, **kwargs)
+        
+        # Create fields for each team member
+        team_members = self.team.teammember_set.select_related('player').order_by('board_number')
+        
+        for member in team_members:
+            self.fields[f'player_{member.player.id}'] = forms.IntegerField(
+                min_value=1,
+                max_value=self.team.season.boards,
+                initial=member.board_number,
+                label=member.player.lichess_username,
+                widget=forms.NumberInput(attrs={'class': 'form-control board-number-input'})
+            )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # Check deadline if not admin
+        if self.upcoming_round and not self.user.is_staff:
+            if not self.upcoming_round.is_board_update_allowed():
+                deadline = self.upcoming_round.get_board_update_deadline()
+                raise forms.ValidationError(
+                    f'Board assignments are locked. The deadline was {deadline.strftime("%Y-%m-%d %H:%M %Z")}.'
+                )
+        
+        # Collect all board numbers
+        board_numbers = []
+        for field_name, value in cleaned_data.items():
+            if field_name.startswith('player_') and value is not None:
+                board_numbers.append(value)
+        
+        # Only validate if we have board numbers
+        if board_numbers:
+            # Check for duplicates
+            if len(board_numbers) != len(set(board_numbers)):
+                raise forms.ValidationError('Each board number must be unique.')
+            
+            # Check for gaps in board numbers
+            board_numbers.sort()
+            expected = list(range(1, len(board_numbers) + 1))
+            if board_numbers != expected:
+                raise forms.ValidationError(
+                    f'Board numbers must be continuous from 1 to {len(board_numbers)} with no gaps.'
+                )
+        
+        return cleaned_data
+    
+    def save(self):
+        """Update board assignments"""
+        with transaction.atomic():
+            # First, collect all the changes
+            updates = []
+            for field_name, board_number in self.cleaned_data.items():
+                if field_name.startswith('player_'):
+                    player_id = int(field_name.replace('player_', ''))
+                    member = self.team.teammember_set.get(player_id=player_id)
+                    if member.board_number != board_number:
+                        updates.append((member, board_number))
+            
+            if not updates:
+                return  # No changes to make
+            
+            # Use a temporary high board number to avoid conflicts
+            # Find a safe temporary number that's outside the valid range
+            max_board = self.team.season.boards
+            temp_start = max_board + 100
+            
+            # Step 1: Move all changing members to temporary high board numbers
+            for i, (member, _) in enumerate(updates):
+                member.board_number = temp_start + i
+                member.save()
+            
+            # Step 2: Now set the actual new board numbers
+            for member, new_board_number in updates:
+                member.board_number = new_board_number
+                member.save()
