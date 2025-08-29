@@ -148,3 +148,33 @@ Tests are located in `heltour/tournament/tests/`. The project uses Django's unit
 ## Historical Context
 
 This project was originally called heltour and served lichess4545. It has been rebranded to Litour for lots.lichess.ca (Lichess Online Tournament System). The codebase still uses "heltour" in many places for backwards compatibility.
+
+## Important Instructions for Claude
+
+### Command Execution Policy
+- **DO NOT** run any commands - the user will run all commands themselves
+- **DO NOT** use `nix develop`, `invoke`, `poetry`, or any other shell commands
+- **DO NOT** attempt to start servers, run tests, or execute any development tasks
+- You should only:
+  - Read and analyze code
+  - Write and edit code files
+  - Provide command suggestions when asked
+  - Explain what commands would do
+
+### Testing Policy
+- **NEVER** run tests - the user will run tests themselves
+- When test-related changes are made, you may suggest which test commands the user could run
+- Do not assume tests need to be run after code changes
+
+### Git Policy
+- **NEVER** execute any git commands whatsoever
+- **DO NOT** make commits, pushes, or any git operations
+- Only use read-only git information that is provided in the environment
+- If git information is needed, ask the user to provide it
+
+### General Guidelines
+- Focus solely on code reading, writing, and analysis
+- The user will handle all command execution and environment setup
+- Ask for clarification if needed before making assumptions
+- Respect the existing code structure and patterns
+- Do not create new files unless absolutely necessary
