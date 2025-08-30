@@ -5,34 +5,35 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0016_add_invite_code_types'),
+        ("tournament", "0016_add_invite_code_types"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='invitecode',
-            name='created_by_captain',
+            model_name="invitecode",
+            name="created_by_captain",
             field=models.ForeignKey(
                 blank=True,
-                help_text='Captain who created this invite code',
+                help_text="Captain who created this invite code",
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
-                related_name='captain_created_invite_codes',
-                to='tournament.player'
+                related_name="captain_created_invite_codes",
+                to="tournament.player",
             ),
         ),
         migrations.AddField(
-            model_name='season',
-            name='codes_per_captain_limit',
+            model_name="season",
+            name="codes_per_captain_limit",
             field=models.PositiveIntegerField(
                 default=20,
-                help_text='Maximum number of invite codes each captain can create'
+                help_text="Maximum number of invite codes each captain can create",
             ),
         ),
         migrations.AddIndex(
-            model_name='invitecode',
-            index=models.Index(fields=['created_by_captain'], name='tournament_created_8e9c47_idx'),
+            model_name="invitecode",
+            index=models.Index(
+                fields=["created_by_captain"], name="tournament_created_8e9c47_idx"
+            ),
         ),
     ]

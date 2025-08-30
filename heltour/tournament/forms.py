@@ -58,17 +58,19 @@ class RegistrationForm(forms.ModelForm):
 
         # Add invite code field if league is invite-only
         if league.registration_mode == RegistrationMode.INVITE_ONLY:
-            self.fields['invite_code'] = forms.CharField(
+            self.fields["invite_code"] = forms.CharField(
                 max_length=50,
                 required=True,
-                label=_('Invite Code'),
-                help_text=_('Please enter the invite code you received'),
-                widget=forms.TextInput(attrs={'placeholder': 'CHESS-KNIGHT-ABC12345'}),
-                error_messages={'required': _('Invite code is required for this league')}
+                label=_("Invite Code"),
+                help_text=_("Please enter the invite code you received"),
+                widget=forms.TextInput(attrs={"placeholder": "CHESS-KNIGHT-ABC12345"}),
+                error_messages={
+                    "required": _("Invite code is required for this league")
+                },
             )
             # Move invite_code to the beginning of the field order
-            field_order = ['invite_code'] + [
-                f for f in self.fields if f != 'invite_code'
+            field_order = ["invite_code"] + [
+                f for f in self.fields if f != "invite_code"
             ]
             self.order_fields(field_order)
 
@@ -83,7 +85,10 @@ class RegistrationForm(forms.ModelForm):
             # Hide friends/avoid fields if:
             # 1. Season has started (teams already created)
             # 2. Using invite-only registration (teams are pre-determined by codes)
-            if self.season.is_started() or league.registration_mode == RegistrationMode.INVITE_ONLY:
+            if (
+                self.season.is_started()
+                or league.registration_mode == RegistrationMode.INVITE_ONLY
+            ):
                 # the friends and avoid fields are for team creation. once a season is started and a teams are
                 # created we do not need to ask people about this. hide those fields in that case.
                 self.fields['friends'] = forms.CharField(required=False, widget=forms.HiddenInput)
@@ -137,7 +142,10 @@ class RegistrationForm(forms.ModelForm):
         # Alternate preference
         if league.competitor_type == 'team':
             # Hide alternate preference for invite-only leagues (team placement is predetermined)
-            if self.season.is_started() or league.registration_mode == RegistrationMode.INVITE_ONLY:
+            if (
+                self.season.is_started()
+                or league.registration_mode == RegistrationMode.INVITE_ONLY
+            ):
                 self.fields['alternate_preference'] = forms.ChoiceField(required=False,
                                                                         choices=ALTERNATE_PREFERENCE_OPTIONS,
                                                                         initial='full_time',
@@ -198,7 +206,7 @@ class RegistrationForm(forms.ModelForm):
         registration.player = self.player
 
         # Handle invite code for invite-only leagues
-        if hasattr(self, 'invite_code_obj') and self.invite_code_obj:
+        if hasattr(self, "invite_code_obj") and self.invite_code_obj:
             registration.invite_code_used = self.invite_code_obj
 
         is_new = registration.pk is None
@@ -209,10 +217,13 @@ class RegistrationForm(forms.ModelForm):
         }
 
         # Auto-approve registrations with valid invite codes
-        should_auto_approve = (is_new and hasattr(self, 'invite_code_obj') and 
-                             self.invite_code_obj and 
-                             self.season.league.registration_mode == RegistrationMode.INVITE_ONLY)
-        
+        should_auto_approve = (
+            is_new
+            and hasattr(self, "invite_code_obj")
+            and self.invite_code_obj
+            and self.season.league.registration_mode == RegistrationMode.INVITE_ONLY
+        )
+
         if should_auto_approve:
             registration.status = "approved"
         elif is_new or fields_changed:
@@ -221,10 +232,9 @@ class RegistrationForm(forms.ModelForm):
         if commit:
             registration.save()
             # Mark the invite code as used after saving the registration
-            if hasattr(self, 'invite_code_obj') and self.invite_code_obj:
+            if hasattr(self, "invite_code_obj") and self.invite_code_obj:
                 self.invite_code_obj.mark_used(self.player)
-            
-                
+
         registration.player.agreed_to_tos()
         return registration
 
@@ -248,31 +258,34 @@ class RegistrationForm(forms.ModelForm):
         """Validate the invite code for invite-only leagues."""
         if self.season.league.registration_mode != RegistrationMode.INVITE_ONLY:
             return None
-            
-        code = self.cleaned_data.get('invite_code', '').strip()
+
+        code = self.cleaned_data.get("invite_code", "").strip()
         if not code:
-            raise ValidationError(_('Invite code is required for this league'))
-            
+            raise ValidationError(_("Invite code is required for this league"))
+
         # Look up the invite code (case-insensitive)
         invite_code = InviteCode.get_by_code(code, self.season.league, self.season)
-        
+
         if not invite_code:
-            raise ValidationError(_('Invalid invite code'))
-            
+            raise ValidationError(_("Invalid invite code"))
+
         if not invite_code.is_available():
-            raise ValidationError(_('This invite code has already been used'))
-            
+            raise ValidationError(_("This invite code has already been used"))
+
         # Store the invite code object for use in save()
         self.invite_code_obj = invite_code
         return code
 
     def clean_weeks_unavailable(self):
         # If the field was deleted from the form, skip validation
-        if 'weeks_unavailable' not in self.fields:
-            return ''
-            
-        upcoming_rounds = [r for r in self.season.round_set.order_by('number') if
-                           r.start_date and r.start_date > timezone.now()]
+        if "weeks_unavailable" not in self.fields:
+            return ""
+
+        upcoming_rounds = [
+            r
+            for r in self.season.round_set.order_by("number")
+            if r.start_date and r.start_date > timezone.now()
+        ]
         upcoming_rounds_available = [r for r in upcoming_rounds if
                                      str(r.number) not in self.cleaned_data['weeks_unavailable']]
         upcoming_rounds_unavailable = [r for r in upcoming_rounds if
@@ -284,9 +297,9 @@ class RegistrationForm(forms.ModelForm):
 
     def clean_section_preference(self):
         # If the field was deleted from the form, skip validation
-        if 'section_preference' not in self.fields:
+        if "section_preference" not in self.fields:
             return None
-            
+
         if self.cleaned_data['section_preference'] == '':
             return None
         return Section.objects.get(pk=int(self.cleaned_data['section_preference']))
@@ -569,98 +582,101 @@ class CreateTeamsForm(forms.Form):
 
 class GenerateTeamInviteCodeForm(forms.Form):
     """Form for team captains to generate invite codes for their team"""
-    
+
     count = forms.IntegerField(
         min_value=1,
         max_value=5,
         initial=1,
-        label='Number of codes',
-        help_text='Generate 1-5 invite codes at once'
+        label="Number of codes",
+        help_text="Generate 1-5 invite codes at once",
     )
-    
+
     def __init__(self, *args, team=None, season=None, player=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.team = team
         self.season = season
         self.player = player
-    
+
     def clean(self):
         cleaned_data = super().clean()
-        
-        if self.player and not hasattr(self, 'skip_limit_check'):
+
+        if self.player and not hasattr(self, "skip_limit_check"):
             # Check if captain hasn't exceeded their limit
             existing_codes = InviteCode.objects.filter(
-                season=self.season,
-                created_by_captain=self.player
+                season=self.season, created_by_captain=self.player
             ).count()
-            
-            requested_count = cleaned_data.get('count', 0)
-            
+
+            requested_count = cleaned_data.get("count", 0)
+
             if existing_codes + requested_count > self.season.codes_per_captain_limit:
                 remaining = self.season.codes_per_captain_limit - existing_codes
                 if remaining == 0:
                     raise forms.ValidationError(
-                        f'You have reached your limit of {self.season.codes_per_captain_limit} invite codes.'
+                        f"You have reached your limit of {self.season.codes_per_captain_limit} invite codes."
                     )
                 else:
                     raise forms.ValidationError(
                         f'You can only create {remaining} more invite code{"s" if remaining != 1 else ""}. '
                         f'You have created {existing_codes} out of {self.season.codes_per_captain_limit} allowed.'
                     )
-        
+
         return cleaned_data
-    
+
     def save(self, created_by):
         """Generate the invite codes"""
-        count = self.cleaned_data['count']
+        count = self.cleaned_data["count"]
         codes = []
-        
+
         for _ in range(count):
             code = InviteCode(
                 league=self.team.season.league,
                 season=self.season,
                 code=InviteCode.generate_code(),
-                code_type='team_member',
+                code_type="team_member",
                 team=self.team,
                 created_by=created_by if created_by.is_staff else None,
                 created_by_captain=self.player if self.player else None,
-                notes=f'Created for team {self.team.name}'
+                notes=f"Created for team {self.team.name}",
             )
-            
+
             # Ensure unique code
             while InviteCode.objects.filter(code=code.code).exists():
                 code.code = InviteCode.generate_code()
-            
+
             code.save()
             codes.append(code)
-        
+
         return codes
 
 
 class BoardOrderForm(forms.Form):
     """Form for reordering team board assignments"""
-    
+
     def __init__(self, *args, **kwargs):
-        self.team = kwargs.pop('team')
-        self.user = kwargs.pop('user')
-        self.upcoming_round = kwargs.pop('upcoming_round', None)
+        self.team = kwargs.pop("team")
+        self.user = kwargs.pop("user")
+        self.upcoming_round = kwargs.pop("upcoming_round", None)
         super().__init__(*args, **kwargs)
-        
+
         # Create fields for each team member
-        team_members = self.team.teammember_set.select_related('player').order_by('board_number')
-        
+        team_members = self.team.teammember_set.select_related("player").order_by(
+            "board_number"
+        )
+
         for member in team_members:
-            self.fields[f'player_{member.player.id}'] = forms.IntegerField(
+            self.fields[f"player_{member.player.id}"] = forms.IntegerField(
                 min_value=1,
                 max_value=self.team.season.boards,
                 initial=member.board_number,
                 label=member.player.lichess_username,
-                widget=forms.NumberInput(attrs={'class': 'form-control board-number-input'})
+                widget=forms.NumberInput(
+                    attrs={"class": "form-control board-number-input"}
+                ),
             )
-    
+
     def clean(self):
         cleaned_data = super().clean()
-        
+
         # Check deadline if not admin
         if self.upcoming_round and not self.user.is_staff:
             if not self.upcoming_round.is_board_update_allowed():
@@ -668,54 +684,54 @@ class BoardOrderForm(forms.Form):
                 raise forms.ValidationError(
                     f'Board assignments are locked. The deadline was {deadline.strftime("%Y-%m-%d %H:%M %Z")}.'
                 )
-        
+
         # Collect all board numbers
         board_numbers = []
         for field_name, value in cleaned_data.items():
-            if field_name.startswith('player_') and value is not None:
+            if field_name.startswith("player_") and value is not None:
                 board_numbers.append(value)
-        
+
         # Only validate if we have board numbers
         if board_numbers:
             # Check for duplicates
             if len(board_numbers) != len(set(board_numbers)):
-                raise forms.ValidationError('Each board number must be unique.')
-            
+                raise forms.ValidationError("Each board number must be unique.")
+
             # Check for gaps in board numbers
             board_numbers.sort()
             expected = list(range(1, len(board_numbers) + 1))
             if board_numbers != expected:
                 raise forms.ValidationError(
-                    f'Board numbers must be continuous from 1 to {len(board_numbers)} with no gaps.'
+                    f"Board numbers must be continuous from 1 to {len(board_numbers)} with no gaps."
                 )
-        
+
         return cleaned_data
-    
+
     def save(self):
         """Update board assignments"""
         with transaction.atomic():
             # First, collect all the changes
             updates = []
             for field_name, board_number in self.cleaned_data.items():
-                if field_name.startswith('player_'):
-                    player_id = int(field_name.replace('player_', ''))
+                if field_name.startswith("player_"):
+                    player_id = int(field_name.replace("player_", ""))
                     member = self.team.teammember_set.get(player_id=player_id)
                     if member.board_number != board_number:
                         updates.append((member, board_number))
-            
+
             if not updates:
                 return  # No changes to make
-            
+
             # Use a temporary high board number to avoid conflicts
             # Find a safe temporary number that's outside the valid range
             max_board = self.team.season.boards
             temp_start = max_board + 100
-            
+
             # Step 1: Move all changing members to temporary high board numbers
             for i, (member, _) in enumerate(updates):
                 member.board_number = temp_start + i
                 member.save()
-            
+
             # Step 2: Now set the actual new board numbers
             for member, new_board_number in updates:
                 member.board_number = new_board_number

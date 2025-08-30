@@ -5,20 +5,34 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0015_merge_20250817_1509'),
+        ("tournament", "0015_merge_20250817_1509"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='invitecode',
-            name='code_type',
-            field=models.CharField(choices=[('captain', 'Captain - Creates new team'), ('team_member', 'Team Member - Joins existing team')], default='captain', help_text='Type of registration this code enables', max_length=20),
+            model_name="invitecode",
+            name="code_type",
+            field=models.CharField(
+                choices=[
+                    ("captain", "Captain - Creates new team"),
+                    ("team_member", "Team Member - Joins existing team"),
+                ],
+                default="captain",
+                help_text="Type of registration this code enables",
+                max_length=20,
+            ),
         ),
         migrations.AddField(
-            model_name='invitecode',
-            name='team',
-            field=models.ForeignKey(blank=True, help_text='Team that members will join (for team_member codes)', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='invite_codes', to='tournament.team'),
+            model_name="invitecode",
+            name="team",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Team that members will join (for team_member codes)",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="invite_codes",
+                to="tournament.team",
+            ),
         ),
     ]

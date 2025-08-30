@@ -4,20 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0017_captain_invite_code_management'),
+        ("tournament", "0017_captain_invite_code_management"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='invitecode',
-            new_name='tournament__created_db5094_idx',
-            old_name='tournament_created_8e9c47_idx',
+            model_name="invitecode",
+            new_name="tournament__created_db5094_idx",
+            old_name="tournament_created_8e9c47_idx",
         ),
         migrations.AddField(
-            model_name='leaguesetting',
-            name='board_update_deadline_minutes',
-            field=models.PositiveIntegerField(default=15, help_text='Minutes before round start when team board assignments are locked'),
+            model_name="leaguesetting",
+            name="board_update_deadline_minutes",
+            field=models.PositiveIntegerField(
+                default=15,
+                help_text="Minutes before round start when team board assignments are locked",
+            ),
         ),
     ]

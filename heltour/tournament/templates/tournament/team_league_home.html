@@ -44,7 +44,9 @@
                             </p>
                         {% endif %}
                         {% if league.is_invite_only %}
-                            <p><strong>Note:</strong> This is an invite-only league. You will need an invite code to register.</p>
+                            <p>
+                                <strong>Note:</strong> This is an invite-only league. You will need an invite code to register.
+                            </p>
                         {% endif %}
                         <a href="{% leagueurl 'register' league.tag None %}"
                            class="btn btn-default">
