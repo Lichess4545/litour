@@ -43,6 +43,13 @@ services:
     deploy:
       update_config:
         order: start-first
+  
+  migrate:
+    image: ghcr.io/lichess4545/litour-migrate:latest
+    env_file: "stack.env"
+    networks:
+      - litour
+    restart: no
 
   postgres:
     image: postgres:15-alpine
@@ -78,14 +85,6 @@ services:
     deploy:
       update_config:
         order: start-first
-  
-  migrate:
-    # image: ghcr.io/lichess4545/litour-migrate:latest
-    image: litour-migrate:latest
-    env_file: "stack.env"
-    networks:
-      - litour
-    restart: no
 
   mailpit:
     image: axllent/mailpit:v1.24.1
