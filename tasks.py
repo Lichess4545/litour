@@ -98,10 +98,10 @@ def collectstatic(c):
 
 
 @task
-def compilestatic(c):
-    """Compile static files."""
+def compilescss(c):
+    """Compile SCSS files to CSS for production."""
     manage_py = project_relative("manage.py")
-    c.run(f"python {manage_py} compilestatic")
+    c.run(f"python {manage_py} compilescss")
 
 
 @task

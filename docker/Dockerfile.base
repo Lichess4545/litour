@@ -42,7 +42,7 @@ ENV DATABASE_URL=
 ENV STATIC_ROOT=/app/static
 RUN poetry install --only main && \
   mkdir -p /app/static && \
-  python manage.py compilestatic --ignore-dependencies && \
+  python manage.py compilescss && \
   python manage.py collectstatic --noinput
 
 

@@ -760,23 +760,19 @@ files = [
 django = ">=3.2"
 
 [[package]]
-name = "django-static-precompiler"
-version = "2.4"
-description = "Django template tags to compile all kinds of static files"
+name = "django-sass-processor"
+version = "1.4.2"
+description = "SASS processor to compile SCSS files into *.css, while rendering, or offline."
 optional = false
-python-versions = ">=3.6"
+python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "django-static-precompiler-2.4.tar.gz", hash = "sha256:22c983f4318f4ad96645d8b71af5c29d4525e55d0d5c3abe8917310280c7f89e"},
-    {file = "django_static_precompiler-2.4-py3-none-any.whl", hash = "sha256:5b67e951b19e1136f6bf00d879ae236435fe4be3e430369644743b1677645ce4"},
+    {file = "django_sass_processor-1.4.2-py3-none-any.whl", hash = "sha256:604b00b19f7bbccfb838f766a284257bad3bb4ec3012f0770a1415913783bacc"},
+    {file = "django_sass_processor-1.4.2.tar.gz", hash = "sha256:59c1028b5a5bd0158a0ea92ac5d538e5d89eb547e910a45e334d9c7b3b814b18"},
 ]
 
-[package.dependencies]
-Django = ">=2.0"
-
 [package.extras]
-libsass = ["libsass"]
-watch = ["watchdog"]
+management-command = ["django-compressor (>=2.4)"]
 
 [[package]]
 name = "django-stubs"
@@ -1042,6 +1038,22 @@ files = [
 
 [package.dependencies]
 certbot = "*"
+
+[[package]]
+name = "libsass"
+version = "0.23.0"
+description = "Sass for Python: A straightforward binding of libsass for Python."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "libsass-0.23.0-cp38-abi3-macosx_11_0_x86_64.whl", hash = "sha256:34cae047cbbfc4ffa832a61cbb110f3c95f5471c6170c842d3fed161e40814dc"},
+    {file = "libsass-0.23.0-cp38-abi3-macosx_14_0_arm64.whl", hash = "sha256:ea97d1b45cdc2fc3590cb9d7b60f1d8915d3ce17a98c1f2d4dd47ee0d9c68ce6"},
+    {file = "libsass-0.23.0-cp38-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:4a218406d605f325d234e4678bd57126a66a88841cb95bee2caeafdc6f138306"},
+    {file = "libsass-0.23.0-cp38-abi3-win32.whl", hash = "sha256:31e86d92a5c7a551df844b72d83fc2b5e50abc6fbbb31e296f7bebd6489ed1b4"},
+    {file = "libsass-0.23.0-cp38-abi3-win_amd64.whl", hash = "sha256:a2ec85d819f353cbe807432d7275d653710d12b08ec7ef61c124a580a8352f3c"},
+    {file = "libsass-0.23.0.tar.gz", hash = "sha256:6f209955ede26684e76912caf329f4ccb57e4a043fd77fe0e7348dd9574f1880"},
+]
 
 [[package]]
 name = "more-itertools"
@@ -1828,4 +1840,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "40811b70e281c1f08cf797cef5e7f464ca43e0fdc6b427c52047fdaba35f3305"
+content-hash = "312cfa11a9358513ac8a617b57ce57ac307e5b03abee8d1d9d85845a2f6817c1"

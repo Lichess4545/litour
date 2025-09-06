@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% load tournament_extras %}
 {% block title %}Manage {{ team.name }} - {{ season.name }} - {{ league.name }}{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+{% endblock %}
 {% block content %}
-    <div class="container">
+    <div class="container team-manage-page">
         <div class="row">
             <div class="col-md-12">
                 <h2>Manage {{ team.name }}</h2>
@@ -70,12 +73,16 @@
                                         {% endfor %}
                                     </div>
                                 {% endif %}
-                                <table class="table" id="board-order-table">
+                                <div class="alert alert-info" style="margin-bottom: 15px;">
+                                    <strong>Tip:</strong> Drag and drop players using the <span class="glyphicon glyphicon-menu-hamburger"></span> icon to reorder boards.
+                                </div>
+                                <table class="table table-hover" id="board-order-table">
                                     <thead>
                                         <tr>
-                                            <th width="50">Board</th>
+                                            <th width="80">Board</th>
                                             <th>Player</th>
-                                            <th width="40">Move</th>
+                                            <th>Rating</th>
+                                            <th width="60" class="text-center">Drag</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sortable-boards">
@@ -83,13 +90,11 @@
                                             <tr data-player-id="{{ team_member.player.id }}"
                                                 data-player-name="{{ team_member.player.lichess_username }}">
                                                 <td>
-                                                    <input type="number"
+                                                    <span class="board-display" style="font-size: 16px; font-weight: bold;">{{ team_member.board_number }}</span>
+                                                    <input type="hidden"
                                                            name="player_{{ team_member.player.id }}"
                                                            value="{{ team_member.board_number }}"
-                                                           min="1"
-                                                           max="{{ season.boards }}"
-                                                           class="form-control input-sm board-number-input"
-                                                           readonly>
+                                                           class="board-number-input">
                                                 </td>
                                                 <td>
                                                     <strong>{{ team_member.player.lichess_username }}</strong>
@@ -99,8 +104,15 @@
                                                         <span class="label label-info">Vice Captain</span>
                                                     {% endif %}
                                                 </td>
+                                                <td>
+                                                    {% if not zen_mode %}
+                                                        {{ team_member.player.rating|default:"-" }}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
                                                 <td class="text-center">
-                                                    <span class="drag-handle" style="cursor: move;">
+                                                    <span class="drag-handle">
                                                         <span class="glyphicon glyphicon-menu-hamburger"></span>
                                                     </span>
                                                 </td>
@@ -212,7 +224,7 @@
                         <h3>Team Invite Codes</h3>
                         {% if invite_codes %}
                             <button class="btn btn-sm btn-default pull-right"
-                                    onclick="copyAllAvailableCodes()">
+                                    onclick="copyAllAvailableCodes(event)">
                                 <span class="glyphicon glyphicon-copy"></span> Copy All Available Codes
                             </button>
                         {% endif %}
@@ -266,7 +278,7 @@
                                                     {% endif %}
                                                 </td>
                                                 <td>
-                                                    <button class="btn btn-xs btn-default" onclick="copyCode('{{ code.code }}')">
+                                                    <button class="btn btn-xs btn-default" onclick="copyCode('{{ code.code }}', event)">
                                                         <span class="glyphicon glyphicon-copy"></span> Copy
                                                     </button>
                                                     {% if code.is_available %}
@@ -295,27 +307,35 @@
             </div>
         </div>
     </div>
-    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
-    <link rel="stylesheet"
-          href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
-    <script>
-function copyCode(code) {
+{% endblock %}
+{% block js %}
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+<script>
+function copyCode(code, event) {
+    // Prevent any default action
+    if (event) event.preventDefault();
+    
+    // Get the button that was clicked
+    var btn = event ? event.currentTarget : document.activeElement;
+    
     navigator.clipboard.writeText(code).then(function() {
         // Show a temporary success message
-        var btn = event.target.closest('button');
         var originalText = btn.innerHTML;
         btn.innerHTML = '<span class="glyphicon glyphicon-ok"></span> Copied!';
-        btn.classList.add('btn-success');
+        $(btn).removeClass('btn-default').addClass('btn-success');
         setTimeout(function() {
             btn.innerHTML = originalText;
-            btn.classList.remove('btn-success');
+            $(btn).removeClass('btn-success').addClass('btn-default');
         }, 2000);
     }, function(err) {
         alert('Failed to copy code: ' + err);
     });
 }
 
-function copyAllAvailableCodes() {
+function copyAllAvailableCodes(event) {
+    // Prevent any default action
+    if (event) event.preventDefault();
+    
     var codes = [];
     document.querySelectorAll('.available-code').forEach(function(element) {
         codes.push(element.textContent.trim());
@@ -326,15 +346,17 @@ function copyAllAvailableCodes() {
         return;
     }
     
+    // Get the button that was clicked
+    var btn = event ? event.currentTarget : document.activeElement;
+    
     var codesText = codes.join('\n');
     navigator.clipboard.writeText(codesText).then(function() {
-        var btn = event.target.closest('button');
         var originalText = btn.innerHTML;
         btn.innerHTML = '<span class="glyphicon glyphicon-ok"></span> Copied ' + codes.length + ' codes!';
-        btn.classList.add('btn-success');
+        $(btn).removeClass('btn-default').addClass('btn-success');
         setTimeout(function() {
             btn.innerHTML = originalText;
-            btn.classList.remove('btn-success');
+            $(btn).removeClass('btn-success').addClass('btn-default');
         }, 2000);
     }, function(err) {
         alert('Failed to copy codes: ' + err);
@@ -354,18 +376,35 @@ function toggleBoardEdit() {
 
 function updateBoardNumbers() {
     $('#sortable-boards tr').each(function(index) {
-        $(this).find('.board-number-input').val(index + 1);
+        var boardNum = index + 1;
+        $(this).find('.board-number-input').val(boardNum);
+        $(this).find('.board-display').text(boardNum);
     });
 }
 
 $(document).ready(function() {
+    // Check if jQuery UI is loaded
+    if (!$.fn.sortable) {
+        console.error('jQuery UI sortable not loaded!');
+        return;
+    }
+    
     // Make the table sortable
     $("#sortable-boards").sortable({
         handle: '.drag-handle',
+        helper: function(e, tr) {
+            var $originals = tr.children();
+            var $helper = tr.clone();
+            $helper.children().each(function(index) {
+                // Set helper cell widths to match the original widths
+                $(this).width($originals.eq(index).width());
+            });
+            return $helper;
+        },
         stop: function(event, ui) {
             updateBoardNumbers();
         }
-    });
+    }).disableSelection();
     
     // Show board edit form if there are errors
     {% if board_form_errors %}toggleBoardEdit();{% endif %}
@@ -405,5 +444,5 @@ $(document).ready(function() {
     var countdownInterval = setInterval(updateCountdown, 1000);
     {% endif %}
 });
-    </script>
+</script>
 {% endblock %}
