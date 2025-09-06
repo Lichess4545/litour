@@ -3,9 +3,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.utils import timezone, formats
 from datetime import timedelta
-from django.conf import settings
-from heltour.tournament.models import Player, Registration, format_score
-from static_precompiler.utils import compile_static
+from heltour.tournament.models import Registration, format_score
 
 register = template.Library()
 
@@ -141,18 +139,6 @@ def date_el(datetime, arg=None):
         return ''
     return mark_safe('<time datetime="%s">%s</time>' % (
         datetime.isoformat(), formats.date_format(datetime, arg)))
-
-
-@register.filter
-def compile_if_debug(path):
-    # This is a bit of hackery to make static precompilation work with manifest storage
-    if settings.DEBUG:
-        try:
-            compile_static(path)
-        except FileExistsError:
-            compile_static(path)
-    return path.replace('.scss', '.css')
-
 
 @register.filter
 def mean(lst):
