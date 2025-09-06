@@ -24,6 +24,7 @@ from heltour.tournament.models import (
     normalize_gamelink,
     username_validator,
 )
+from heltour.tournament.workflows import ApproveRegistrationWorkflow
 
 YES_NO_OPTIONS = (
     (True, 'Yes',),
@@ -56,6 +57,13 @@ class RegistrationForm(forms.ModelForm):
         league = self.season.league
         super(RegistrationForm, self).__init__(*args, **kwargs)
 
+        # Configure email field based on league settings
+        if not league.email_required:
+            del self.fields['email']
+        else:
+            # Make email field required when email_required=True
+            self.fields['email'].required = True
+
         # Add invite code field if league is invite-only
         if league.registration_mode == RegistrationMode.INVITE_ONLY:
             self.fields["invite_code"] = forms.CharField(
@@ -75,8 +83,12 @@ class RegistrationForm(forms.ModelForm):
             self.order_fields(field_order)
 
         # Rating fields
-        # 20 games
-        self.fields['has_played_20_games'] = forms.TypedChoiceField(widget=forms.HiddenInput, choices=YES_NO_OPTIONS)
+        # 20 games - remove if provisional warnings are disabled
+        if league.show_provisional_warning:
+            self.fields['has_played_20_games'] = forms.TypedChoiceField(widget=forms.HiddenInput, choices=YES_NO_OPTIONS)
+        else:
+            # Remove the field entirely when provisional warnings are disabled
+            del self.fields['has_played_20_games']
         # Can commit
         # We do not want to ask about this anymore, it was decided that it is a useless question. Hide it for now.
         self.fields['can_commit'] = forms.TypedChoiceField(initial=True, widget=forms.HiddenInput, choices=YES_NO_OPTIONS)
@@ -177,7 +189,8 @@ class RegistrationForm(forms.ModelForm):
             del self.fields['section_preference']
 
         # Weeks unavailable - if player is already accepted they can edit their availability in the player dashboard
-        if self.season.round_duration == timedelta(days=7) and not already_accepted:
+        # Also respect the league setting for asking availability
+        if self.season.round_duration == timedelta(days=7) and not already_accepted and league.ask_availability:
             weeks = [(r.number, 'Round %s (%s - %s)' %
                       (r.number,
                        r.start_date.strftime('%b %-d') if r.start_date is not None else '?',
@@ -226,7 +239,11 @@ class RegistrationForm(forms.ModelForm):
 
         if should_auto_approve:
             registration.status = "approved"
-        elif is_new or fields_changed:
+        elif is_new:
+            # Only set to pending if it's a new registration without auto-approval
+            registration.status = "pending"
+        elif fields_changed:
+            # For existing registrations, only change to pending if specific fields changed
             registration.status = "pending"
 
         if commit:
@@ -234,6 +251,33 @@ class RegistrationForm(forms.ModelForm):
             # Mark the invite code as used after saving the registration
             if hasattr(self, "invite_code_obj") and self.invite_code_obj:
                 self.invite_code_obj.mark_used(self.player)
+                
+                # Handle team assignment when auto-approving
+                if should_auto_approve and self.invite_code_obj:
+                    from heltour.tournament.models import SeasonPlayer, TeamMember
+                    from heltour.tournament.workflows import create_team_with_captain, add_player_to_team
+                    
+                    # Create or update SeasonPlayer
+                    sp, created = SeasonPlayer.objects.update_or_create(
+                        player=self.player,
+                        season=self.season,
+                        defaults={'registration': registration, 'is_active': True}
+                    )
+                    
+                    # Only handle team assignment if player is not already on a team
+                    existing_member = TeamMember.objects.filter(
+                        player=self.player,
+                        team__season=self.season
+                    ).first()
+                    
+                    if not existing_member:
+                        # Handle team creation/assignment
+                        if self.invite_code_obj.code_type == "captain":
+                            # Create new team with this player as captain
+                            team = create_team_with_captain(self.player, self.season)
+                        elif self.invite_code_obj.code_type == "team_member" and self.invite_code_obj.team:
+                            # Add player to existing team
+                            add_player_to_team(self.player, self.invite_code_obj.team)
 
         registration.player.agreed_to_tos()
         return registration

@@ -147,6 +147,18 @@ class League(_BaseModel):
         default=RegistrationMode.OPEN,
         help_text="Controls how players can register for this league",
     )
+    email_required = models.BooleanField(
+        default=False,
+        help_text="If true, email is required during registration. Default is false (email optional)."
+    )
+    show_provisional_warning = models.BooleanField(
+        default=True,
+        help_text="If true, show warning about provisional ratings during registration. Default is true."
+    )
+    ask_availability = models.BooleanField(
+        default=True,
+        help_text="If true, ask players about their availability during registration. Default is true."
+    )
 
     class Meta:
         permissions = (
@@ -2161,12 +2173,12 @@ class InviteCode(_BaseModel):
 # -------------------------------------------------------------------------------
 class Registration(_BaseModel):
     season = models.ForeignKey(Season, on_delete=models.CASCADE)
-    status = models.CharField(max_length=255, choices=REGISTRATION_STATUS_OPTIONS)
+    status = models.CharField(max_length=255, choices=REGISTRATION_STATUS_OPTIONS, default='pending')
     status_changed_by = models.CharField(blank=True, max_length=255)
     status_changed_date = models.DateTimeField(blank=True, null=True)
     player = models.ForeignKey(to=Player, on_delete=models.CASCADE, null=True)
-    email = models.EmailField(max_length=255)
-    has_played_20_games = models.BooleanField()
+    email = models.EmailField(max_length=255, blank=True)
+    has_played_20_games = models.BooleanField(default=True)
     can_commit = models.BooleanField()
     friends = models.CharField(blank=True, max_length=1023)
     avoid = models.CharField(blank=True, max_length=1023)

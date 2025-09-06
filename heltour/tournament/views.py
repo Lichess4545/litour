@@ -783,9 +783,14 @@ class RegisterView(LoginRequiredMixin, LeagueView):
                 if form.is_valid():
                     with reversion.create_revision():
                         reversion.set_comment('Submitted registration.')
-                        form.save()
+                        registration = form.save()
 
-                    self.request.session['reg_email'] = form.cleaned_data['email']
+                    # Only store email in session if the field exists
+                    if 'email' in form.cleaned_data:
+                        self.request.session['reg_email'] = form.cleaned_data['email']
+                    
+                    # Store registration ID in session to check team assignment
+                    self.request.session['reg_id'] = registration.id
 
                     return redirect(leagueurl('registration_success', league_tag=self.league.tag,
                                               season_tag=self.season.tag))
@@ -799,16 +804,20 @@ class RegisterView(LoginRequiredMixin, LeagueView):
                     player=player,
                     rules_url=doc_url,
                 )
-                form.fields['email'].initial = player.email
+                # Only set email initial value if the field exists
+                if 'email' in form.fields:
+                    form.fields['email'].initial = player.email
                 rating_provisional = player.provisional_for(reg_season.league)
-                form.fields['has_played_20_games'].initial = not rating_provisional
+                # Only set has_played_20_games initial value if the field exists
+                if 'has_played_20_games' in form.fields:
+                    form.fields['has_played_20_games'].initial = not rating_provisional
 
             context = {
                 'form': form,
                 'registration_season': reg_season,
                 'rules_url': doc_url,
             }
-            if not post:
+            if not post and self.league.show_provisional_warning:
                 context['rating_provisional'] = rating_provisional
             return self.render('tournament/register.html', context)
 
@@ -826,6 +835,23 @@ class RegistrationSuccessView(SeasonView):
             'registration_season': reg_season,
             'email': self.request.session.get('reg_email')
         }
+        
+        # Check if user registered with a team invite code
+        reg_id = self.request.session.get('reg_id')
+        if reg_id:
+            try:
+                registration = Registration.objects.get(pk=reg_id)
+                # Check if they were assigned to a team (either via captain or team_member code)
+                if registration.player:
+                    team_member = TeamMember.objects.filter(
+                        player=registration.player,
+                        team__season=registration.season
+                    ).select_related('team').first()
+                    if team_member:
+                        context['assigned_team'] = team_member.team
+            except Registration.DoesNotExist:
+                pass
+        
         return self.render('tournament/registration_success.html', context)
 
 

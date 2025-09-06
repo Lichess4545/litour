@@ -149,12 +149,20 @@ class InviteCodeTestCase(TestCase):
         # Verify registration was auto-approved
         registration.refresh_from_db()
         self.assertEqual(registration.status, "approved")
+        
+        # Verify SeasonPlayer was created and is active
+        sp = SeasonPlayer.objects.get(player=player, season=self.season)
+        self.assertTrue(sp.is_active)
+        self.assertEqual(sp.registration, registration)
 
         # Verify team was created automatically
-        teams = Team.objects.filter(season=self.season)
-        self.assertEqual(teams.count(), 1)
-
-        team = teams.first()
+        # Filter for the specific team created for this captain
+        team = Team.objects.filter(
+            season=self.season,
+            teammember__player=player,
+            teammember__is_captain=True
+        ).first()
+        self.assertIsNotNone(team)
         self.assertEqual(team.name, "Team captainplayer")
         self.assertEqual(team.number, 1)
         self.assertTrue(team.is_active)
@@ -242,6 +250,11 @@ class InviteCodeTestCase(TestCase):
         # Verify registration was auto-approved
         registration.refresh_from_db()
         self.assertEqual(registration.status, "approved")
+        
+        # Verify SeasonPlayer was created and is active
+        sp = SeasonPlayer.objects.get(player=new_player, season=self.season)
+        self.assertTrue(sp.is_active)
+        self.assertEqual(sp.registration, registration)
 
         # Verify no new team was created
         self.assertEqual(Team.objects.filter(season=self.season).count(), 1)

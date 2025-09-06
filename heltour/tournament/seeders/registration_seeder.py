@@ -10,6 +10,7 @@ from heltour.tournament.models import (
     Player,
     SeasonPlayer,
     Alternate,
+    InviteCode,
 )
 from .base import BaseSeeder
 
@@ -66,9 +67,10 @@ class RegistrationSeeder(BaseSeeder):
 
         for player in selected_players:
             # Check if already registered
-            if Registration.objects.filter(
+            existing_registration = Registration.objects.filter(
                 season=season, player=player
-            ).exists():
+            ).first()
+            if existing_registration:
                 continue
 
             # Determine registration status
@@ -103,6 +105,21 @@ class RegistrationSeeder(BaseSeeder):
                 "agreed_to_rules": True,
                 "agreed_to_tos": True,
             }
+            
+            # For invite-only leagues, some registrations should use invite codes
+            if season.league.registration_mode == 'invite_only' and self.weighted_bool(0.6):
+                # Find an unused invite code
+                unused_codes = InviteCode.objects.filter(
+                    season=season,
+                    code_type='captain',
+                    used_by__isnull=True
+                )
+                if unused_codes.exists():
+                    invite_code = self.random_choice(unused_codes)
+                    reg_data['invite_code_used'] = invite_code
+                    # Auto-approve registrations with valid codes
+                    if status == 'pending':
+                        reg_data['status'] = 'approved'
 
             # Add preferences
             if self.weighted_bool(0.3):
@@ -139,17 +156,17 @@ class RegistrationSeeder(BaseSeeder):
 
             # Create SeasonPlayer for approved registrations
             if status == "approved" and (season.is_active or season.is_completed):
-                # Get player's rating for this league
-                seed_rating = player.rating_for(season.league)
-
-                sp = SeasonPlayer.objects.create(
+                # Check if SeasonPlayer already exists
+                sp, created = SeasonPlayer.objects.get_or_create(
                     season=season,
                     player=player,
-                    is_active=self.weighted_bool(0.95),
-                    games_missed=random.randint(0, 2) if season.is_completed else 0,
-                    seed_rating=(
-                        seed_rating if not season.league.is_team_league() else None
-                    ),
+                    defaults={
+                        'is_active': self.weighted_bool(0.95),
+                        'games_missed': random.randint(0, 2) if season.is_completed else 0,
+                        'seed_rating': (
+                            player.rating_for(season.league) if not season.league.is_team_league() else None
+                        ),
+                    }
                 )
 
                 # Some players are alternates

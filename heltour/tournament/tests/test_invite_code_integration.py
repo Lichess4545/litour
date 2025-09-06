@@ -153,6 +153,11 @@ class InviteCodeIntegrationTestCase(TestCase):
         # Step 6: Verify team composition
         team1.refresh_from_db()
         team_members = TeamMember.objects.filter(team=team1).order_by("board_number")
+        # Debug: print actual count and members
+        if team_members.count() != 4:
+            print(f"Expected 4 team members, got {team_members.count()}")
+            for tm in team_members:
+                print(f"  - Board {tm.board_number}: {tm.player.lichess_username} (Captain: {tm.is_captain})")
         self.assertEqual(team_members.count(), 4)  # Captain + 3 members
 
         # Verify board assignments
@@ -248,7 +253,10 @@ class InviteCodeIntegrationTestCase(TestCase):
         reg.refresh_from_db()
         self.assertEqual(reg.status, "approved")
 
-        team = Team.objects.get(season=self.season)
+        # Get the specific team created in this test
+        teams = Team.objects.filter(season=self.season)
+        # Should have exactly one team at this point
+        team = teams.first()
 
         # Test: Try to register another player with the same captain code
         another_player = Player.objects.create(lichess_username="another", rating=1600)
@@ -355,7 +363,10 @@ class InviteCodeIntegrationTestCase(TestCase):
         self.assertEqual(reg.status, "approved")
 
         # Verify team was created automatically
-        team = Team.objects.get(season=self.season)
+        # Get the specific team created in this test
+        teams = Team.objects.filter(season=self.season)
+        # Should have exactly one team at this point
+        team = teams.first()
         self.assertEqual(team.name, "Team autocaptain")
 
         # Verify captain was added to team
@@ -500,7 +511,10 @@ class InviteCodeIntegrationTestCase(TestCase):
         self.assertEqual(reg.status, "approved")
 
         # Get the created team
-        team = Team.objects.get(season=self.season)
+        # Get the specific team created in this test
+        teams = Team.objects.filter(season=self.season)
+        # Should have exactly one team at this point
+        team = teams.first()
         self.assertEqual(team.name, f"Team {captain.lichess_username}")
 
         # Step 2: Captain creates invite codes for team members

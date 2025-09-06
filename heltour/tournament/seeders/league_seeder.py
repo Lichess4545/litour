@@ -28,6 +28,7 @@ class LeagueSeeder(BaseSeeder):
                 "rating_type": "classical",
                 "competitor_type": "team",
                 "pairing_type": "swiss",
+                "registration_mode": "open",
             },
             {
                 "name": "Lone Wolf League",
@@ -38,6 +39,7 @@ class LeagueSeeder(BaseSeeder):
                 "rating_type": "classical",
                 "competitor_type": "lone",
                 "pairing_type": "swiss",
+                "registration_mode": "open",
             },
             {
                 "name": "Rapid League",
@@ -48,6 +50,7 @@ class LeagueSeeder(BaseSeeder):
                 "rating_type": "rapid",
                 "competitor_type": "lone",
                 "pairing_type": "swiss",
+                "registration_mode": "open",
             },
             {
                 "name": "Blitz Mayhem",
@@ -58,6 +61,18 @@ class LeagueSeeder(BaseSeeder):
                 "rating_type": "blitz",
                 "competitor_type": "lone",
                 "pairing_type": "swiss",
+                "registration_mode": "open",
+            },
+            {
+                "name": "Elite Team Championship",
+                "tag": "elite",
+                "description": "Invite-only team championship for top players",
+                "theme": "purple",
+                "time_control": "60+30",
+                "rating_type": "classical",
+                "competitor_type": "team",
+                "pairing_type": "swiss",
+                "registration_mode": "invite_only",
             },
         ]
 
@@ -80,9 +95,16 @@ class LeagueSeeder(BaseSeeder):
             league_data.update(kwargs)  # Allow overrides
 
             league = League.objects.create(**league_data)
+            
+            # Apply minimal registration settings for Elite Team Championship
+            if league.tag == "elite":
+                league.email_required = False
+                league.show_provisional_warning = False
+                league.ask_availability = False
+                league.save()
 
             # Create associated LeagueSetting
-            LeagueSetting.objects.create(
+            league_setting = LeagueSetting.objects.create(
                 league=league,
                 contact_period=timedelta(hours=random.choice([24, 48, 72])),
                 notify_for_comments=self.weighted_bool(0.8),
@@ -91,6 +113,11 @@ class LeagueSeeder(BaseSeeder):
                 notify_for_registrations=self.weighted_bool(0.7),
                 notify_for_pre_season_registrations=self.weighted_bool(0.5),
             )
+            
+            # Set board update deadline for team leagues
+            if league.is_team_league():
+                league_setting.board_update_deadline_minutes = random.choice([30, 60, 120])
+                league_setting.save()
 
             # for team leagues, create associated settings for the alternates manager
             if league.is_team_league():

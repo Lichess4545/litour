@@ -339,7 +339,7 @@ class LeagueAdmin(_BaseAdmin):
         if self.has_assigned_perm(request.user, 'change'):
             return ()
         return ('competitor_type', 'tag', 'theme', 'display_order', 'description', 'is_active',
-                'is_default', 'enable_notifications')
+                'is_default', 'enable_notifications', 'registration_mode', 'email_required', 'show_provisional_warning', 'ask_availability')
 
     def get_urls(self):
         urls = super(LeagueAdmin, self).get_urls()
