@@ -119,7 +119,9 @@
                                     </div>
                                 {% endif %}
                                 <div class="alert alert-info" style="margin-bottom: 15px;">
-                                    <strong>Tip:</strong> Drag and drop players using the <span class="glyphicon glyphicon-menu-hamburger"></span> icon to reorder boards.
+                                    <strong>Tip:</strong> 
+                                    <span class="hidden-xs">Drag and drop players using the <span class="glyphicon glyphicon-menu-hamburger"></span> icon to reorder boards.</span>
+                                    <span class="visible-xs">Use the up/down arrows to reorder boards.</span>
                                 </div>
                                 <table class="table table-hover" id="board-order-table">
                                     <thead>
@@ -127,7 +129,8 @@
                                             <th width="80">Board</th>
                                             <th>Player</th>
                                             <th>Rating</th>
-                                            <th width="60" class="text-center">Drag</th>
+                                            <th width="60" class="text-center hidden-xs">Drag</th>
+                                            <th width="100" class="text-center visible-xs">Move</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sortable-boards">
@@ -156,10 +159,24 @@
                                                         -
                                                     {% endif %}
                                                 </td>
-                                                <td class="text-center">
+                                                <td class="text-center hidden-xs">
                                                     <span class="drag-handle">
                                                         <span class="glyphicon glyphicon-menu-hamburger"></span>
                                                     </span>
+                                                </td>
+                                                <td class="text-center visible-xs">
+                                                    <button type="button" 
+                                                            class="btn btn-xs btn-default move-up" 
+                                                            onclick="moveRow(this, 'up')"
+                                                            {% if forloop.first %}disabled{% endif %}>
+                                                        <span class="glyphicon glyphicon-chevron-up"></span>
+                                                    </button>
+                                                    <button type="button" 
+                                                            class="btn btn-xs btn-default move-down" 
+                                                            onclick="moveRow(this, 'down')"
+                                                            {% if forloop.last %}disabled{% endif %}>
+                                                        <span class="glyphicon glyphicon-chevron-down"></span>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         {% endfor %}
@@ -430,7 +447,29 @@ function updateBoardNumbers() {
         var boardNum = index + 1;
         $(this).find('.board-number-input').val(boardNum);
         $(this).find('.board-display').text(boardNum);
+        
+        // Update button states
+        var isFirst = index === 0;
+        var isLast = index === $('#sortable-boards tr').length - 1;
+        $(this).find('.move-up').prop('disabled', isFirst);
+        $(this).find('.move-down').prop('disabled', isLast);
     });
+}
+
+function moveRow(button, direction) {
+    var row = $(button).closest('tr');
+    if (direction === 'up') {
+        var prev = row.prev();
+        if (prev.length) {
+            row.insertBefore(prev);
+        }
+    } else {
+        var next = row.next();
+        if (next.length) {
+            row.insertAfter(next);
+        }
+    }
+    updateBoardNumbers();
 }
 
 $(document).ready(function() {

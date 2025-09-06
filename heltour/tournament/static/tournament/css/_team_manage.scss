@@ -99,6 +99,12 @@
     }
 }
 
+// Mobile board reordering buttons
+.move-up, .move-down {
+    padding: 1px 6px;
+    margin: 0 2px;
+}
+
 // Responsive adjustments
 @media (max-width: 768px) {
     .team-manage-page {
@@ -111,6 +117,16 @@
                 font-size: 12px;
                 padding: 4px 8px;
             }
+        }
+    }
+    
+    #board-order-table {
+        th, td {
+            padding: 4px;
+        }
+        
+        .board-display {
+            font-size: 14px;
         }
     }
 }
