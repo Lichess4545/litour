@@ -16,6 +16,51 @@
                 <hr>
             </div>
         </div>
+        <!-- Team Name Section -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="well">
+                    <div class="well-head">
+                        <h3>Team Details</h3>
+                        <button class="btn btn-sm btn-primary pull-right" onclick="toggleTeamNameEdit()">
+                            <span class="glyphicon glyphicon-edit"></span> Edit Name
+                        </button>
+                    </div>
+                    <div class="well-body">
+                        <!-- Team name edit form (hidden by default) -->
+                        <div id="team-name-edit" style="display: none;">
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update_team_name">
+                                {% if team_name_form_errors %}
+                                    <div class="alert alert-danger">
+                                        {% for field, errors in team_name_form_errors.items %}
+                                            {% for error in errors %}
+                                                {{ error }}<br>
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                                <div class="form-group {% if team_name_form_errors.team_name %}has-error{% endif %}">
+                                    {{ team_name_form.team_name.label_tag }}
+                                    {{ team_name_form.team_name }}
+                                    {% if team_name_form.team_name.help_text %}
+                                        <p class="help-block">{{ team_name_form.team_name.help_text }}</p>
+                                    {% endif %}
+                                </div>
+                                <button type="submit" class="btn btn-success">Save Name</button>
+                                <button type="button" class="btn btn-default" onclick="toggleTeamNameEdit()">Cancel</button>
+                            </form>
+                        </div>
+                        <!-- Regular team name display -->
+                        <div id="team-name-display">
+                            <p><strong>Team Name:</strong> {{ team.name }}</p>
+                            <p><strong>Team Number:</strong> {{ team.number }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- Team Roster Section -->
         <div class="row">
             <div class="col-md-6">
@@ -363,6 +408,12 @@ function copyAllAvailableCodes(event) {
     });
 }
 
+// Team name edit function
+function toggleTeamNameEdit() {
+    $('#team-name-display').toggle();
+    $('#team-name-edit').toggle();
+}
+
 // Board ordering functions
 function toggleBoardEdit() {
     $('#board-display').toggle();
@@ -408,6 +459,9 @@ $(document).ready(function() {
     
     // Show board edit form if there are errors
     {% if board_form_errors %}toggleBoardEdit();{% endif %}
+    
+    // Show team name edit form if there are errors
+    {% if team_name_form_errors %}toggleTeamNameEdit();{% endif %}
     
     // Deadline countdown
     {% if upcoming_round and board_update_deadline and can_update_boards and not is_admin %}

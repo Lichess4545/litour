@@ -1862,7 +1862,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         return team_member and (team_member.is_captain or team_member.is_vice_captain)
 
     def view(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameForm
 
         team = get_object_or_404(Team, season=self.season, number=team_number)
 
@@ -1904,6 +1904,9 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             upcoming_round.is_board_update_allowed() if upcoming_round else True
         )
 
+        # Initialize team name form
+        team_name_form = TeamNameForm(team=team)
+
         context = {
             "team": team,
             "team_members": team_members,
@@ -1915,6 +1918,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             "codes_limit": self.season.codes_per_captain_limit,
             "is_admin": self.request.user.is_staff,
             "board_order_form": board_order_form,
+            "team_name_form": team_name_form,
             "upcoming_round": upcoming_round,
             "can_update_boards": can_update_boards or self.request.user.is_staff,
             "board_update_deadline": upcoming_round.get_board_update_deadline()
@@ -1925,7 +1929,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         return self.render("tournament/team_manage.html", context)
 
     def view_post(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameForm
 
         team = get_object_or_404(Team, season=self.season, number=team_number)
 
@@ -1990,6 +1994,22 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
                 season_tag=self.season.tag,
                 team_number=team_number,
             )
+        
+        elif action == "update_team_name":
+            # Update team name
+            form = TeamNameForm(self.request.POST, team=team)
+            
+            if form.is_valid():
+                form.save()
+                return redirect(
+                    "by_league:by_season:team_manage",
+                    league_tag=self.league.tag,
+                    season_tag=self.season.tag,
+                    team_number=team_number,
+                )
+            else:
+                # Re-render page with form errors
+                form = form
 
         # If we get here, re-render the page (either no action or form was invalid)
         # Need to rebuild the context with form errors if applicable
@@ -2045,11 +2065,15 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             elif action == "update_boards":
                 context["board_order_form"] = form
                 context["board_form_errors"] = form.errors
+            elif action == "update_team_name":
+                context["team_name_form"] = form
+                context["team_name_form_errors"] = form.errors
         else:
-            # Default board form if no errors
+            # Default forms if no errors
             context["board_order_form"] = BoardOrderForm(
                 team=team, user=self.request.user, upcoming_round=upcoming_round
             )
+            context["team_name_form"] = TeamNameForm(team=team)
 
         return self.render("tournament/team_manage.html", context)
 

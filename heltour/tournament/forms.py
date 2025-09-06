@@ -693,6 +693,33 @@ class GenerateTeamInviteCodeForm(forms.Form):
         return codes
 
 
+class TeamNameForm(forms.Form):
+    """Form for updating team name"""
+    team_name = forms.CharField(
+        max_length=100,
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Team Name',
+        help_text='Enter a new name for your team (max 100 characters)'
+    )
+    
+    def __init__(self, *args, **kwargs):
+        self.team = kwargs.pop('team')
+        super().__init__(*args, **kwargs)
+        self.fields['team_name'].initial = self.team.name
+    
+    def clean_team_name(self):
+        name = self.cleaned_data['team_name'].strip()
+        if not name:
+            raise forms.ValidationError('Team name cannot be empty')
+        return name
+    
+    def save(self):
+        self.team.name = self.cleaned_data['team_name']
+        self.team.save()
+        return self.team
+
+
 class BoardOrderForm(forms.Form):
     """Form for reordering team board assignments"""
 
