@@ -9,8 +9,7 @@ import time
 import traceback
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Dict, List
-from more_itertools import divide, first
+from typing import Dict
 
 import reversion
 from django.core.cache import cache
@@ -20,6 +19,7 @@ from django.dispatch.dispatcher import receiver
 from django.urls import reverse
 from django.utils import timezone
 from django_stubs_ext import ValuesQuerySet
+from more_itertools import divide, first
 
 from django.conf import settings
 from heltour.celery import app
@@ -65,7 +65,7 @@ MAX_GAMES_LICHESS_BROADCAST: int = 100
 UsernamesQuerySet = ValuesQuerySet[Player, Dict[str, str]]
 
 
-def to_usernames(users: UsernamesQuerySet) -> List[str]:
+def to_usernames(users: UsernamesQuerySet) -> list[str]:
     return list(users.values_list("lichess_username", flat=True))
 
 
@@ -73,13 +73,14 @@ def just_username(qs: QuerySet[Player]) -> UsernamesQuerySet:
     return qs.order_by("lichess_username").values("lichess_username").distinct()
 
 
-def active_player_usernames() -> List[str]:
+
+def active_player_usernames() -> list[str]:
     players_qs = Player.objects.all()
     active_qs = players_qs.filter(seasonplayer__season__is_completed=False)
     return to_usernames(just_username(active_qs))
 
 
-def registrations_needing_updates(without_usernames: List[str]) -> List[str]:
+def registrations_needing_updates(without_usernames: list[str]) -> QuerySet[Player]:
     _24_hours = timezone.now() - timedelta(hours=24)
     active_regs = (
         Registration.objects.filter(
@@ -90,19 +91,26 @@ def registrations_needing_updates(without_usernames: List[str]) -> List[str]:
         .exclude(player__lichess_username__in=without_usernames)
         .values_list("player", flat=True)
     )
-    reg_players = Player.objects.filter(pk__in=active_regs)
-    return to_usernames(just_username(reg_players))
+    reg_players = Player.objects.filter(pk__in=active_regs).order_by("date_modified")
+    return reg_players
+
+
+def fetch_players_to_update() -> list[str]:
+    active_players = active_player_usernames()
+    registered_players = registrations_needing_updates(without_usernames=active_players)
+    # get onlye the first couple to distribute the api calls over time
+    first10th = [
+        player.lichess_username
+        for player in list(first(divide(10, registered_players)))
+    ]
+    return active_players + first10th
+
 
 
 @app.task()
 def update_player_ratings(usernames: list[str] = []) -> None:
     if len(usernames) == 0:
-        active_players = active_player_usernames()
-        registered_players = registrations_needing_updates(
-            without_usernames=active_players
-        )
-        first24th = list(first(divide(24, registered_players)))
-        usernames = active_players + first24th
+        usernames = fetch_players_to_update()
     logger.info(f"[START] Updating {len(usernames)} player ratings")
     updated = 0
     try:
@@ -352,21 +360,24 @@ def update_tv_state():
         if gameid is not None:
             try:
                 meta = lichessapi.get_game_meta(gameid, priority=1, timeout=300)
-                if "status" not in meta or meta["status"] != "started":
-                    game.tv_state = "hide"
-                if "moves" in meta and " " in meta["moves"]:  # ' ' indicates >= 2 moves
-                    game.tv_state = "has_moves"
-                if "status" in meta and meta["status"] == "draw":
+                if 'status' not in meta or meta['status'] != 'started':
+                    game.tv_state = 'hide'
+                if 'moves' in meta and ' ' in meta['moves']: # ' ' indicates >= 2 moves
+                    game.tv_state = 'has_moves'
+                if meta.get("status") in [
+                    "draw",
+                    "stalemate",
+                    "insufficientMaterialClaim",
+                ]:
                     game.result = "1/2-1/2"
                 if meta.get("status") == "aborted":
                     game.game_link = ""
-                elif (
-                    "winner" in meta and meta["status"] != "timeout"
-                ):  # timeout = claim victory (which isn't allowed)
-                    if meta["winner"] == "white":
-                        game.result = "1-0"
-                    elif meta["winner"] == "black":
-                        game.result = "0-1"
+                elif 'winner' in meta and meta[
+                    'status'] != 'timeout':  # timeout = claim victory (which isn't allowed)
+                    if meta['winner'] == 'white':
+                        game.result = '1-0'
+                    elif meta['winner'] == 'black':
+                        game.result = '0-1'
                 game.save()
             except Exception as e:
                 logger.warning(
@@ -986,6 +997,10 @@ def do_update_broadcast(season_id: int, first_board: int = 1, **kwargs) -> None:
     update_broadcast.apply_async(
         kwargs={"season_id": season_id, "first_board": first_board}
     )
+
+@receiver(signals.do_update_broadcast, dispatch_uid="heltour.tournament.tasks")
+def do_update_broadcast(season_id: int, first_board: int = 1, **kwargs) -> None:
+    update_broadcast.apply_async(kwargs={"season_id": season_id, "first_board": first_board})
 
 
 # How late an event is allowed to run before it's discarded instead

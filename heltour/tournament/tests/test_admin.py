@@ -69,6 +69,7 @@ class SeasonAdminTestCase(TestCase):
         cls.path_s_changelist = reverse("admin:tournament_season_changelist")
         cls.path_m_p = reverse("admin:manage_players", args=[cls.s.pk])
 
+    @patch("heltour.tournament.simulation.simulate_season")
     @patch("django.contrib.admin.ModelAdmin.message_user")
     @patch("heltour.tournament.signals.do_create_broadcast.send")
     def test_create_several_broadcasts(self, dcb, message):

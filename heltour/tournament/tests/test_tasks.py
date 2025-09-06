@@ -9,6 +9,7 @@ from heltour.tournament.models import (
     Broadcast,
     BroadcastRound,
     League,
+    LonePlayerPairing,
     OauthToken,
     Player,
     Round,
@@ -24,16 +25,19 @@ from heltour.tournament.tasks import (
     _create_or_update_broadcast_round,
     _create_team_string,
     active_player_usernames,
-    create_team_channel,
     create_broadcast,
     create_broadcast_round,
+    create_team_channel,
+    fetch_players_to_update,
+    start_games,
     update_broadcast,
     update_broadcast_round,
-    start_games,
     update_player_ratings,
+    update_tv_state,
 )
 from heltour.tournament.tests.testutils import (
     Shush,
+    create_reg,
     createCommonLeagueData,
     get_league,
     get_player,
@@ -47,6 +51,10 @@ class TestHelpers(TestCase):
     def setUpTestData(cls):
         createCommonLeagueData()
         cls.playernames = ["Player" + str(i) for i in range(1, 9)]
+        cls.s = get_season("team")
+        cls.s.registration_open = True
+        cls.s.save()
+        cls.now = timezone.now()
 
     def test_username_helpers(self, *args):
         self.assertEqual(
@@ -61,6 +69,32 @@ class TestHelpers(TestCase):
         self.assertEqual(
             active_player_usernames(), self.playernames
         )  # no duplicate names
+
+    @patch("django.utils.timezone.now")
+    def test_fetch_players(self, now):
+        now.return_value = self.now
+        create_reg(season=self.s, name="lakinwecker")
+        # reg is not included as it was updated recently.
+        self.assertEqual(fetch_players_to_update(), self.playernames)
+        playerlist = []
+        # create a number of older regs
+        now.return_value = self.now - timedelta(hours=48)
+        for counter in range(1, 30):
+            create_reg(season=self.s, name=f"RegPlayer{counter}")
+            playerlist.append(f"RegPlayer{counter}")
+            now.return_value += timedelta(seconds=1)
+        # set time back to now
+        now.return_value = self.now
+        self.assertEqual(fetch_players_to_update(), self.playernames + playerlist[0:3])
+        # push some player to the front by changing the modified date
+        now.return_value = self.now - timedelta(hours=72)
+        ch_playername = "RegPlayer12"
+        Player.objects.get(lichess_username=ch_playername).save()
+        now.return_value = self.now
+        self.assertEqual(
+            fetch_players_to_update(),
+            self.playernames + [ch_playername] + playerlist[0:2],
+        )
 
 
 class TestUpdateRatings(TestCase):
@@ -97,6 +131,63 @@ class TestUpdateRatings(TestCase):
         self.assertEqual(p2.rating_for(league=tl), 1800)
         self.assertEqual(p2.rating_for(league=self.l960), 1000)
         self.assertEqual(get_player("Player3").rating_for(league=tl), 0)
+
+
+class TestUpdateTVState(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        r = get_round(league_type="lone", round_number=1)
+        p1 = get_player("Player1")
+        p2 = get_player("Player2")
+        lpp = LonePlayerPairing.objects.create(
+            round=r,
+            white=p1,
+            black=p2,
+            game_link="fakelink",
+            pairing_order=1,
+        )
+        cls.lpppk = lpp.pk
+
+    @patch(
+        "heltour.tournament.lichessapi.get_game_meta",
+        return_value={
+            "status": "stalemate",
+            "moves": "d4 Nf6",
+        },
+        autospec=True,
+    )
+    @patch(
+        "heltour.tournament.tasks.get_gameid_from_gamelink",
+        return_value="fakeid",
+        autospec=True,
+    )
+    @patch("heltour.tournament.lichessapi.add_watch")
+    def test_stalemate(self, addwatch, gamelink, gamemeta):
+        update_tv_state()
+        gamemeta.assert_called_once_with("fakeid", priority=1, timeout=300)
+        self.assertEqual("1/2-1/2", LonePlayerPairing.objects.get(pk=self.lpppk).result)
+        addwatch.assert_not_called()
+
+    @patch(
+        "heltour.tournament.lichessapi.get_game_meta",
+        return_value={
+            "status": "insufficientMaterialClaim",
+            "moves": "e4 c5 Nf3",
+        },
+        autospec=True,
+    )
+    @patch(
+        "heltour.tournament.tasks.get_gameid_from_gamelink",
+        return_value="fakeid",
+        autospec=True,
+    )
+    @patch("heltour.tournament.lichessapi.add_watch")
+    def test_insufficientmaterialclaim(self, addwatch, gamelink, gamemeta):
+        update_tv_state()
+        gamemeta.assert_called_once_with("fakeid", priority=1, timeout=300)
+        self.assertEqual("1/2-1/2", LonePlayerPairing.objects.get(pk=self.lpppk).result)
+        addwatch.assert_not_called()
 
 
 @patch("heltour.tournament.lichessapi.add_watch", return_value=None)
@@ -585,4 +676,3 @@ class TestBroadcasts(TestCase):
         self.assertEqual(
             Broadcast.objects.get(season=sl, first_board=3).lichess_id, "bcslug"
         )
-
