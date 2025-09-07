@@ -19,12 +19,12 @@ services:
     env_file: "stack.env"
     environment:
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
-      EMAIL_SMTP_USER_FILE: /run/secrets/email_smtp_user
-      EMAIL_SMTP_PASSWORD_FILE: /run/secrets/email_smtp_password
+      EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
       - litour_app_secret_key
-      - email_smtp_user
-      - email_smtp_password
+      - email_host_user
+      - email_host_password
     networks:
       - litour
     deploy:
@@ -38,12 +38,12 @@ services:
       HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
-      EMAIL_SMTP_USER_FILE: /run/secrets/email_smtp_user
-      EMAIL_SMTP_PASSWORD_FILE: /run/secrets/email_smtp_password
+      EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
       - litour_app_secret_key
-      - email_smtp_user
-      - email_smtp_password
+      - email_host_user
+      - email_host_password
     networks:
       - litour
     deploy:
@@ -125,7 +125,7 @@ secrets:
     external: true
   litour_app_secret_key:
     external: true
-  email_smtp_user:
+  email_host_user:
     external: true
-  email_smtp_password:
+  email_host_password:
     external: true
