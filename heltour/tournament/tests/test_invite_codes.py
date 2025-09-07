@@ -127,6 +127,11 @@ class InviteCodeTestCase(TestCase):
         # Create form data with captain code
         form_data = {
             "email": "captain@example.com",
+            "real_name": "Test Captain",
+            "gender": "Male",
+            "date_of_birth": "1990-01-01",
+            "nationality": "USA",
+            "corporate_email": "captain@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -225,6 +230,11 @@ class InviteCodeTestCase(TestCase):
 
         form_data = {
             "email": "member@example.com",
+            "real_name": "Team Member",
+            "gender": "Female",
+            "date_of_birth": "1992-05-15",
+            "nationality": "Canada",
+            "corporate_email": "member@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,

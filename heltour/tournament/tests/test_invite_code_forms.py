@@ -133,6 +133,11 @@ class InviteCodeFormTestCase(TestCase):
         # Test with leading/trailing whitespace
         form_data = {
             "email": "ws@example.com",
+            "real_name": "Whitespace Player",
+            "gender": "Male",
+            "date_of_birth": "1990-01-01",
+            "nationality": "USA",
+            "corporate_email": "ws@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,

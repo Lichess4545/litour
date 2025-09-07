@@ -83,6 +83,13 @@ class RegistrationForm(forms.ModelForm):
         else:
             # Make email field required when email_required=True
             self.fields['email'].required = True
+            
+        # Make the new required fields actually required
+        self.fields['real_name'].required = True
+        self.fields['gender'].required = True
+        self.fields['date_of_birth'].required = True
+        self.fields['nationality'].required = True
+        self.fields['corporate_email'].required = True
 
         # Add invite code field if league is invite-only
         if league.registration_mode == RegistrationMode.INVITE_ONLY:
@@ -265,6 +272,7 @@ class RegistrationForm(forms.ModelForm):
         elif fields_changed:
             # For existing registrations, only change to pending if specific fields changed
             registration.status = "pending"
+            
 
         if commit:
             registration.save()

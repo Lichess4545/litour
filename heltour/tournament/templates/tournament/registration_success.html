@@ -26,7 +26,7 @@
                             <strong>Your registration has been approved!</strong><br>
                             You have been registered as a team captain. Please complete your team setup to continue.
                             <br><br>
-                            <a href="{% leagueurl 'team_create' league.tag season.tag %}" class="btn btn-primary">Create Your Team</a>
+                            <a href="{% leagueurl 'team_create' league.tag registration.season.tag %}" class="btn btn-primary">Create Your Team</a>
                         </p>
                     {% else %}
                         {% if email %}

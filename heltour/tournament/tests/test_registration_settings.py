@@ -172,7 +172,12 @@ class RegistrationSettingsTestCase(TestCase):
             'can_commit': True,  # Hidden field
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Test Player',
+            'gender': 'Other',
+            'date_of_birth': '1995-06-20',
+            'nationality': 'Mexico',
+            'corporate_email': 'test@company.com'
         }
         
         form = RegistrationForm(
@@ -323,7 +328,12 @@ class InviteCodeRegistrationTestCase(TestCase):
             'can_commit': True,
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Invite Player',
+            'gender': 'Male',
+            'date_of_birth': '1989-12-10',
+            'nationality': 'Italy',
+            'corporate_email': 'invite@company.com'
         }
         
         form = RegistrationForm(
@@ -348,7 +358,12 @@ class InviteCodeRegistrationTestCase(TestCase):
             'can_commit': True,
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Invalid Code Player',
+            'gender': 'Female',
+            'date_of_birth': '1991-08-25',
+            'nationality': 'India',
+            'corporate_email': 'invalid@company.com'
         }
         
         form = RegistrationForm(
@@ -450,7 +465,12 @@ class TeamAssignmentTestCase(TestCase):
             'can_commit': True,
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Test Captain',
+            'gender': 'Male',
+            'date_of_birth': '1988-07-20',
+            'nationality': 'USA',
+            'corporate_email': 'captain@company.com'
         }
         
         form = RegistrationForm(
@@ -528,7 +548,12 @@ class TeamAssignmentTestCase(TestCase):
             'can_commit': True,
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Team Member',
+            'gender': 'Female',
+            'date_of_birth': '1990-11-15',
+            'nationality': 'Canada',
+            'corporate_email': 'member@company.com'
         }
         
         form = RegistrationForm(
@@ -609,7 +634,12 @@ class TeamAssignmentTestCase(TestCase):
                 'can_commit': True,
                 'friends': '',
                 'avoid': '',
-                'alternate_preference': 'full_time'
+                'alternate_preference': 'full_time',
+                'real_name': f'Multi Member {i+1}',
+                'gender': 'Male' if i % 2 == 0 else 'Female',
+                'date_of_birth': '1991-04-10',
+                'nationality': 'UK',
+                'corporate_email': f'member{i+1}@company.com'
             }
             
             form = RegistrationForm(
@@ -667,7 +697,12 @@ class TeamAssignmentTestCase(TestCase):
             'can_commit': True,
             'friends': 'friend1, friend2',
             'avoid': 'enemy1',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Regular Player',
+            'gender': 'Other',
+            'date_of_birth': '1993-09-25',
+            'nationality': 'Australia',
+            'corporate_email': 'regular@company.com'
         }
         
         form = RegistrationForm(
@@ -710,7 +745,12 @@ class TeamAssignmentTestCase(TestCase):
             'can_commit': True,
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Dup Captain',
+            'gender': 'Male',
+            'date_of_birth': '1987-02-28',
+            'nationality': 'Germany',
+            'corporate_email': 'dupcaptain@company.com'
         }
         
         form1 = RegistrationForm(

@@ -79,7 +79,12 @@ class RegistrationViewIntegrationTestCase(TestCase):
             'can_commit': 'True',
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'View Captain',
+            'gender': 'Male',
+            'date_of_birth': '1985-03-15',
+            'nationality': 'USA',
+            'corporate_email': 'viewcaptain@company.com'
         })
         
         # Should redirect to success page
@@ -154,7 +159,12 @@ class RegistrationViewIntegrationTestCase(TestCase):
             'can_commit': 'True',
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'View Member',
+            'gender': 'Female',
+            'date_of_birth': '1992-08-20',
+            'nationality': 'Canada',
+            'corporate_email': 'viewmember@company.com'
         })
         
         # Should redirect to success page
@@ -221,7 +231,12 @@ class RegistrationViewIntegrationTestCase(TestCase):
             'friends': 'friend1',
             'avoid': 'enemy1',
             'alternate_preference': 'full_time',
-            'weeks_unavailable': []  # Available for all weeks
+            'weeks_unavailable': [],  # Available for all weeks
+            'real_name': 'Regular Player',
+            'gender': 'Other',
+            'date_of_birth': '1994-12-25',
+            'nationality': 'Germany',
+            'corporate_email': 'regular@company.com'
         })
         
         # Should redirect to success page
@@ -269,7 +284,12 @@ class RegistrationViewIntegrationTestCase(TestCase):
             'can_commit': 'True',
             'friends': '',
             'avoid': '',
-            'alternate_preference': 'full_time'
+            'alternate_preference': 'full_time',
+            'real_name': 'Link Captain',
+            'gender': 'Male',
+            'date_of_birth': '1986-06-10',
+            'nationality': 'France',
+            'corporate_email': 'linkcaptain@company.com'
         })
         
         # Should redirect to success page

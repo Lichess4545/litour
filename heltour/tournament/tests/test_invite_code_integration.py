@@ -85,6 +85,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         form_data = {
             "email": "captain1@example.com",
+            "real_name": "Captain One",
+            "gender": "Male",
+            "date_of_birth": "1990-01-01",
+            "nationality": "USA",
+            "corporate_email": "captain1@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -149,6 +154,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
             form_data = {
                 "email": f"member1_{i+1}@example.com",
+                "real_name": f"Member {i+1}",
+                "gender": "Female" if i % 2 == 0 else "Male",
+                "date_of_birth": "1992-03-15",
+                "nationality": "Canada",
+                "corporate_email": f"member1_{i+1}@company.com",
                 "has_played_20_games": True,
                 "can_commit": True,
                 "agreed_to_rules": True,
@@ -192,6 +202,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         form_data = {
             "email": "captain2@example.com",
+            "real_name": "Captain Two",
+            "gender": "Female",
+            "date_of_birth": "1988-05-20",
+            "nationality": "UK",
+            "corporate_email": "captain2@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -269,6 +284,11 @@ class InviteCodeIntegrationTestCase(TestCase):
         # Register and approve captain
         form_data = {
             "email": "edge@example.com",
+            "real_name": "Edge Captain",
+            "gender": "Other",
+            "date_of_birth": "1995-11-30",
+            "nationality": "Germany",
+            "corporate_email": "edge@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -338,6 +358,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
             form_data = {
                 "email": f"full{i}@example.com",
+                "real_name": f"Full Member {i}",
+                "gender": "Male",
+                "date_of_birth": "1993-07-10",
+                "nationality": "France",
+                "corporate_email": f"full{i}@company.com",
                 "has_played_20_games": True,
                 "can_commit": True,
                 "agreed_to_rules": True,
@@ -391,6 +416,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         form_data = {
             "email": "autocaptain@example.com",
+            "real_name": "Auto Captain",
+            "gender": "Male",
+            "date_of_birth": "1990-01-01",
+            "nationality": "USA",
+            "corporate_email": "autocaptain@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -461,8 +491,20 @@ class InviteCodeIntegrationTestCase(TestCase):
         # Step 4: Register team member - should be auto-approved
         member = Player.objects.create(lichess_username="automember", rating=1700)
 
-        form_data["email"] = "automember@example.com"
-        form_data["invite_code"] = member_code.code
+        form_data = {
+            "email": "automember@example.com",
+            "real_name": "Auto Member",
+            "gender": "Male",
+            "date_of_birth": "1991-06-15",
+            "nationality": "Spain",
+            "corporate_email": "automember@company.com",
+            "has_played_20_games": True,
+            "can_commit": True,
+            "agreed_to_rules": True,
+            "agreed_to_tos": True,
+            "alternate_preference": "full_time",
+            "invite_code": member_code.code,
+        }
 
         form = RegistrationForm(data=form_data, season=self.season, player=member)
         self.assertTrue(form.is_valid())
@@ -515,6 +557,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         form_data = {
             "email": "open@example.com",
+            "real_name": "Open Player",
+            "gender": "Female",
+            "date_of_birth": "1994-02-28",
+            "nationality": "Australia",
+            "corporate_email": "open@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -557,6 +604,11 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         form_data = {
             "email": "workflow_captain@example.com",
+            "real_name": "Workflow Captain",
+            "gender": "Prefer not to say",
+            "date_of_birth": "1987-09-12",
+            "nationality": "Brazil",
+            "corporate_email": "workflow@company.com",
             "has_played_20_games": True,
             "can_commit": True,
             "agreed_to_rules": True,
@@ -621,8 +673,20 @@ class InviteCodeIntegrationTestCase(TestCase):
                 lichess_username=f"team_member_{i+1}", rating=1700 + i * 50
             )
 
-            form_data["email"] = f"member{i+1}@example.com"
-            form_data["invite_code"] = code.code
+            form_data = {
+                "email": f"member{i+1}@example.com",
+                "real_name": f"Team Member {i+1}",
+                "gender": "Female" if i == 0 else "Male",
+                "date_of_birth": "1990-12-25",
+                "nationality": "Japan",
+                "corporate_email": f"member{i+1}@company.com",
+                "has_played_20_games": True,
+                "can_commit": True,
+                "agreed_to_rules": True,
+                "agreed_to_tos": True,
+                "alternate_preference": "full_time",
+                "invite_code": code.code,
+            }
 
             form = RegistrationForm(data=form_data, season=self.season, player=member)
             self.assertTrue(form.is_valid())

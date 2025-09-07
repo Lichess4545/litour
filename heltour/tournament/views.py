@@ -840,6 +840,7 @@ class RegistrationSuccessView(SeasonView):
         if reg_id:
             try:
                 registration = Registration.objects.get(pk=reg_id)
+                context['registration'] = registration
                 if registration.invite_code_used:
                     if registration.invite_code_used.code_type == 'captain':
                         # Captain code - needs to create team
@@ -1921,7 +1922,20 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
         ).first()
         
         if not captain_registration:
-            raise Http404("You must have a captain invite code to create a team")
+            # Check if they have ANY approved registration
+            any_registration = Registration.objects.filter(
+                player=self.player,
+                season=self.season,
+                status='approved'
+            ).first()
+            
+            if any_registration:
+                # They have an approved registration but not with a captain code
+                # This might be a data issue - let's check if they should be allowed
+                # based on other criteria (e.g., they might be a returning captain)
+                raise Http404("You must have used a captain invite code during registration to create a team")
+            else:
+                raise Http404("No approved registration found for this season")
         
         form = TeamCreateForm(season=self.season, player=self.player)
         
@@ -1961,7 +1975,20 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
         ).first()
         
         if not captain_registration:
-            raise Http404("You must have a captain invite code to create a team")
+            # Check if they have ANY approved registration
+            any_registration = Registration.objects.filter(
+                player=self.player,
+                season=self.season,
+                status='approved'
+            ).first()
+            
+            if any_registration:
+                # They have an approved registration but not with a captain code
+                # This might be a data issue - let's check if they should be allowed
+                # based on other criteria (e.g., they might be a returning captain)
+                raise Http404("You must have used a captain invite code during registration to create a team")
+            else:
+                raise Http404("No approved registration found for this season")
         
         form = TeamCreateForm(
             self.request.POST,

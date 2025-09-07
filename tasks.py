@@ -1,11 +1,16 @@
 from invoke import task
 from pathlib import Path
+import os
+import environ
 
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.absolute()
 
-# Note: .env file is automatically loaded by Django settings
-# No need to load it here to avoid duplication
+# Initialize environ
+env = environ.Env()
+
+# Read .env file if it exists
+environ.Env.read_env(os.path.join(PROJECT_ROOT, ".env"))
 
 
 def project_relative(path):
@@ -254,24 +259,43 @@ def reset_db_hard(c):
     print("Dropping and recreating database...")
 
     # Get database name from DATABASE_URL
-    import os
     from urllib.parse import urlparse
 
-    db_url = os.environ.get("DATABASE_URL", "")
+    db_url = env.str("DATABASE_URL", default="")
     if not db_url:
         print("ERROR: DATABASE_URL not set")
         return
 
     parsed = urlparse(db_url)
     db_name = parsed.path[1:]  # Remove leading slash
+    db_host = parsed.hostname or "localhost"
+    db_port = parsed.port or 5432
+    db_user = parsed.username or ""
+    db_pass = parsed.password or ""
 
     if not db_name:
         print("ERROR: Could not parse database name from DATABASE_URL")
         return
 
+    # Build connection parameters
+    conn_params = []
+    if db_host:
+        conn_params.append(f"--host={db_host}")
+    if db_port:
+        conn_params.append(f"--port={db_port}")
+    if db_user:
+        conn_params.append(f"--username={db_user}")
+    
+    conn_string = " ".join(conn_params)
+    
+    # Set PGPASSWORD environment variable for the commands
+    env_vars = ""
+    if db_pass:
+        env_vars = f"PGPASSWORD='{db_pass}' "
+
     # Drop and recreate database
-    c.run(f"dropdb {db_name} --if-exists", warn=True)
-    c.run(f"createdb {db_name}")
+    c.run(f"{env_vars}dropdb {conn_string} {db_name} --if-exists", warn=True)
+    c.run(f"{env_vars}createdb {conn_string} {db_name}")
 
     # Run migrations
     manage_py = project_relative("manage.py")
