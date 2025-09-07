@@ -40,6 +40,8 @@ env = environ.Env(
     SLEEP_UNIT=(float, 1.0),
     SECRET_KEY=(str, "this-is-only-for-testing"),
     SECRET_KEY_FILE=(str, ""),
+    EMAIL_SMTP_USER_FILE=(str, ""),
+    EMAIL_SMTP_PASSWORD_FILE=(str, ""),
 )
 
 # Read .env file if it exists
