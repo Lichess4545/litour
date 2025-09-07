@@ -21,6 +21,13 @@
                             <br><br>
                             <a href="{% leagueurl 'team_profile' league.tag assigned_team.season.tag assigned_team.number %}" class="btn btn-primary">View Your Team</a>
                         </p>
+                    {% elif is_captain and needs_team_setup %}
+                        <p>
+                            <strong>Your registration has been approved!</strong><br>
+                            You have been registered as a team captain. Please complete your team setup to continue.
+                            <br><br>
+                            <a href="{% leagueurl 'team_create' league.tag season.tag %}" class="btn btn-primary">Create Your Team</a>
+                        </p>
                     {% else %}
                         {% if email %}
                             <p>

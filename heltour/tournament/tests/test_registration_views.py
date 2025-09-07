@@ -90,24 +90,23 @@ class RegistrationViewIntegrationTestCase(TestCase):
         response = self.client.get(success_url)
         self.assertEqual(response.status_code, 200)
         
-        # Check that team assignment is shown
-        self.assertIn('assigned_team', response.context)
-        assigned_team = response.context['assigned_team']
-        self.assertIsNotNone(assigned_team)
-        self.assertIn(self.player.lichess_username, assigned_team.name)
+        # In new flow, captain doesn't get team assignment - they need to create it
+        self.assertIn('is_captain', response.context)
+        self.assertIn('needs_team_setup', response.context)
+        self.assertTrue(response.context['is_captain'])
+        self.assertTrue(response.context['needs_team_setup'])
         
         # Check HTML content
         self.assertContains(response, 'Your registration has been approved!')
-        self.assertContains(response, assigned_team.name)
-        self.assertContains(response, 'View Your Team')
+        self.assertContains(response, 'captain')  # Should mention they're a captain
+        self.assertContains(response, 'Create')  # Should have create team option
         
         # Verify database state
         registration = Registration.objects.get(player=self.player, season=self.season)
         self.assertEqual(registration.status, 'approved')
         
-        team_member = TeamMember.objects.get(player=self.player)
-        self.assertTrue(team_member.is_captain)
-        self.assertEqual(team_member.team, assigned_team)
+        # No team member should exist yet
+        self.assertFalse(TeamMember.objects.filter(player=self.player).exists())
         
         sp = SeasonPlayer.objects.get(player=self.player, season=self.season)
         self.assertTrue(sp.is_active)
@@ -250,45 +249,91 @@ class RegistrationViewIntegrationTestCase(TestCase):
     
     def test_team_details_link_works(self):
         """Test that the team details link in success page works correctly."""
-        # Create and assign player to team
-        team = Team.objects.create(
+        # Login first
+        self.client.login(username='testviewplayer', password='testpass123')
+        
+        # Create captain invite code
+        captain_code = InviteCode.objects.create(
+            league=self.league,
             season=self.season,
-            number=1,
-            name='Link Test Team',
-            is_active=True
+            code='LINK-CAPTAIN-001',
+            code_type='captain'
         )
         
+        # Register using the form to properly trigger workflows
+        reg_url = leagueurl('register', self.league.tag, self.season.tag)
+        response = self.client.post(reg_url, {
+            'invite_code': 'LINK-CAPTAIN-001',
+            'agreed_to_tos': 'True',
+            'agreed_to_rules': 'True',
+            'can_commit': 'True',
+            'friends': '',
+            'avoid': '',
+            'alternate_preference': 'full_time'
+        })
+        
+        # Should redirect to success page
+        success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
+        self.assertRedirects(response, success_url)
+        
+        # Get the registration
+        registration = Registration.objects.get(player=self.player, season=self.season)
+        self.assertEqual(registration.status, 'approved')
+        
+        # Create team using TeamCreateForm
+        from heltour.tournament.forms import TeamCreateForm
+        team_form = TeamCreateForm(
+            data={
+                'team_name': 'Link Test Team',
+                'company_name': 'Test Company',
+                'number_of_players': 4,
+                'company_address': '123 Test St',
+                'team_contact_email': 'team@example.com',
+                'team_contact_number': '+1-234-567-8900',
+            },
+            season=self.season,
+            player=self.player
+        )
+        self.assertTrue(team_form.is_valid())
+        team = team_form.save()
+        
+        # Now we need to check the team member's view of the success page
+        # Create a team member and check their success page shows the team link
+        member = Player.objects.create(
+            lichess_username='testmember',
+            rating=1600
+        )
+        
+        # Add member to team
         TeamMember.objects.create(
             team=team,
-            player=self.player,
-            board_number=1,
-            is_captain=True
+            player=member,
+            board_number=2,
+            is_captain=False
         )
         
-        # Create registration
-        registration = Registration.objects.create(
+        # Create member registration
+        member_reg = Registration.objects.create(
             season=self.season,
-            player=self.player,
+            player=member,
             status='approved',
             can_commit=True,
             agreed_to_rules=True,
             agreed_to_tos=True
         )
         
-        # Login and visit success page
-        self.client.login(username='testviewplayer', password='testpass123')
-        
-        # Store registration ID in session (simulate coming from registration form)
+        # Set session for member
         session = self.client.session
-        session['reg_id'] = registration.id
+        session['reg_id'] = member_reg.id
         session.save()
         
-        success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
+        # Get success page as team member
         response = self.client.get(success_url)
         
         # Check team details link
         team_url = leagueurl('team_profile', self.league.tag, self.season.tag, team.number)
         self.assertContains(response, team_url)
+        self.assertContains(response, 'View Your Team')
         
         # Test that the team details page loads
         response = self.client.get(team_url)

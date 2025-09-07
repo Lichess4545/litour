@@ -155,22 +155,16 @@ class InviteCodeTestCase(TestCase):
         self.assertTrue(sp.is_active)
         self.assertEqual(sp.registration, registration)
 
-        # Verify team was created automatically
-        # Filter for the specific team created for this captain
+        # In new flow, team is NOT created automatically
         team = Team.objects.filter(
             season=self.season,
             teammember__player=player,
             teammember__is_captain=True
         ).first()
-        self.assertIsNotNone(team)
-        self.assertEqual(team.name, "Team captainplayer")
-        self.assertEqual(team.number, 1)
-        self.assertTrue(team.is_active)
-
-        # Verify captain was assigned
-        team_member = TeamMember.objects.get(team=team, player=player)
-        self.assertTrue(team_member.is_captain)
-        self.assertEqual(team_member.board_number, 1)
+        self.assertIsNone(team)  # No team should exist yet
+        
+        # Verify no team member exists yet
+        self.assertFalse(TeamMember.objects.filter(player=player).exists())
 
         # Verify code is marked as used
         captain_code.refresh_from_db()

@@ -16,6 +16,7 @@ from django.db.models import JSONField, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django_comments.models import Comment
+from phonenumber_field.modelfields import PhoneNumberField
 
 from django.conf import settings
 from heltour.tournament import signals
@@ -1305,6 +1306,13 @@ class Team(_BaseModel):
     is_active = models.BooleanField(default=True)
 
     seed_rating = models.PositiveIntegerField(blank=True, null=True)
+    
+    # Captain-provided team information
+    company_name = models.CharField(max_length=255, verbose_name='Company name')
+    number_of_players = models.PositiveIntegerField(blank=True, null=True, verbose_name='Number of players')
+    company_address = models.TextField(blank=True, verbose_name='Company office address')
+    team_contact_email = models.EmailField(blank=True, verbose_name='Team contact email')
+    team_contact_number = PhoneNumberField(blank=True, verbose_name='Team contact number')
 
     class Meta:
         unique_together = (('season', 'number'), ('season', 'name'))
@@ -2196,6 +2204,16 @@ class Registration(_BaseModel):
         blank=True,
         related_name="registrations",
     )
+    
+    # Additional registration information
+    fide_id = models.CharField(max_length=20, blank=True, verbose_name='FIDE ID')
+    real_name = models.CharField(max_length=255, blank=True, verbose_name='Name/Surname')
+    gender = models.CharField(max_length=50, blank=True, verbose_name='Gender')
+    date_of_birth = models.DateField(blank=True, null=True, verbose_name='Date of birth')
+    nationality = models.CharField(max_length=100, blank=True)
+    corporate_email = models.EmailField(blank=True, verbose_name='Corporate email address')
+    personal_email = models.EmailField(blank=True, verbose_name='Personal email address')
+    contact_number = PhoneNumberField(blank=True, verbose_name='Contact number')
 
     def __str__(self):
         return "%s" % (self.lichess_username)

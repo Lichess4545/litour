@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "reversion",
     "cacheops",
     "django_comments",
+    "phonenumber_field",
     "heltour.tournament",
     "heltour.comments",
     "heltour.api_worker",

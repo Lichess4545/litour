@@ -423,8 +423,8 @@ class TeamAssignmentTestCase(TestCase):
             registration_open=True
         )
     
-    def test_captain_code_creates_new_team(self):
-        """Test that using a captain code creates a new team with player as captain."""
+    def test_captain_code_auto_approves_registration(self):
+        """Test that using a captain code auto-approves registration but doesn't create team."""
         from heltour.tournament.models import SeasonPlayer, TeamMember
         
         # Create captain player with unique username
@@ -470,17 +470,9 @@ class TeamAssignmentTestCase(TestCase):
         self.assertIsNotNone(sp)
         self.assertTrue(sp.is_active)
         
-        # Check team was created
+        # In new flow, team is NOT created automatically
         team_member = TeamMember.objects.filter(player=captain).first()
-        self.assertIsNotNone(team_member)
-        self.assertTrue(team_member.is_captain)
-        self.assertEqual(team_member.board_number, 1)
-        
-        # Check team details
-        team = team_member.team
-        self.assertEqual(team.season, self.season)
-        self.assertTrue(team.is_active)
-        self.assertIn(captain.lichess_username, team.name)
+        self.assertIsNone(team_member)  # No team member should exist yet
         
         # Check invite code was marked as used
         captain_code.refresh_from_db()

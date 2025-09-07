@@ -30,34 +30,9 @@ from heltour.tournament.models import (
 
 
 def create_team_with_captain(player, season):
-    """Create a new team with the given player as captain."""
-    # Get the next available team number
-    existing_numbers = Team.objects.filter(season=season).values_list('number', flat=True)
-    team_number = 1
-    while team_number in existing_numbers:
-        team_number += 1
-    
-    # Create unique team name
-    base_name = f"Team {player.lichess_username}"
-    team_name = base_name
-    suffix = 1
-    while Team.objects.filter(season=season, name=team_name).exists():
-        team_name = f"{base_name} {suffix}"
-        suffix += 1
-
-    team = Team.objects.create(
-        season=season,
-        number=team_number,
-        name=team_name,
-        is_active=True,
-        slack_channel="",
-    )
-
-    TeamMember.objects.create(
-        team=team, player=player, board_number=1, is_captain=True, is_vice_captain=False
-    )
-
-    return team
+    """Mark player as captain but don't create team yet - team creation happens in team setup view."""
+    # Just return None - the team will be created when captain completes setup
+    return None
 
 
 def add_player_to_team(player, team):

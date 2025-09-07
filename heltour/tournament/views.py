@@ -24,7 +24,6 @@ from django.utils.text import slugify
 from django.views.generic import View
 from icalendar import Calendar, Event
 
-from django.conf import settings
 from heltour.tournament import alternates_manager, lichessapi, oauth, uptime
 from heltour.tournament.forms import (
     ContactForm,
@@ -841,14 +840,29 @@ class RegistrationSuccessView(SeasonView):
         if reg_id:
             try:
                 registration = Registration.objects.get(pk=reg_id)
-                # Check if they were assigned to a team (either via captain or team_member code)
-                if registration.player:
-                    team_member = TeamMember.objects.filter(
-                        player=registration.player,
-                        team__season=registration.season
-                    ).select_related('team').first()
-                    if team_member:
-                        context['assigned_team'] = team_member.team
+                if registration.invite_code_used:
+                    if registration.invite_code_used.code_type == 'captain':
+                        # Captain code - needs to create team
+                        context['is_captain'] = True
+                        context['needs_team_setup'] = True
+                    elif registration.invite_code_used.code_type == 'team_member':
+                        # Team member code - check if they were assigned to a team
+                        if registration.player:
+                            team_member = TeamMember.objects.filter(
+                                player=registration.player,
+                                team__season=registration.season
+                            ).select_related('team').first()
+                            if team_member:
+                                context['assigned_team'] = team_member.team
+                else:
+                    # No invite code used - still check if player is on a team
+                    if registration.player:
+                        team_member = TeamMember.objects.filter(
+                            player=registration.player,
+                            team__season=registration.season
+                        ).select_related('team').first()
+                        if team_member:
+                            context['assigned_team'] = team_member.team
             except Registration.DoesNotExist:
                 pass
         
@@ -1529,6 +1543,35 @@ class UserDashboardView(LeagueView):
 
         my_pairings.sort(key=lambda r_p: sort_order(r_p[0], r_p[1]))
 
+        # Check if user is a captain without a team for any active season
+        captain_without_team_seasons = []
+        team_membership_by_season = {}  # Maps season to team membership info
+        if self.league.is_team_league():
+            for season, sp in active_seasons_with_sp:
+                # Check if user has a captain registration but no team
+                captain_registration = Registration.objects.filter(
+                    player=player,
+                    season=season,
+                    status='approved',
+                    invite_code_used__code_type='captain'
+                ).first()
+                
+                # Check if they're on a team
+                team_member = TeamMember.objects.filter(
+                    player=player,
+                    team__season=season
+                ).select_related('team').first()
+                
+                if team_member:
+                    team_membership_by_season[season] = {
+                        'team': team_member.team,
+                        'is_captain': team_member.is_captain,
+                        'is_vice_captain': team_member.is_vice_captain,
+                        'can_manage': team_member.is_captain or team_member.is_vice_captain
+                    }
+                elif captain_registration:
+                    captain_without_team_seasons.append(season)
+
         context = {
             'player': player,
             'slack_linked': slack_linked,
@@ -1537,6 +1580,8 @@ class UserDashboardView(LeagueView):
             'last_season': last_season,
             'my_pairings': my_pairings,
             'approved': approved,
+            'captain_without_team_seasons': captain_without_team_seasons,
+            'team_membership_by_season': team_membership_by_season,
         }
         return self.render('tournament/user_dashboard.html', context)
 
@@ -1845,6 +1890,101 @@ class TeamProfileView(LeagueView):
             "can_manage_team": can_manage_team,
         }
         return self.render('tournament/team_profile.html', context)
+
+
+class TeamCreateView(LoginRequiredMixin, SeasonView):
+    def view(self):
+        from heltour.tournament.forms import TeamCreateForm
+        from heltour.tournament.models import InviteCode, TeamMember, Registration
+        
+        # Check if user is already on a team
+        existing_member = TeamMember.objects.filter(
+            player=self.player,
+            team__season=self.season
+        ).first()
+        
+        if existing_member:
+            # Already has a team, redirect to team management
+            return redirect(
+                'by_league:by_season:team_manage',
+                league_tag=self.league.tag,
+                season_tag=self.season.tag,
+                team_number=existing_member.team.number
+            )
+        
+        # Check if user has a captain invite code
+        captain_registration = Registration.objects.filter(
+            player=self.player,
+            season=self.season,
+            status='approved',
+            invite_code_used__code_type='captain'
+        ).first()
+        
+        if not captain_registration:
+            raise Http404("You must have a captain invite code to create a team")
+        
+        form = TeamCreateForm(season=self.season, player=self.player)
+        
+        context = {
+            'form': form,
+            'season': self.season,
+            'league': self.league,
+        }
+        
+        return self.render('tournament/team_create.html', context)
+    
+    def view_post(self):
+        from heltour.tournament.forms import TeamCreateForm
+        from heltour.tournament.models import TeamMember, Registration
+        
+        # Check if user already has a team
+        existing_member = TeamMember.objects.filter(
+            player=self.player,
+            team__season=self.season
+        ).first()
+        
+        if existing_member:
+            # Already has a team, redirect to team management
+            return redirect(
+                'by_league:by_season:team_manage',
+                league_tag=self.league.tag,
+                season_tag=self.season.tag,
+                team_number=existing_member.team.number
+            )
+        
+        # Check if user has a captain invite code
+        captain_registration = Registration.objects.filter(
+            player=self.player,
+            season=self.season,
+            status='approved',
+            invite_code_used__code_type='captain'
+        ).first()
+        
+        if not captain_registration:
+            raise Http404("You must have a captain invite code to create a team")
+        
+        form = TeamCreateForm(
+            self.request.POST,
+            season=self.season,
+            player=self.player
+        )
+        
+        if form.is_valid():
+            team = form.save()
+            return redirect(
+                'by_league:by_season:team_manage',
+                league_tag=self.league.tag,
+                season_tag=self.season.tag,
+                team_number=team.number
+            )
+        
+        context = {
+            'form': form,
+            'season': self.season,
+            'league': self.league,
+        }
+        
+        return self.render('tournament/team_create.html', context)
 
 
 class TeamManageView(LoginRequiredMixin, SeasonView):

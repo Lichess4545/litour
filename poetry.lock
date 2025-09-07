@@ -759,6 +759,26 @@ django = ">=3.2"
 tests = ["coverage"]
 
 [[package]]
+name = "django-phonenumber-field"
+version = "8.1.0"
+description = "An international phone number field for django models."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "django_phonenumber_field-8.1.0-py3-none-any.whl", hash = "sha256:9ba66873bf47401b13fc57797fbf85e785864a6bfdc8b9daa3a9012886567045"},
+    {file = "django_phonenumber_field-8.1.0.tar.gz", hash = "sha256:f19450625574ad3a2de047c409527d0e57699496849e71e53b53e8679ff67b27"},
+]
+
+[package.dependencies]
+Django = ">=4.2"
+phonenumbers = {version = ">=7.0.2", optional = true, markers = "extra == \"phonenumbers\""}
+
+[package.extras]
+phonenumbers = ["phonenumbers (>=7.0.2)"]
+phonenumberslite = ["phonenumberslite (>=7.0.2)"]
+
+[[package]]
 name = "django-redis"
 version = "5.4.0"
 description = "Full featured redis cache backend for Django."
@@ -1140,6 +1160,18 @@ groups = ["main"]
 files = [
     {file = "parsedatetime-2.6-py3-none-any.whl", hash = "sha256:cb96edd7016872f58479e35879294258c71437195760746faffedb692aef000b"},
     {file = "parsedatetime-2.6.tar.gz", hash = "sha256:4cb368fbb18a0b7231f4d76119165451c8d2e35951455dfee97c62a87b04d455"},
+]
+
+[[package]]
+name = "phonenumbers"
+version = "9.0.13"
+description = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "phonenumbers-9.0.13-py2.py3-none-any.whl", hash = "sha256:b97661e177773e7509c6d503e0f537cd0af22aa3746231654590876eb9430915"},
+    {file = "phonenumbers-9.0.13.tar.gz", hash = "sha256:eca06e01382412c45316868f86a44bb217c02f9ee7196589041556a2f54a7639"},
 ]
 
 [[package]]
@@ -1987,4 +2019,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "66f39967846f94b36f76522793cd8b7ecd2f679114a1cadf7f59305c7fdf201f"
+content-hash = "4d4353e9e630067b27f5e07212512e26ad385adabcd34db54e9f6ef5e129c745"

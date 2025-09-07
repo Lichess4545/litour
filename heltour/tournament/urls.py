@@ -77,6 +77,11 @@ season_urlpatterns = [
         name="player_profile",
     ),
     path(
+        "team/create/",
+        views.TeamCreateView.as_view(),
+        name="team_create"
+    ),
+    path(
         "team/<int:team_number>/", views.TeamProfileView.as_view(), name="team_profile"
     ),
     path(

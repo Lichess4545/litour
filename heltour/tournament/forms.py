@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from phonenumber_field.formfields import PhoneNumberField
 
 from heltour import gdpr
 from heltour.tournament.models import (
@@ -21,6 +22,8 @@ from heltour.tournament.models import (
     Season,
     SeasonPlayer,
     Section,
+    Team,
+    TeamMember,
     normalize_gamelink,
     username_validator,
 )
@@ -37,13 +40,30 @@ class RegistrationForm(forms.ModelForm):
     class Meta:
         model = Registration
         fields = (
-            'email',
+            'email', 'real_name', 'gender', 'date_of_birth', 'nationality',
+            'corporate_email', 'personal_email', 'contact_number', 'fide_id',
             'has_played_20_games',
             'can_commit', 'friends', 'avoid', 'agreed_to_rules', 'agreed_to_tos',
             'alternate_preference', 'section_preference', 'weeks_unavailable',
         )
         labels = {
             'email': _('Your Email'),
+            'real_name': _('Name/Surname'),
+            'gender': _('Gender'),
+            'date_of_birth': _('Date of Birth'),
+            'nationality': _('Nationality'),
+            'corporate_email': _('Corporate Email Address'),
+            'personal_email': _('Personal Email Address (optional)'),
+            'contact_number': _('Contact Number (optional)'),
+            'fide_id': _('FIDE ID (optional)'),
+        }
+        widgets = {
+            'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
+        }
+        help_texts = {
+            'real_name': _('Please enter your real name (first and last name)'),
+            'corporate_email': _('Please use your company email address'),
+            'fide_id': _('Your FIDE player ID if you have one'),
         }
 
     def __init__(self, *args, rules_url='', **kwargs):
@@ -252,32 +272,29 @@ class RegistrationForm(forms.ModelForm):
             if hasattr(self, "invite_code_obj") and self.invite_code_obj:
                 self.invite_code_obj.mark_used(self.player)
                 
-                # Handle team assignment when auto-approving
+                # Handle auto-approval for invite codes
                 if should_auto_approve and self.invite_code_obj:
                     from heltour.tournament.models import SeasonPlayer, TeamMember
-                    from heltour.tournament.workflows import create_team_with_captain, add_player_to_team
+                    from heltour.tournament.workflows import add_player_to_team
                     
-                    # Create or update SeasonPlayer
+                    # Create or update SeasonPlayer for both captain and team member codes
                     sp, created = SeasonPlayer.objects.update_or_create(
                         player=self.player,
                         season=self.season,
                         defaults={'registration': registration, 'is_active': True}
                     )
                     
-                    # Only handle team assignment if player is not already on a team
-                    existing_member = TeamMember.objects.filter(
-                        player=self.player,
-                        team__season=self.season
-                    ).first()
-                    
-                    if not existing_member:
-                        # Handle team creation/assignment
-                        if self.invite_code_obj.code_type == "captain":
-                            # Create new team with this player as captain
-                            team = create_team_with_captain(self.player, self.season)
-                        elif self.invite_code_obj.code_type == "team_member" and self.invite_code_obj.team:
+                    # Only handle team assignment for team_member codes
+                    if self.invite_code_obj.code_type == "team_member" and self.invite_code_obj.team:
+                        existing_member = TeamMember.objects.filter(
+                            player=self.player,
+                            team__season=self.season
+                        ).first()
+                        
+                        if not existing_member:
                             # Add player to existing team
                             add_player_to_team(self.player, self.invite_code_obj.team)
+                    # For captain codes, we auto-approve but don't create the team yet - they need to complete setup first
 
         registration.player.agreed_to_tos()
         return registration
@@ -693,8 +710,93 @@ class GenerateTeamInviteCodeForm(forms.Form):
         return codes
 
 
+class TeamCreateForm(forms.Form):
+    """Form for creating a new team with all required information"""
+    team_name = forms.CharField(
+        max_length=100,
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Team Name',
+        help_text='Enter a name for your team (max 100 characters)'
+    )
+    company_name = forms.CharField(
+        max_length=255,
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Company Name'
+    )
+    number_of_players = forms.IntegerField(
+        min_value=1,
+        required=True,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+        label='Number of Players',
+        help_text='Total number of players expected for your team'
+    )
+    company_address = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        label='Company Office Address'
+    )
+    team_contact_email = forms.EmailField(
+        required=True,
+        widget=forms.EmailInput(attrs={'class': 'form-control'}),
+        label='Team Contact Email'
+    )
+    team_contact_number = PhoneNumberField(
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Team Contact Number'
+    )
+    
+    def __init__(self, *args, **kwargs):
+        self.season = kwargs.pop('season')
+        self.player = kwargs.pop('player')
+        super().__init__(*args, **kwargs)
+    
+    def clean_team_name(self):
+        name = self.cleaned_data['team_name'].strip()
+        if not name:
+            raise forms.ValidationError('Team name cannot be empty')
+        # Check if team name already exists in this season
+        if Team.objects.filter(season=self.season, name=name).exists():
+            raise forms.ValidationError('A team with this name already exists')
+        return name
+    
+    def save(self):
+        # Get the next available team number
+        existing_numbers = Team.objects.filter(season=self.season).values_list('number', flat=True)
+        team_number = 1
+        while team_number in existing_numbers:
+            team_number += 1
+        
+        # Create the team
+        team = Team.objects.create(
+            season=self.season,
+            number=team_number,
+            name=self.cleaned_data['team_name'],
+            company_name=self.cleaned_data['company_name'],
+            number_of_players=self.cleaned_data['number_of_players'],
+            company_address=self.cleaned_data['company_address'],
+            team_contact_email=self.cleaned_data['team_contact_email'],
+            team_contact_number=self.cleaned_data['team_contact_number'],
+            is_active=True,
+            slack_channel="",
+        )
+        
+        # Create captain membership
+        TeamMember.objects.create(
+            team=team,
+            player=self.player,
+            board_number=1,
+            is_captain=True,
+            is_vice_captain=False
+        )
+        
+        return team
+
+
 class TeamNameForm(forms.Form):
-    """Form for updating team name"""
+    """Form for updating team information"""
     team_name = forms.CharField(
         max_length=100,
         required=True,
@@ -702,20 +804,61 @@ class TeamNameForm(forms.Form):
         label='Team Name',
         help_text='Enter a new name for your team (max 100 characters)'
     )
+    company_name = forms.CharField(
+        max_length=255,
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Company Name'
+    )
+    number_of_players = forms.IntegerField(
+        min_value=1,
+        required=True,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+        label='Number of Players',
+        help_text='Total number of players expected for your team'
+    )
+    company_address = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        label='Company Office Address'
+    )
+    team_contact_email = forms.EmailField(
+        required=True,
+        widget=forms.EmailInput(attrs={'class': 'form-control'}),
+        label='Team Contact Email'
+    )
+    team_contact_number = PhoneNumberField(
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Team Contact Number'
+    )
     
     def __init__(self, *args, **kwargs):
         self.team = kwargs.pop('team')
         super().__init__(*args, **kwargs)
         self.fields['team_name'].initial = self.team.name
+        self.fields['company_name'].initial = self.team.company_name
+        self.fields['number_of_players'].initial = self.team.number_of_players
+        self.fields['company_address'].initial = self.team.company_address
+        self.fields['team_contact_email'].initial = self.team.team_contact_email
+        self.fields['team_contact_number'].initial = self.team.team_contact_number
     
     def clean_team_name(self):
         name = self.cleaned_data['team_name'].strip()
         if not name:
             raise forms.ValidationError('Team name cannot be empty')
+        # Check if another team has this name
+        if Team.objects.filter(season=self.team.season, name=name).exclude(pk=self.team.pk).exists():
+            raise forms.ValidationError('A team with this name already exists')
         return name
     
     def save(self):
         self.team.name = self.cleaned_data['team_name']
+        self.team.company_name = self.cleaned_data['company_name']
+        self.team.number_of_players = self.cleaned_data['number_of_players']
+        self.team.company_address = self.cleaned_data['company_address']
+        self.team.team_contact_email = self.cleaned_data['team_contact_email']
+        self.team.team_contact_number = self.cleaned_data['team_contact_number']
         self.team.save()
         return self.team
 
