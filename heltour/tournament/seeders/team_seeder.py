@@ -63,12 +63,23 @@ class TeamSeeder(BaseSeeder):
         "Wolves",
     ]
 
-    def seed(self, season: Season, **kwargs) -> List[Team]:
-        """Create teams for a team league season."""
+    def seed(self, season: Season, create_partial_teams: bool = True, **kwargs) -> List[Team]:
+        """Create teams for a team league season.
+        
+        Args:
+            season: The season to create teams for
+            create_partial_teams: If True, some teams will have open board positions
+        """
         teams = []
 
         if not season.league.is_team_league():
             return teams
+
+        # Check if teams already exist for this season
+        existing_teams = Team.objects.filter(season=season)
+        if existing_teams.exists():
+            # Return existing teams instead of creating new ones
+            return list(existing_teams)
 
         # Get approved season players
         season_players = list(
@@ -120,8 +131,20 @@ class TeamSeeder(BaseSeeder):
             team = Team.objects.create(**team_data)
             teams.append(self._track_object(team))
 
-            # Assign players to team - exactly one per board
-            players_needed = boards
+            # Determine how many players to assign to this team
+            if create_partial_teams and i < 2 and num_teams > 4:
+                # Make first 2 teams partial (missing some boards) for testing
+                # But ensure we have at least captain and vice-captain
+                players_needed = random.randint(2, boards - 1)
+            else:
+                # Full team
+                players_needed = boards
+                
+            # Get players for this team
+            if len(season_players) < players_needed:
+                # Not enough players left, use what we have
+                players_needed = len(season_players)
+                
             team_players = season_players[:players_needed]
             season_players = season_players[players_needed:]
 
@@ -130,14 +153,14 @@ class TeamSeeder(BaseSeeder):
                 key=lambda sp: sp.player.rating_for(season.league), reverse=True
             )
 
-            # Create team members for all boards
-            for board_num, sp in enumerate(team_players[:boards], 1):
+            # Create team members
+            for board_num, sp in enumerate(team_players, 1):
                 TeamMember.objects.create(
                     team=team,
                     player=sp.player,
                     board_number=board_num,
                     is_captain=board_num == 1,  # First board is captain
-                    is_vice_captain=board_num == 2,  # Second board is vice-captain
+                    is_vice_captain=board_num == 2 and len(team_players) > 1,  # Second board is vice-captain if exists
                 )
 
             # Note: In this system, alternates are handled separately via the Alternate model

@@ -14,6 +14,7 @@ from heltour.tournament.seeders import (
     TeamSeeder,
     RoundSeeder,
     PairingSeeder,
+    InviteCodeSeeder,
 )
 
 
@@ -58,7 +59,7 @@ class Command(BaseCommand):
                 80  # Enough for many teams (8 rounds * 2 * 4 boards = 64 minimum)
             )
         elif options["full"]:
-            num_leagues = 4
+            num_leagues = 5  # Include the invite-only league
             num_players = 100
         else:
             num_leagues = options["leagues"]
@@ -76,6 +77,7 @@ class Command(BaseCommand):
                 team_seeder = TeamSeeder(fake)
                 round_seeder = RoundSeeder(fake)
                 pairing_seeder = PairingSeeder(fake)
+                invite_code_seeder = InviteCodeSeeder(fake)
 
                 # 1. Create leagues
                 self.stdout.write("Creating leagues...")
@@ -104,6 +106,16 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"✓ Created {len(all_seasons)} seasons")
                 )
 
+                # 3a. Create invite codes for seasons
+                self.stdout.write("Creating invite codes...")
+                invite_codes = invite_code_seeder.seed(
+                    captain_codes=10 if not options["minimal"] else 5,
+                    seasons=all_seasons
+                )
+                self.stdout.write(
+                    self.style.SUCCESS(f"✓ Created {len(invite_codes)} invite codes")
+                )
+
                 # 4. Process each season
                 for season in all_seasons:
                     print(season)
@@ -129,6 +141,16 @@ class Command(BaseCommand):
                     ):
                         teams = team_seeder.seed(season)
                         self.stdout.write(f"  ✓ Created {len(teams)} teams")
+                        
+                        # Create team member codes for teams with captains
+                        # Only create if teams were newly created (not existing)
+                        if teams:
+                            team_codes = invite_code_seeder.seed_team_member_codes(
+                                teams=teams,
+                                codes_per_team=3 if not options["minimal"] else 2
+                            )
+                            if team_codes:
+                                self.stdout.write(f"  ✓ Created {len(team_codes)} team member codes")
 
                     # Create rounds
                     rounds = round_seeder.seed(season)
@@ -195,6 +217,7 @@ class Command(BaseCommand):
             Team,
             Registration,
             PlayerPairing,
+            InviteCode,
         )
 
         self.stdout.write("\nDatabase Summary:")
@@ -203,6 +226,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  - Players: {Player.objects.count()}")
         self.stdout.write(f"  - Teams: {Team.objects.count()}")
         self.stdout.write(f"  - Registrations: {Registration.objects.count()}")
+        self.stdout.write(f"  - Invite Codes: {InviteCode.objects.count()}")
         self.stdout.write(
             f'  - Games: {PlayerPairing.objects.exclude(game_link="").count()}'
         )

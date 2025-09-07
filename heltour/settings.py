@@ -83,13 +83,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",  # Required by django_comments
-    "static_precompiler",  # For SCSS compilation
+    "sass_processor",  # For SCSS compilation
     "bootstrap3",
     "ckeditor",
     "impersonate",
     "reversion",
     "cacheops",
     "django_comments",
+    "phonenumber_field",
     "heltour.tournament",
     "heltour.comments",
     "heltour.api_worker",
@@ -182,25 +183,27 @@ STATIC_ROOT = env("STATIC_ROOT", default=os.path.join(BASE_DIR, "static"))
 MEDIA_URL = "/media/"
 MEDIA_ROOT = env("MEDIA_ROOT", default=os.path.join(BASE_DIR, "media"))
 
-# Static precompiler settings for SCSS
-STATICFILES_FINDERS = (
+# django-sass-processor settings
+STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
-    "static_precompiler.finders.StaticPrecompilerFinder",
-)
+    "sass_processor.finders.CssFinder",
+]
 
-# SCSS compiler configuration
-STATIC_PRECOMPILER_OUTPUT_DIR = "../heltour/tournament/static/"
-STATIC_PRECOMPILER_COMPILERS = (
-    (
-        "static_precompiler.compilers.SCSS",
-        {
-            "executable": "sass",
-            "sourcemap_enabled": True,
-            "output_style": "compact",
-        },
-    ),
-)
+# SCSS processor configuration
+SASS_PROCESSOR_ROOT = STATIC_ROOT
+SASS_PROCESSOR_INCLUDE_DIRS = [
+    os.path.join(BASE_DIR, "heltour/tournament/static/tournament/css"),
+]
+SASS_PROCESSOR_ENABLE_SOURCEMAPS = DEBUG
+SASS_PROCESSOR_AUTO_INCLUDE = False
+SASS_PROCESSOR_PRECISION = 8
+
+# Optional: Compress CSS in production
+if not DEBUG:
+    SASS_OUTPUT_STYLE = "compressed"
+else:
+    SASS_OUTPUT_STYLE = "nested"
 
 # Email configuration
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

@@ -251,6 +251,10 @@ class RegisterTestCase(TestCase):
             round_duration=timedelta(hours=1),
         )
         season = get_season("team")
+        # Enable email requirement for this test
+        league = get_league("team")
+        league.email_required = True
+        league.save()
         Round.objects.filter(season=season).update(
             start_date=timezone.now() + timedelta(hours=1)
         )
@@ -286,6 +290,11 @@ class RegisterTestCase(TestCase):
                     "friends": "",
                     "avoid": "",
                     "alternate_preference": "full_time",
+                    "real_name": "Test Player One",
+                    "gender": "Male",
+                    "date_of_birth": "1990-01-01",
+                    "nationality": "USA",
+                    "corporate_email": "player1@company.com",
                 },
             )
         self.assertEqual(response.status_code, 302)

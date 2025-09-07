@@ -10,6 +10,7 @@ from .registration_seeder import RegistrationSeeder
 from .team_seeder import TeamSeeder
 from .round_seeder import RoundSeeder
 from .pairing_seeder import PairingSeeder
+from .invite_code_seeder import InviteCodeSeeder
 
 __all__ = [
     "BaseSeeder",
@@ -20,5 +21,6 @@ __all__ = [
     "TeamSeeder",
     "RoundSeeder",
     "PairingSeeder",
+    "InviteCodeSeeder",
 ]
 

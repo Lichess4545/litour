@@ -16,6 +16,7 @@ from django.db.models import JSONField, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django_comments.models import Comment
+from phonenumber_field.modelfields import PhoneNumberField
 
 from django.conf import settings
 from heltour.tournament import signals
@@ -122,6 +123,12 @@ PAIRING_TYPE_OPTIONS = (
 
 
 # -------------------------------------------------------------------------------
+class RegistrationMode(models.TextChoices):
+    OPEN = "open", "Open/Established Rating"
+    INVITE_ONLY = "invite_only", "Invite By Code"
+
+
+# -------------------------------------------------------------------------------
 class League(_BaseModel):
     name = models.CharField(max_length=255, unique=True)
     tag = models.SlugField(unique=True, help_text='The league will be accessible at /{league_tag}/')
@@ -135,6 +142,24 @@ class League(_BaseModel):
     is_active = models.BooleanField(default=True)
     is_default = models.BooleanField(default=False)
     enable_notifications = models.BooleanField(default=False)
+    registration_mode = models.CharField(
+        max_length=20,
+        choices=RegistrationMode.choices,
+        default=RegistrationMode.OPEN,
+        help_text="Controls how players can register for this league",
+    )
+    email_required = models.BooleanField(
+        default=False,
+        help_text="If true, email is required during registration. Default is false (email optional)."
+    )
+    show_provisional_warning = models.BooleanField(
+        default=True,
+        help_text="If true, show warning about provisional ratings during registration. Default is true."
+    )
+    ask_availability = models.BooleanField(
+        default=True,
+        help_text="If true, ask players about their availability during registration. Default is true."
+    )
 
     class Meta:
         permissions = (
@@ -172,6 +197,9 @@ class League(_BaseModel):
     
     def is_player_scheduled_league(self) -> bool:
         return self.get_leaguesetting().schedule_type == 2
+
+    def is_invite_only(self):
+        return self.registration_mode == RegistrationMode.INVITE_ONLY
 
     def get_active_players(self):
         def loneteam_query() -> str:
@@ -268,6 +296,11 @@ class LeagueSetting(_BaseModel):
         help_text="How game scheduling is handled for this league",
     )
 
+    board_update_deadline_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text="Minutes before round start when team board assignments are locked",
+    )
+
     def __str__(self):
         return '%s Settings' % self.league
 
@@ -296,6 +329,9 @@ class Season(_BaseModel):
     is_completed = models.BooleanField(default=False)
     registration_open = models.BooleanField(default=False)
     nominations_open = models.BooleanField(default=False)
+    codes_per_captain_limit = models.PositiveIntegerField(
+        default=20, help_text="Maximum number of invite codes each captain can create"
+    )
 
     create_broadcast = models.BooleanField(
         default=False,
@@ -804,6 +840,27 @@ class Round(_BaseModel):
     def is_player_scheduled_league(self) -> bool:
         return self.get_league().is_player_scheduled_league()
 
+    def get_board_update_deadline(self):
+        """Get the deadline for board updates for this round"""
+        if not self.start_date:
+            return None
+
+        try:
+            league_setting = self.season.league.leaguesetting
+            deadline_minutes = league_setting.board_update_deadline_minutes
+        except LeagueSetting.DoesNotExist:
+            deadline_minutes = 15  # Default fallback
+
+        return self.start_date - timedelta(minutes=deadline_minutes)
+
+    def is_board_update_allowed(self):
+        """Check if board updates are allowed for this round"""
+        deadline = self.get_board_update_deadline()
+        if not deadline:
+            return True  # No start date means no restrictions
+
+        return timezone.now() < deadline
+
     def __str__(self):
         return "%s - Round %d" % (self.season, self.number)
 
@@ -1249,6 +1306,13 @@ class Team(_BaseModel):
     is_active = models.BooleanField(default=True)
 
     seed_rating = models.PositiveIntegerField(blank=True, null=True)
+    
+    # Captain-provided team information
+    company_name = models.CharField(max_length=255, verbose_name='Company name')
+    number_of_players = models.PositiveIntegerField(blank=True, null=True, verbose_name='Number of players')
+    company_address = models.TextField(blank=True, verbose_name='Company office address')
+    team_contact_email = models.EmailField(blank=True, verbose_name='Team contact email')
+    team_contact_number = PhoneNumberField(blank=True, verbose_name='Team contact number')
 
     class Meta:
         unique_together = (('season', 'number'), ('season', 'name'))
@@ -1299,6 +1363,24 @@ class Team(_BaseModel):
     @property
     def pairings(self):
         return self.pairings_as_white.all() | self.pairings_as_black.all()
+
+    def get_upcoming_round(self):
+        """Get the next upcoming round for this team (including currently active rounds)"""
+        return (
+            Round.objects.filter(
+                season=self.season, is_completed=False, start_date__isnull=False
+            )
+            .order_by("start_date")
+            .first()
+        )
+
+    @property
+    def open_board_numbers(self):
+        """Get list of board numbers without assigned players"""
+        assigned_boards = set(
+            self.teammember_set.values_list("board_number", flat=True)
+        )
+        return [n for n in range(1, self.season.boards + 1) if n not in assigned_boards]
 
     def __str__(self):
         return "%s - %s" % (self.season, self.name)
@@ -1915,14 +1997,196 @@ ALTERNATE_PREFERENCE_OPTIONS = (
 
 
 # -------------------------------------------------------------------------------
+class InviteCode(_BaseModel):
+    """Invite codes for controlled league registration"""
+
+    league = models.ForeignKey(
+        "League", on_delete=models.CASCADE, related_name="invite_codes"
+    )
+    season = models.ForeignKey(
+        "Season", on_delete=models.CASCADE, related_name="invite_codes"
+    )
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    code_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("captain", "Captain - Creates new team"),
+            ("team_member", "Team Member - Joins existing team"),
+        ],
+        default="captain",
+        help_text="Type of registration this code enables",
+    )
+
+    # For team member codes
+    team = models.ForeignKey(
+        "Team",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="invite_codes",
+        help_text="Team that members will join (for team_member codes)",
+    )
+
+    # Usage tracking
+    used_by = models.ForeignKey(
+        "Player",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="used_invite_codes",
+    )
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    # Creation tracking
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_invite_codes",
+    )
+    created_by_captain = models.ForeignKey(
+        "Player",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="captain_created_invite_codes",
+        help_text="Captain who created this invite code",
+    )
+    notes = models.TextField(
+        blank=True, help_text="Internal notes about this invite code"
+    )
+
+    class Meta:
+        unique_together = [["league", "season", "code"]]
+        indexes = [
+            models.Index(fields=["league", "season", "used_by"]),
+            models.Index(fields=["created_by_captain"]),
+        ]
+
+    def __str__(self):
+        status = "Used" if self.used_by else "Available"
+        type_label = (
+            "Captain"
+            if self.code_type == "captain"
+            else f"Team Member ({self.team.name if self.team else 'No team'})"
+        )
+        return f"{self.code} - {type_label} - {status}"
+
+    def is_available(self):
+        """Check if this code can still be used"""
+        return self.used_by is None
+
+    def mark_used(self, player):
+        """Mark this code as used by a player"""
+        if not self.is_available():
+            raise ValidationError("This invite code has already been used")
+        self.used_by = player
+        self.used_at = timezone.now()
+        self.save()
+
+    def save(self, *args, **kwargs):
+        # Ensure code is uppercase for consistency
+        self.code = self.code.upper()
+
+        # Validate team member codes have a team
+        if self.code_type == "team_member" and not self.team:
+            raise ValidationError("Team member codes must be associated with a team")
+
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_by_code(cls, code, league, season):
+        """Get an invite code by its code value (case-insensitive)"""
+        return cls.objects.filter(
+            league=league, season=season, code__iexact=code.strip()
+        ).first()
+
+    @classmethod
+    def generate_code(cls):
+        """Generate a cryptographically secure invite code"""
+        # Dictionary words for readability
+        words = [
+            "CHESS",
+            "KNIGHT",
+            "BISHOP",
+            "QUEEN",
+            "KING",
+            "ROOK",
+            "PAWN",
+            "CHECK",
+            "MATE",
+            "CASTLE",
+            "FORK",
+            "PIN",
+            "SKEWER",
+            "GAMBIT",
+            "ENDGAME",
+            "OPENING",
+            "TACTICS",
+            "BLITZ",
+            "RAPID",
+            "BULLET",
+        ]
+
+        # Generate: WORD1-WORD2-XXXXXXXX
+        import random
+
+        word1 = random.choice(words)
+        word2 = random.choice([w for w in words if w != word1])
+        suffix = get_random_string(
+            8, allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        )
+
+        return f"{word1}-{word2}-{suffix}"
+
+    @classmethod
+    def create_batch(
+        cls, league, season, count, created_by=None, code_type="captain", team=None
+    ):
+        """Create a batch of invite codes"""
+        if count < 1 or count > 10000:
+            raise ValidationError("Count must be between 1 and 10,000")
+
+        codes_to_create = []
+        attempts = 0
+        max_attempts = count * 10  # Allow for some collisions
+
+        while len(codes_to_create) < count and attempts < max_attempts:
+            attempts += 1
+            code = cls.generate_code()
+
+            # Check if code already exists
+            if not cls.objects.filter(code=code).exists():
+                codes_to_create.append(
+                    cls(
+                        league=league,
+                        season=season,
+                        code=code,
+                        code_type=code_type,
+                        team=team,
+                        created_by=created_by,
+                        notes=f"Batch created on {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    )
+                )
+
+        if len(codes_to_create) < count:
+            raise ValidationError(
+                f"Could only generate {len(codes_to_create)} unique codes"
+            )
+
+        return cls.objects.bulk_create(codes_to_create)
+
+
+# -------------------------------------------------------------------------------
 class Registration(_BaseModel):
     season = models.ForeignKey(Season, on_delete=models.CASCADE)
-    status = models.CharField(max_length=255, choices=REGISTRATION_STATUS_OPTIONS)
+    status = models.CharField(max_length=255, choices=REGISTRATION_STATUS_OPTIONS, default='pending')
     status_changed_by = models.CharField(blank=True, max_length=255)
     status_changed_date = models.DateTimeField(blank=True, null=True)
     player = models.ForeignKey(to=Player, on_delete=models.CASCADE, null=True)
-    email = models.EmailField(max_length=255)
-    has_played_20_games = models.BooleanField()
+    email = models.EmailField(max_length=255, blank=True)
+    has_played_20_games = models.BooleanField(default=True)
     can_commit = models.BooleanField()
     friends = models.CharField(blank=True, max_length=1023)
     avoid = models.CharField(blank=True, max_length=1023)
@@ -1933,7 +2197,23 @@ class Registration(_BaseModel):
     section_preference = models.ForeignKey(Section, on_delete=models.SET_NULL, blank=True,
                                            null=True)
     weeks_unavailable = models.CharField(blank=True, max_length=255)
-
+    invite_code_used = models.ForeignKey(
+        InviteCode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="registrations",
+    )
+    
+    # Additional registration information
+    fide_id = models.CharField(max_length=20, blank=True, verbose_name='FIDE ID')
+    real_name = models.CharField(max_length=255, blank=True, verbose_name='Name/Surname')
+    gender = models.CharField(max_length=50, blank=True, verbose_name='Gender')
+    date_of_birth = models.DateField(blank=True, null=True, verbose_name='Date of birth')
+    nationality = models.CharField(max_length=100, blank=True)
+    corporate_email = models.EmailField(blank=True, verbose_name='Corporate email address')
+    personal_email = models.EmailField(blank=True, verbose_name='Personal email address')
+    contact_number = PhoneNumberField(blank=True, verbose_name='Contact number')
 
     def __str__(self):
         return "%s" % (self.lichess_username)
