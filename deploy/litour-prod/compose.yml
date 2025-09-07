@@ -107,9 +107,7 @@ services:
 
 volumes:
   postgres_data:
-    name: litour_postgres_data
   redis_data:
-    name: litour_redis_data
   caddy_data:
   caddy_config:
 
