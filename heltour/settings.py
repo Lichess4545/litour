@@ -67,15 +67,7 @@ STAGING = env("HELTOUR_ENV") == "stage"
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-print("-" * 80)
-print("-" * 80)
-print(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
-print("-" * 80)
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
-print("-" * 80)
-print("-" * 80)
-print(f"CSRF_TRUSTED_ORIGINS: {CSRF_TRUSTED_ORIGINS}")
-print("-" * 80)
 LINK_PROTOCOL = env("LINK_PROTOCOL")
 
 # Admin configuration
