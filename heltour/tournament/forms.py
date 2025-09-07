@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 from django import forms
@@ -6,7 +6,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from phonenumber_field.formfields import PhoneNumberField
+from phonenumber_field.formfields import PhoneNumberField, SplitPhoneNumberField
+from phonenumber_field.widgets import PhoneNumberPrefixWidget
+from django_countries.widgets import CountrySelectWidget
 
 from heltour import gdpr
 from heltour.tournament.models import (
@@ -36,11 +38,17 @@ YES_NO_OPTIONS = (
 
 
 class RegistrationForm(forms.ModelForm):
+    # Override contact_number to use SplitPhoneNumberField
+    contact_number = SplitPhoneNumberField(
+        required=False,
+        label=_('Contact Number'),
+        initial=['US', '']
+    )
 
     class Meta:
         model = Registration
         fields = (
-            'email', 'real_name', 'gender', 'date_of_birth', 'nationality',
+            'email', 'first_name', 'last_name', 'gender', 'date_of_birth', 'nationality',
             'corporate_email', 'personal_email', 'contact_number', 'fide_id',
             'has_played_20_games',
             'can_commit', 'friends', 'avoid', 'agreed_to_rules', 'agreed_to_tos',
@@ -48,20 +56,22 @@ class RegistrationForm(forms.ModelForm):
         )
         labels = {
             'email': _('Your Email'),
-            'real_name': _('Name/Surname'),
+            'first_name': _('First Name'),
+            'last_name': _('Family Name'),
             'gender': _('Gender'),
             'date_of_birth': _('Date of Birth'),
             'nationality': _('Nationality'),
             'corporate_email': _('Corporate Email Address'),
             'personal_email': _('Personal Email Address (optional)'),
-            'contact_number': _('Contact Number (optional)'),
+            'contact_number': _('Contact Number'),
             'fide_id': _('FIDE ID (optional)'),
         }
         widgets = {
             'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
+            'gender': forms.Select(),
+            'nationality': CountrySelectWidget(),
         }
         help_texts = {
-            'real_name': _('Please enter your real name (first and last name)'),
             'corporate_email': _('Please use your company email address'),
             'fide_id': _('Your FIDE player ID if you have one'),
         }
@@ -85,11 +95,17 @@ class RegistrationForm(forms.ModelForm):
             self.fields['email'].required = True
             
         # Make the new required fields actually required
-        self.fields['real_name'].required = True
+        self.fields['first_name'].required = True
+        self.fields['last_name'].required = True
         self.fields['gender'].required = True
         self.fields['date_of_birth'].required = True
         self.fields['nationality'].required = True
         self.fields['corporate_email'].required = True
+        
+        # Set default date of birth to 18 years ago
+        if not self.instance.pk:  # Only for new registrations
+            eighteen_years_ago = datetime.now().date() - timedelta(days=365*18)
+            self.fields['date_of_birth'].initial = eighteen_years_ago
 
         # Add invite code field if league is invite-only
         if league.registration_mode == RegistrationMode.INVITE_ONLY:
@@ -103,9 +119,15 @@ class RegistrationForm(forms.ModelForm):
                     "required": _("Invite code is required for this league")
                 },
             )
-            # Move invite_code to the beginning of the field order
-            field_order = ["invite_code"] + [
-                f for f in self.fields if f != "invite_code"
+            # Field order with invite code, first_name, last_name at the beginning
+            field_order = ["invite_code", "first_name", "last_name"] + [
+                f for f in self.fields if f not in ["invite_code", "first_name", "last_name"]
+            ]
+            self.order_fields(field_order)
+        else:
+            # Field order without invite code
+            field_order = ["first_name", "last_name"] + [
+                f for f in self.fields if f not in ["first_name", "last_name"]
             ]
             self.order_fields(field_order)
 
@@ -733,13 +755,6 @@ class TeamCreateForm(forms.Form):
         widget=forms.TextInput(attrs={'class': 'form-control'}),
         label='Company Name'
     )
-    number_of_players = forms.IntegerField(
-        min_value=1,
-        required=True,
-        widget=forms.NumberInput(attrs={'class': 'form-control'}),
-        label='Number of Players',
-        help_text='Total number of players expected for your team'
-    )
     company_address = forms.CharField(
         required=True,
         widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
@@ -750,10 +765,10 @@ class TeamCreateForm(forms.Form):
         widget=forms.EmailInput(attrs={'class': 'form-control'}),
         label='Team Contact Email'
     )
-    team_contact_number = PhoneNumberField(
+    team_contact_number = SplitPhoneNumberField(
         required=True,
-        widget=forms.TextInput(attrs={'class': 'form-control'}),
-        label='Team Contact Number'
+        label='Team Contact Number',
+        initial=['US', '']
     )
     
     def __init__(self, *args, **kwargs):
@@ -783,7 +798,6 @@ class TeamCreateForm(forms.Form):
             number=team_number,
             name=self.cleaned_data['team_name'],
             company_name=self.cleaned_data['company_name'],
-            number_of_players=self.cleaned_data['number_of_players'],
             company_address=self.cleaned_data['company_address'],
             team_contact_email=self.cleaned_data['team_contact_email'],
             team_contact_number=self.cleaned_data['team_contact_number'],
@@ -803,8 +817,8 @@ class TeamCreateForm(forms.Form):
         return team
 
 
-class TeamNameForm(forms.Form):
-    """Form for updating team information"""
+class TeamNameEditForm(forms.Form):
+    """Simple form for editing team name only"""
     team_name = forms.CharField(
         max_length=100,
         required=True,
@@ -812,61 +826,23 @@ class TeamNameForm(forms.Form):
         label='Team Name',
         help_text='Enter a new name for your team (max 100 characters)'
     )
-    company_name = forms.CharField(
-        max_length=255,
-        required=True,
-        widget=forms.TextInput(attrs={'class': 'form-control'}),
-        label='Company Name'
-    )
-    number_of_players = forms.IntegerField(
-        min_value=1,
-        required=True,
-        widget=forms.NumberInput(attrs={'class': 'form-control'}),
-        label='Number of Players',
-        help_text='Total number of players expected for your team'
-    )
-    company_address = forms.CharField(
-        required=True,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-        label='Company Office Address'
-    )
-    team_contact_email = forms.EmailField(
-        required=True,
-        widget=forms.EmailInput(attrs={'class': 'form-control'}),
-        label='Team Contact Email'
-    )
-    team_contact_number = PhoneNumberField(
-        required=True,
-        widget=forms.TextInput(attrs={'class': 'form-control'}),
-        label='Team Contact Number'
-    )
     
     def __init__(self, *args, **kwargs):
         self.team = kwargs.pop('team')
         super().__init__(*args, **kwargs)
         self.fields['team_name'].initial = self.team.name
-        self.fields['company_name'].initial = self.team.company_name
-        self.fields['number_of_players'].initial = self.team.number_of_players
-        self.fields['company_address'].initial = self.team.company_address
-        self.fields['team_contact_email'].initial = self.team.team_contact_email
-        self.fields['team_contact_number'].initial = self.team.team_contact_number
     
     def clean_team_name(self):
         name = self.cleaned_data['team_name'].strip()
         if not name:
             raise forms.ValidationError('Team name cannot be empty')
-        # Check if another team has this name
-        if Team.objects.filter(season=self.team.season, name=name).exclude(pk=self.team.pk).exists():
+        # Check if another team has this name (only if name changed)
+        if name != self.team.name and Team.objects.filter(season=self.team.season, name=name).exists():
             raise forms.ValidationError('A team with this name already exists')
         return name
     
     def save(self):
         self.team.name = self.cleaned_data['team_name']
-        self.team.company_name = self.cleaned_data['company_name']
-        self.team.number_of_players = self.cleaned_data['number_of_players']
-        self.team.company_address = self.cleaned_data['company_address']
-        self.team.team_contact_email = self.cleaned_data['team_contact_email']
-        self.team.team_contact_number = self.cleaned_data['team_contact_number']
         self.team.save()
         return self.team
 
