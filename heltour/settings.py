@@ -32,13 +32,13 @@ env = environ.Env(
     JAVAFO_COMMAND=(str, "java -jar ./thirdparty/javafo.jar"),
     EMAIL_USE_TLS=(bool, True),
     EMAIL_PORT=(int, 587),
+    EMAIL_HOST=(str, ""),
+    EMAIL_HOST_USER=(str, ""),
+    EMAIL_HOST_PASSWORD=(str, ""),
     EMAIL_HOST_USER_FILE=(str, ""),
     EMAIL_HOST_PASSWORD_FILE=(str, ""),
     CELERY_DEFAULT_QUEUE=(str, "heltour-{}"),
-    REDIS_HOST=(str, "localhost"),
-    REDIS_PORT=(int, 6379),
-    REDIS_DB=(int, 1),
-    CACHEOPS_REDIS_DB=(int, 3),
+    REDIS_URL=(str, "redis://localhost:6379"),
     SLEEP_UNIT=(float, 1.0),
     SECRET_KEY=(str, "this-is-only-for-testing"),
     SECRET_KEY_FILE=(str, ""),
@@ -47,6 +47,7 @@ env = environ.Env(
 # Read .env file if it exists
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
+
 def get_env_var_from_file_or_env(var_name, default=""):
     """Helper function to read an environment variable from a file or directly."""
     file_var_name = f"{var_name}_FILE"
@@ -54,6 +55,7 @@ def get_env_var_from_file_or_env(var_name, default=""):
         with open(env(file_var_name), "r") as f:
             return f.read().strip()
     return env(var_name, default=default)
+
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_env_var_from_file_or_env("SECRET_KEY")
@@ -65,10 +67,19 @@ STAGING = env("HELTOUR_ENV") == "stage"
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+print("-" * 80)
+print("-" * 80)
+print(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
+print("-" * 80)
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+print("-" * 80)
+print("-" * 80)
+print(f"CSRF_TRUSTED_ORIGINS: {CSRF_TRUSTED_ORIGINS}")
+print("-" * 80)
 LINK_PROTOCOL = env("LINK_PROTOCOL")
 
 # Admin configuration
+# TODO: set this!
 ADMINS = []
 
 # Sites framework
@@ -217,16 +228,14 @@ EMAIL_HOST_PASSWORD = get_env_var_from_file_or_env("EMAIL_HOST_PASSWORD")
 SERVER_EMAIL = env("SERVER_EMAIL", default="webmaster@lots.lichess.ca")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@lots.lichess.ca")
 
-# Cache configuration
-REDIS_HOST = env("REDIS_HOST")
-REDIS_PORT = env("REDIS_PORT")
-REDIS_DB = env("REDIS_DB")
+REDIS_URL = env("REDIS_URL")
 
+# Cache configuration
 # Use Django-Redis for caching
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
+        "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
@@ -235,7 +244,8 @@ CACHES = {
 
 # Celery configuration
 CELERY_BROKER_URL = env(
-    "BROKER_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    "BROKER_URL",
+    default=REDIS_URL,
 )
 CELERY_DEFAULT_QUEUE = env("CELERY_DEFAULT_QUEUE").format(env("HELTOUR_ENV").lower())
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
@@ -294,14 +304,7 @@ CELERY_BEAT_SCHEDULE = {
 CELERY_TIMEZONE = "UTC"
 
 # Cacheops configuration
-CACHEOPS_REDIS = {
-    "host": REDIS_HOST,
-    "port": REDIS_PORT,
-    "db": env("CACHEOPS_REDIS_DB"),
-    "socket_timeout": 3,
-    "socket_connect_timeout": 3,
-}
-
+CACHEOPS_REDIS = REDIS_URL
 CACHEOPS_DEFAULTS = {"timeout": 60 * 60}
 
 CACHEOPS = {
