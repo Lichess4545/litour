@@ -42,7 +42,7 @@ class RegistrationForm(forms.ModelForm):
     contact_number = SplitPhoneNumberField(
         required=False,
         label=_('Contact Number'),
-        initial=['US', '']
+        initial=('US', '')
     )
 
     class Meta:
@@ -845,6 +845,7 @@ class TeamNameEditForm(forms.Form):
         self.team.name = self.cleaned_data['team_name']
         self.team.save()
         return self.team
+
 
 
 class BoardOrderForm(forms.Form):

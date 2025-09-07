@@ -14,6 +14,7 @@ from heltour.tournament.models import (
     Season,
     Team,
 )
+from heltour.tournament.tests.testutils import get_valid_registration_form_data
 
 
 class InviteCodeFormTestCase(TestCase):
@@ -131,26 +132,16 @@ class InviteCodeFormTestCase(TestCase):
         player = Player.objects.create(lichess_username="wsplayer", rating=1500)
 
         # Test with leading/trailing whitespace
-        form_data = {
-            "email": "ws@example.com",
-            "real_name": "Whitespace Player",
-            "gender": "Male",
-            "date_of_birth": "1990-01-01",
-            "nationality": "USA",
-            "corporate_email": "ws@company.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "  WHITESPACE-TEST-123  ",  # With whitespace
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "ws@example.com"
+        form_data["corporate_email"] = "ws@company.com"
+        form_data["invite_code"] = "  WHITESPACE-TEST-123  "  # With whitespace
 
         form = RegistrationForm(
             data=form_data, season=self.invite_season, player=player
         )
 
-        self.assertTrue(form.is_valid())
+        self.assertTrue(form.is_valid(), f"Form errors: {form.errors}")
         self.assertEqual(form.cleaned_data["invite_code"], "WHITESPACE-TEST-123")
 
     def test_special_characters_in_code(self):
@@ -158,15 +149,9 @@ class InviteCodeFormTestCase(TestCase):
         player = Player.objects.create(lichess_username="specplayer", rating=1500)
 
         # Test with special characters that shouldn't exist
-        form_data = {
-            "email": "spec@example.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "CODE@WITH#SPECIAL$CHARS",
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "spec@example.com"
+        form_data["invite_code"] = "CODE@WITH#SPECIAL$CHARS"
 
         form = RegistrationForm(
             data=form_data, season=self.invite_season, player=player
@@ -210,15 +195,9 @@ class InviteCodeFormTestCase(TestCase):
         player = Player.objects.create(lichess_username="crossplayer", rating=1500)
 
         # Try to use code for wrong season
-        form_data = {
-            "email": "cross@example.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "OTHER-SEASON-CODE",
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "cross@example.com"
+        form_data["invite_code"] = "OTHER-SEASON-CODE"
 
         form = RegistrationForm(
             data=form_data,

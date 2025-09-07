@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from heltour.tournament.models import League, Season, Player, Registration, InviteCode, Team
 from heltour.tournament.forms import RegistrationForm
+from heltour.tournament.tests.testutils import get_valid_registration_form_data
 
 
 class RegistrationSettingsTestCase(TestCase):
@@ -166,19 +167,7 @@ class RegistrationSettingsTestCase(TestCase):
 
     def test_registration_saves_without_optional_fields(self):
         """Test that registration can be saved without optional fields."""
-        form_data = {
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,  # Hidden field
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Test Player',
-            'gender': 'Other',
-            'date_of_birth': '1995-06-20',
-            'nationality': 'Mexico',
-            'corporate_email': 'test@company.com'
-        }
+        form_data = get_valid_registration_form_data()
         
         form = RegistrationForm(
             data=form_data,
@@ -321,20 +310,8 @@ class InviteCodeRegistrationTestCase(TestCase):
 
     def test_registration_with_valid_invite_code(self):
         """Test successful registration with valid invite code."""
-        form_data = {
-            'invite_code': 'TEAM-MEMBER-123',
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Invite Player',
-            'gender': 'Male',
-            'date_of_birth': '1989-12-10',
-            'nationality': 'Italy',
-            'corporate_email': 'invite@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'TEAM-MEMBER-123'
         
         form = RegistrationForm(
             data=form_data,
@@ -351,20 +328,8 @@ class InviteCodeRegistrationTestCase(TestCase):
 
     def test_registration_with_invalid_invite_code(self):
         """Test registration fails with invalid invite code."""
-        form_data = {
-            'invite_code': 'INVALID-CODE',
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Invalid Code Player',
-            'gender': 'Female',
-            'date_of_birth': '1991-08-25',
-            'nationality': 'India',
-            'corporate_email': 'invalid@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'INVALID-CODE'
         
         form = RegistrationForm(
             data=form_data,
@@ -458,20 +423,8 @@ class TeamAssignmentTestCase(TestCase):
         )
         
         # Register with captain code
-        form_data = {
-            'invite_code': 'CAPTAIN-CODE-001',
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Test Captain',
-            'gender': 'Male',
-            'date_of_birth': '1988-07-20',
-            'nationality': 'USA',
-            'corporate_email': 'captain@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'CAPTAIN-CODE-001'
         
         form = RegistrationForm(
             data=form_data,
@@ -541,20 +494,8 @@ class TeamAssignmentTestCase(TestCase):
         )
         
         # Register with member code
-        form_data = {
-            'invite_code': 'MEMBER-CODE-001',
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Team Member',
-            'gender': 'Female',
-            'date_of_birth': '1990-11-15',
-            'nationality': 'Canada',
-            'corporate_email': 'member@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'MEMBER-CODE-001'
         
         form = RegistrationForm(
             data=form_data,
@@ -627,20 +568,11 @@ class TeamAssignmentTestCase(TestCase):
             )
             
             # Register the member
-            form_data = {
-                'invite_code': code.code,
-                'agreed_to_tos': True,
-                'agreed_to_rules': True,
-                'can_commit': True,
-                'friends': '',
-                'avoid': '',
-                'alternate_preference': 'full_time',
-                'real_name': f'Multi Member {i+1}',
-                'gender': 'Male' if i % 2 == 0 else 'Female',
-                'date_of_birth': '1991-04-10',
-                'nationality': 'UK',
-                'corporate_email': f'member{i+1}@company.com'
-            }
+            form_data = get_valid_registration_form_data()
+            form_data['invite_code'] = code.code
+            form_data['first_name'] = 'Multi'
+            form_data['last_name'] = f'Member {i+1}'
+            form_data['corporate_email'] = f'member{i+1}@company.com'
             
             form = RegistrationForm(
                 data=form_data,
@@ -691,19 +623,9 @@ class TeamAssignmentTestCase(TestCase):
         )
         
         # Register without invite code
-        form_data = {
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': 'friend1, friend2',
-            'avoid': 'enemy1',
-            'alternate_preference': 'full_time',
-            'real_name': 'Regular Player',
-            'gender': 'Other',
-            'date_of_birth': '1993-09-25',
-            'nationality': 'Australia',
-            'corporate_email': 'regular@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['friends'] = 'friend1, friend2'
+        form_data['avoid'] = 'enemy1'
         
         form = RegistrationForm(
             data=form_data,
@@ -738,20 +660,8 @@ class TeamAssignmentTestCase(TestCase):
         )
         
         # First registration
-        form_data = {
-            'invite_code': 'DUP-CAPTAIN-001',
-            'agreed_to_tos': True,
-            'agreed_to_rules': True,
-            'can_commit': True,
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Dup Captain',
-            'gender': 'Male',
-            'date_of_birth': '1987-02-28',
-            'nationality': 'Germany',
-            'corporate_email': 'dupcaptain@company.com'
-        }
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'DUP-CAPTAIN-001'
         
         form1 = RegistrationForm(
             data=form_data,

@@ -35,6 +35,30 @@ def create_reg(season, name):
     )
 
 
+def get_valid_registration_form_data():
+    """Helper to get valid form data for registration tests."""
+    return {
+        'agreed_to_tos': True,
+        'agreed_to_rules': True,
+        'can_commit': True,
+        'friends': '',
+        'avoid': '',
+        'alternate_preference': 'full_time',
+        'first_name': 'Test',
+        'last_name': 'Player',
+        'gender': 'male',
+        'date_of_birth': '1995-06-20',
+        'nationality': 'US',
+        'corporate_email': 'test@company.com',
+        'personal_email': '',
+        'contact_number_0': 'US',
+        'contact_number_1': '2015550123',
+        'fide_id': '',
+        'email': 'test@example.com',
+        'has_played_20_games': True
+    }
+
+
 def league_tag(league_type):
     return '%sleague' % league_type
 
