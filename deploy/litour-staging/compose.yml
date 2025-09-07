@@ -49,7 +49,9 @@ services:
     env_file: "stack.env"
     networks:
       - litour
-    restart: no
+    deploy:
+      restart_policy:
+        condition: none
 
   postgres:
     image: postgres:15-alpine
