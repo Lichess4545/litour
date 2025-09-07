@@ -17,6 +17,14 @@ services:
   web:
     image: ghcr.io/lichess4545/litour-web:latest
     env_file: "stack.env"
+    environment:
+      SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
+      EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+    secrets:
+      - litour_app_secret_key
+      - email_host_user
+      - email_host_password
     networks:
       - litour
     deploy:
@@ -27,8 +35,15 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
-      HELTOUR_ENV: stage
+      HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
+      SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
+      EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+    secrets:
+      - litour_app_secret_key
+      - email_host_user
+      - email_host_password
     networks:
       - litour
     deploy:
@@ -58,7 +73,9 @@ services:
     environment:
       POSTGRES_DB: heltour
       POSTGRES_USER: heltour
-      POSTGRES_PASSWORD: heltour_dev_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/litour_db_password
+    secrets:
+      - litour_db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -88,12 +105,6 @@ services:
       update_config:
         order: start-first
 
-  mailpit:
-    image: axllent/mailpit:v1.24.1
-    restart: unless-stopped
-    networks:
-      - litour
-
 volumes:
   postgres_data:
     name: litour_postgres_data
@@ -108,3 +119,13 @@ networks:
   litour:
     driver: overlay
     # driver: bridge
+
+secrets:
+  litour_db_password:
+    external: true
+  litour_app_secret_key:
+    external: true
+  email_host_user:
+    external: true
+  email_host_password:
+    external: true

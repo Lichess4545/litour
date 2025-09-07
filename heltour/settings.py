@@ -32,6 +32,8 @@ env = environ.Env(
     JAVAFO_COMMAND=(str, "java -jar ./thirdparty/javafo.jar"),
     EMAIL_USE_TLS=(bool, True),
     EMAIL_PORT=(int, 587),
+    EMAIL_HOST_USER_FILE=(str, ""),
+    EMAIL_HOST_PASSWORD_FILE=(str, ""),
     CELERY_DEFAULT_QUEUE=(str, "heltour-{}"),
     REDIS_HOST=(str, "localhost"),
     REDIS_PORT=(int, 6379),
@@ -39,17 +41,26 @@ env = environ.Env(
     CACHEOPS_REDIS_DB=(int, 3),
     SLEEP_UNIT=(float, 1.0),
     SECRET_KEY=(str, "this-is-only-for-testing"),
+    SECRET_KEY_FILE=(str, ""),
 )
 
 # Read .env file if it exists
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
+def get_env_var_from_file_or_env(var_name, default=""):
+    """Helper function to read an environment variable from a file or directly."""
+    file_var_name = f"{var_name}_FILE"
+    if env(file_var_name, "") and os.path.exists(env(file_var_name)):
+        with open(env(file_var_name), "r") as f:
+            return f.read().strip()
+    return env(var_name, default=default)
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("SECRET_KEY")
+SECRET_KEY = get_env_var_from_file_or_env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")
-STAGING = env("HELTOUR_ENV") == "staging"
+STAGING = env("HELTOUR_ENV") == "stage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
@@ -196,8 +207,9 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env("EMAIL_PORT")
 EMAIL_USE_TLS = env("EMAIL_USE_TLS")
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_HOST_USER = get_env_var_from_file_or_env("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = get_env_var_from_file_or_env("EMAIL_HOST_PASSWORD")
+
 SERVER_EMAIL = env("SERVER_EMAIL", default="webmaster@lots.lichess.ca")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@lots.lichess.ca")
 
