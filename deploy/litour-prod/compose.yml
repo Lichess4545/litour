@@ -35,7 +35,7 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
-      HELTOUR_ENV: STAGING
+      HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_SMTP_USER_FILE: /run/secrets/email_smtp_user

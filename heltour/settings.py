@@ -56,7 +56,7 @@ else:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")
-STAGING = env("HELTOUR_ENV") == "staging"
+STAGING = env("HELTOUR_ENV") == "stage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 

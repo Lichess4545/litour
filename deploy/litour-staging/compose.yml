@@ -27,7 +27,7 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
-      HELTOUR_ENV: STAGING
+      HELTOUR_ENV: stage
       HELTOUR_APP: api_worker
     networks:
       - litour
