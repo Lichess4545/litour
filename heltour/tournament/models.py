@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django_comments.models import Comment
 from phonenumber_field.modelfields import PhoneNumberField
+from django_countries.fields import CountryField
 
 from django.conf import settings
 from heltour.tournament import signals
@@ -343,6 +344,12 @@ class Season(_BaseModel):
         blank=True,
         null=True,
         help_text="Change the broadcast name. Leave empty for default.",
+    )
+    
+    welcome_message = RichTextUploadingField(
+        blank=True,
+        help_text="Optional welcome message to display in the registration box. Supports rich text formatting.",
+        verbose_name="Welcome Message"
     )
 
     class Meta:
@@ -1309,7 +1316,6 @@ class Team(_BaseModel):
     
     # Captain-provided team information
     company_name = models.CharField(max_length=255, verbose_name='Company name')
-    number_of_players = models.PositiveIntegerField(blank=True, null=True, verbose_name='Number of players')
     company_address = models.TextField(blank=True, verbose_name='Company office address')
     team_contact_email = models.EmailField(blank=True, verbose_name='Team contact email')
     team_contact_number = PhoneNumberField(blank=True, verbose_name='Team contact number')
@@ -2207,10 +2213,20 @@ class Registration(_BaseModel):
     
     # Additional registration information
     fide_id = models.CharField(max_length=20, blank=True, verbose_name='FIDE ID')
-    real_name = models.CharField(max_length=255, blank=True, verbose_name='Name/Surname')
-    gender = models.CharField(max_length=50, blank=True, verbose_name='Gender')
+    first_name = models.CharField(max_length=100, blank=True, verbose_name='First Name')
+    last_name = models.CharField(max_length=100, blank=True, verbose_name='Family Name')
+    
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+        ('non-binary', 'Non-binary'),
+        ('not-represented', 'My gender is not represented'),
+        ('prefer-not-disclose', 'Prefer not to disclose'),
+    ]
+    gender = models.CharField(max_length=50, blank=True, choices=GENDER_CHOICES, verbose_name='Gender')
+    
     date_of_birth = models.DateField(blank=True, null=True, verbose_name='Date of birth')
-    nationality = models.CharField(max_length=100, blank=True)
+    nationality = CountryField(blank=True)
     corporate_email = models.EmailField(blank=True, verbose_name='Corporate email address')
     personal_email = models.EmailField(blank=True, verbose_name='Personal email address')
     contact_number = PhoneNumberField(blank=True, verbose_name='Contact number')

@@ -66,6 +66,9 @@
             yq # YAML processing
             tree # Directory visualization
 
+            # temp deployment area.
+            flyctl
+
             flatpak # For lakin's sanity
             openssh # Fo' lakin's sanity
             jre21_minimal # Fo javafo

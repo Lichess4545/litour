@@ -2029,7 +2029,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         return team_member and (team_member.is_captain or team_member.is_vice_captain)
 
     def view(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameEditForm
 
         team = get_object_or_404(Team, season=self.season, number=team_number)
 
@@ -2072,7 +2072,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         )
 
         # Initialize team name form
-        team_name_form = TeamNameForm(team=team)
+        team_name_form = TeamNameEditForm(team=team)
 
         context = {
             "team": team,
@@ -2096,7 +2096,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         return self.render("tournament/team_manage.html", context)
 
     def view_post(self, team_number):
-        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameForm
+        from heltour.tournament.forms import GenerateTeamInviteCodeForm, BoardOrderForm, TeamNameEditForm
 
         team = get_object_or_404(Team, season=self.season, number=team_number)
 
@@ -2164,7 +2164,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
         
         elif action == "update_team_name":
             # Update team name
-            form = TeamNameForm(self.request.POST, team=team)
+            form = TeamNameEditForm(self.request.POST, team=team)
             
             if form.is_valid():
                 form.save()
@@ -2240,7 +2240,7 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
             context["board_order_form"] = BoardOrderForm(
                 team=team, user=self.request.user, upcoming_round=upcoming_round
             )
-            context["team_name_form"] = TeamNameForm(team=team)
+            context["team_name_form"] = TeamNameEditForm(team=team)
 
         return self.render("tournament/team_manage.html", context)
 

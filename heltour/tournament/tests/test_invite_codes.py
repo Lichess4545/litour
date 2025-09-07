@@ -21,7 +21,7 @@ from heltour.tournament.models import (
     TeamMember,
 )
 from heltour.tournament.workflows import ApproveRegistrationWorkflow
-from heltour.tournament.tests.testutils import Shush
+from heltour.tournament.tests.testutils import Shush, get_valid_registration_form_data
 
 
 class InviteCodeTestCase(TestCase):
@@ -125,20 +125,10 @@ class InviteCodeTestCase(TestCase):
         player = Player.objects.create(lichess_username="captainplayer", rating=1600)
 
         # Create form data with captain code
-        form_data = {
-            "email": "captain@example.com",
-            "real_name": "Test Captain",
-            "gender": "Male",
-            "date_of_birth": "1990-01-01",
-            "nationality": "USA",
-            "corporate_email": "captain@company.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "CAPTAIN-CODE-123",
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "captain@example.com"
+        form_data["corporate_email"] = "captain@company.com"
+        form_data["invite_code"] = "CAPTAIN-CODE-123"
 
         form = RegistrationForm(data=form_data, season=self.season, player=player)
 
@@ -228,20 +218,10 @@ class InviteCodeTestCase(TestCase):
         # Create new player and registration
         new_player = Player.objects.create(lichess_username="teammember", rating=1650)
 
-        form_data = {
-            "email": "member@example.com",
-            "real_name": "Team Member",
-            "gender": "Female",
-            "date_of_birth": "1992-05-15",
-            "nationality": "Canada",
-            "corporate_email": "member@company.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "MEMBER-CODE-456",
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "member@example.com"
+        form_data["corporate_email"] = "member@company.com"
+        form_data["invite_code"] = "MEMBER-CODE-456"
 
         form = RegistrationForm(data=form_data, season=self.season, player=new_player)
 
@@ -295,15 +275,9 @@ class InviteCodeTestCase(TestCase):
             lichess_username="secondplayer", rating=1550
         )
 
-        form_data = {
-            "email": "second@example.com",
-            "has_played_20_games": True,
-            "can_commit": True,
-            "agreed_to_rules": True,
-            "agreed_to_tos": True,
-            "alternate_preference": "full_time",
-            "invite_code": "USED-CODE-789",
-        }
+        form_data = get_valid_registration_form_data()
+        form_data["email"] = "second@example.com"
+        form_data["invite_code"] = "USED-CODE-789"
 
         form = RegistrationForm(
             data=form_data, season=self.season, player=second_player

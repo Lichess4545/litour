@@ -10,6 +10,7 @@ from heltour.tournament.models import (
     League, Season, Player, Registration, InviteCode, Team, TeamMember, SeasonPlayer
 )
 from heltour.tournament.templatetags.tournament_extras import leagueurl
+from heltour.tournament.tests.testutils import get_valid_registration_form_data
 
 
 class RegistrationViewIntegrationTestCase(TestCase):
@@ -72,20 +73,14 @@ class RegistrationViewIntegrationTestCase(TestCase):
         reg_url = leagueurl('register', self.league.tag, self.season.tag)
         
         # Submit registration form
-        response = self.client.post(reg_url, {
-            'invite_code': 'VIEW-CAPTAIN-001',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'View Captain',
-            'gender': 'Male',
-            'date_of_birth': '1985-03-15',
-            'nationality': 'USA',
-            'corporate_email': 'viewcaptain@company.com'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'VIEW-CAPTAIN-001'
+        form_data['first_name'] = 'View'
+        form_data['last_name'] = 'Captain'
+        form_data['corporate_email'] = 'viewcaptain@company.com'
+        form_data['date_of_birth'] = '1985-03-15'
+        
+        response = self.client.post(reg_url, form_data)
         
         # Should redirect to success page
         success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
@@ -152,20 +147,16 @@ class RegistrationViewIntegrationTestCase(TestCase):
         self.client.login(username='testviewplayer', password='testpass123')
         
         reg_url = leagueurl('register', self.league.tag, self.season.tag)
-        response = self.client.post(reg_url, {
-            'invite_code': 'VIEW-MEMBER-001',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'View Member',
-            'gender': 'Female',
-            'date_of_birth': '1992-08-20',
-            'nationality': 'Canada',
-            'corporate_email': 'viewmember@company.com'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'VIEW-MEMBER-001'
+        form_data['first_name'] = 'View'
+        form_data['last_name'] = 'Member'
+        form_data['gender'] = 'female'
+        form_data['date_of_birth'] = '1992-08-20'
+        form_data['nationality'] = 'CA'
+        form_data['corporate_email'] = 'viewmember@company.com'
+        
+        response = self.client.post(reg_url, form_data)
         
         # Should redirect to success page
         success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
@@ -222,22 +213,18 @@ class RegistrationViewIntegrationTestCase(TestCase):
         self.client.login(username='testviewplayer', password='testpass123')
         
         reg_url = leagueurl('register', regular_league.tag, regular_season.tag)
-        response = self.client.post(reg_url, {
-            'email': 'test@example.com',
-            'has_played_20_games': 'True',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': 'friend1',
-            'avoid': 'enemy1',
-            'alternate_preference': 'full_time',
-            'weeks_unavailable': [],  # Available for all weeks
-            'real_name': 'Regular Player',
-            'gender': 'Other',
-            'date_of_birth': '1994-12-25',
-            'nationality': 'Germany',
-            'corporate_email': 'regular@company.com'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['email'] = 'test@example.com'
+        form_data['first_name'] = 'Regular'
+        form_data['last_name'] = 'Player'
+        form_data['gender'] = 'non-binary'
+        form_data['date_of_birth'] = '1994-12-25'
+        form_data['nationality'] = 'DE'
+        form_data['corporate_email'] = 'regular@company.com'
+        form_data['friends'] = 'friend1'
+        form_data['avoid'] = 'enemy1'
+        form_data['weeks_unavailable'] = []  # Available for all weeks
+        response = self.client.post(reg_url, form_data)
         
         # Should redirect to success page
         success_url = leagueurl('registration_success', regular_league.tag, regular_season.tag)
@@ -277,20 +264,15 @@ class RegistrationViewIntegrationTestCase(TestCase):
         
         # Register using the form to properly trigger workflows
         reg_url = leagueurl('register', self.league.tag, self.season.tag)
-        response = self.client.post(reg_url, {
-            'invite_code': 'LINK-CAPTAIN-001',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time',
-            'real_name': 'Link Captain',
-            'gender': 'Male',
-            'date_of_birth': '1986-06-10',
-            'nationality': 'France',
-            'corporate_email': 'linkcaptain@company.com'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'LINK-CAPTAIN-001'
+        form_data['first_name'] = 'Link'
+        form_data['last_name'] = 'Captain'
+        form_data['gender'] = 'male'
+        form_data['date_of_birth'] = '1986-06-10'
+        form_data['nationality'] = 'FR'
+        form_data['corporate_email'] = 'linkcaptain@company.com'
+        response = self.client.post(reg_url, form_data)
         
         # Should redirect to success page
         success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
@@ -306,10 +288,10 @@ class RegistrationViewIntegrationTestCase(TestCase):
             data={
                 'team_name': 'Link Test Team',
                 'company_name': 'Test Company',
-                'number_of_players': 4,
                 'company_address': '123 Test St',
                 'team_contact_email': 'team@example.com',
-                'team_contact_number': '+1-234-567-8900',
+                'team_contact_number_0': 'US',
+                'team_contact_number_1': '2345678900',
             },
             season=self.season,
             player=self.player
@@ -406,15 +388,9 @@ class RegistrationErrorHandlingTestCase(TestCase):
         self.client.login(username='errortest', password='testpass')
         
         reg_url = leagueurl('register', self.league.tag, self.season.tag)
-        response = self.client.post(reg_url, {
-            'invite_code': 'INVALID-CODE-999',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'INVALID-CODE-999'
+        response = self.client.post(reg_url, form_data)
         
         # Should not redirect (form has errors)
         self.assertEqual(response.status_code, 200)
@@ -442,15 +418,9 @@ class RegistrationErrorHandlingTestCase(TestCase):
         self.client.login(username='errortest', password='testpass')
         
         reg_url = leagueurl('register', self.league.tag, self.season.tag)
-        response = self.client.post(reg_url, {
-            'invite_code': 'USED-CODE-001',
-            'agreed_to_tos': 'True',
-            'agreed_to_rules': 'True',
-            'can_commit': 'True',
-            'friends': '',
-            'avoid': '',
-            'alternate_preference': 'full_time'
-        })
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'USED-CODE-001'
+        response = self.client.post(reg_url, form_data)
         
         # Should not redirect
         self.assertEqual(response.status_code, 200)

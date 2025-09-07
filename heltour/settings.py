@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     "cacheops",
     "django_comments",
     "phonenumber_field",
+    "django_countries",
     "heltour.tournament",
     "heltour.comments",
     "heltour.api_worker",
