@@ -257,14 +257,7 @@ def reset_db_hard(c):
     import os
     from urllib.parse import urlparse
 
-    db_url_file = os.environ.get("DATABASE_URL_FILE", "")
-
-    if db_url_file and os.path.isfile(db_url_file):
-        with open(db_url_file, "r") as f:
-            db_url = f.read().strip()
-    else:
-        db_url = os.environ.get("DATABASE_URL", "")
-
+    db_url = os.environ.get("DATABASE_URL", "")
     if not db_url:
         print("ERROR: DATABASE_URL not set")
         return
