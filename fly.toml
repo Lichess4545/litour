@@ -18,7 +18,7 @@ console_command = 'python /app/manage.py shell'
 
 [processes]
   web = 'gunicorn heltour.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --access-logfile - --error-logfile -'
-  api_worker = 'sh -c "export HELTOUR_APP=api_worker && gunicorn heltour.wsgi:application --bind 0.0.0.0:8880 --workers 4 --threads 2 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --access-logfile - --error-logfile -"'
+  apiworker = 'sh -c "HELTOUR_APP=api_worker gunicorn heltour.wsgi:application --bind "[::]:8880" --workers 4 --threads 2 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --access-logfile - --error-logfile -"'
   celery = 'celery -A heltour worker -l info -E -B'
 
 [http_service]
@@ -28,15 +28,6 @@ console_command = 'python /app/manage.py shell'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['web']
-
-# Additional HTTP service for API worker
-[[services]]
-  internal_port = 8880
-  protocol = "tcp"
-  processes = ["api_worker"]
-
-  [[services.ports]]
-    port = 8880
 
 [[vm]]
   memory = '1gb'
