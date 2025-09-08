@@ -33,7 +33,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first
 
   celery:
     image: ghcr.io/lichess4545/litour-celery:latest
@@ -42,7 +42,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first
   
   migrate:
     image: ghcr.io/lichess4545/litour-migrate:latest
@@ -70,7 +70,9 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first # always stop first to avoid multiple instances sharing same docker volume
+      placement:
+        max_replicas_per_node: 1
 
   redis:
     image: redis:7-alpine
@@ -86,7 +88,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first
 
   mailpit:
     image: axllent/mailpit:v1.24.1
