@@ -7,6 +7,11 @@ from datetime import timedelta
 from celery.schedules import crontab
 import environ
 
+# TODO: REMOVE, NASTY HACK
+import requests
+
+requests.packages.urllib3.util.connection.HAS_IPV6 = False
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
