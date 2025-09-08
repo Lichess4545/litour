@@ -33,7 +33,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: stop-first
+        order: start-first
 
   celery:
     image: ghcr.io/lichess4545/litour-celery:latest
@@ -42,7 +42,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: stop-first
+        order: start-first
   
   migrate:
     image: ghcr.io/lichess4545/litour-migrate:latest
