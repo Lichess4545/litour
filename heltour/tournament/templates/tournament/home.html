@@ -4,6 +4,8 @@
 {% block body %}
     <div id="home-container">
         <div class="container" id="home-league-list">
+            {% include 'tournament/fwcc_banner_2025.html' %}
+
             <div class="row">
                 {% if leagues %}
                     {% for l in leagues %}
