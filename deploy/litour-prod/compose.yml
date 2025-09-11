@@ -87,7 +87,9 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first # always stop first to avoid multiple instances sharing same docker volume
+      placement:
+        max_replicas_per_node: 1
 
   redis:
     image: redis:7-alpine
@@ -103,7 +105,7 @@ services:
       - litour
     deploy:
       update_config:
-        order: start-first
+        order: stop-first
 
 volumes:
   postgres_data:
