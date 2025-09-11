@@ -344,6 +344,7 @@ HELTOUR_APP = env("HELTOUR_APP")
 HELTOUR_VERSION = env("HELTOUR_VERSION")
 API_WORKER_HOST = env("API_WORKER_HOST")
 JAVAFO_COMMAND = env("JAVAFO_COMMAND")
+DISPLAY_FWCC_BANNER = env("DISPLAY_FWCC_BANNER", default=False, cast=bool)
 
 # Sleep interval for alternates manager (in seconds)
 SLEEP_UNIT = env("SLEEP_UNIT", default=1.0)
