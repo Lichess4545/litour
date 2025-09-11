@@ -35,6 +35,11 @@
                         <h3>Registration is open!</h3>
                     </div>
                     <div class="well-body">
+                        {% if registration_season.welcome_message %}
+                            <div class="registration-welcome-message">
+                                {{ registration_season.welcome_message|safe }}
+                            </div>
+                        {% endif %}
                         {% if registration_season.is_started %}
                             <p>{{ registration_season.name }} ends on {{ registration_season.end_date|date:"M d, Y" }} at {{ registration_season.end_date|date:"H:i" }} UTC.</p>
                         {% else %}
@@ -42,11 +47,6 @@
                                 {{ registration_season.name }} starts
                                 on {{ registration_season.start_date|date:"M d, Y" }} at {{ registration_season.start_date|date:"H:i" }} UTC.
                             </p>
-                        {% endif %}
-                        {% if registration_season.welcome_message %}
-                            <div class="registration-welcome-message">
-                                {{ registration_season.welcome_message|safe }}
-                            </div>
                         {% endif %}
                         {% if league.is_invite_only %}
                             <p>

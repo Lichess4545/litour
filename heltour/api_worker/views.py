@@ -1,6 +1,7 @@
 import logging
 import time
 from platform import python_version
+from contextlib import contextmanager
 
 import requests
 from django import __version__ as djangoversion
@@ -11,6 +12,18 @@ from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 
 from heltour.api_worker import worker
+
+
+@contextmanager
+def disable_ipv6():
+    """Temporarily disable IPv6 in urllib3."""
+    original_value = requests.packages.urllib3.util.connection.HAS_IPV6
+    try:
+        requests.packages.urllib3.util.connection.HAS_IPV6 = False
+        yield
+    finally:
+        requests.packages.urllib3.util.connection.HAS_IPV6 = original_value
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +67,11 @@ def _do_lichess_api_call(
         if content_type:
             headers["Content-Type"] = content_type
         if method == "POST":
-            r = requests.post(url, params=params, data=post_data, headers=headers)
+            with disable_ipv6():
+                r = requests.post(url, params=params, data=post_data, headers=headers)
         else:
-            r = requests.get(url, params, headers=headers)
+            with disable_ipv6():
+                r = requests.get(url, params, headers=headers)
 
         if r.status_code >= 400 and r.status_code < 500 and r.status_code != 429:
             # Unrecoverable error
