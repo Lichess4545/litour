@@ -82,8 +82,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
+    env:
+      web: ${{ secrets.LITOUR_DEPLOY_STAGING_WEB }}
+      apiworker: ${{ secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
+      caddy: ${{ secrets.LITOUR_DEPLOY_STAGING_CADDY }}
+      migrate: ${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
+    strategy:
+      matrix:
+        environment: [web, apiworker, caddy, migrate]
     steps:
-      - name: deploy
-        env:
-          LITOUR_STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.LITOUR_STAGING_DEPLOY_WEBHOOK_URL }}
-        run: curl -X POST $LITOUR_STAGING_DEPLOY_WEBHOOK_URL
+      - name: deploy ${{ matrix.environment }}
+        run: curl -X POST ${{ env[matrix.environment] }}
