@@ -21,6 +21,7 @@ ENV DJANGO_SETTINGS_MODULE=heltour.test_settings \
     ALLOWED_HOSTS=* \
     DATABASE_URL=sqlite:///db.sqlite3 \
     REDIS_URL=redis://localhost:6379/0 \
+    BROKER_URL=redis://localhost:6379/1 \
     CSRF_TRUSTED_ORIGINS=http://localhost:8000 \
     LINK_PROTOCOL=http \
     EMAIL_PORT=1025 \
