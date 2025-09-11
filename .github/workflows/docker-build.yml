@@ -89,7 +89,7 @@ jobs:
       migrate: ${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
     strategy:
       matrix:
-        environment: [web, apiworker, caddy, migrate]
+        service: [web, apiworker, caddy, migrate]
     steps:
-      - name: deploy ${{ matrix.environment }}
-        run: curl -X POST ${{ env[matrix.environment] }}
+      - name: deploy ${{ matrix.service }}
+        run: curl -X POST ${{ env[matrix.service] }}
