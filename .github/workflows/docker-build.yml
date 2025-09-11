@@ -83,7 +83,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: deploy
+      - name: deploy web
+        run: curl -X POST $LITOUR_DEPLOY_STAGING_WEB
         env:
-          LITOUR_STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.LITOUR_STAGING_DEPLOY_WEBHOOK_URL }}
-        run: curl -X POST $LITOUR_STAGING_DEPLOY_WEBHOOK_URL
+          LITOUR_DEPLOY_STAGING_WEB: ${{ secrets.LITOUR_DEPLOY_STAGING_WEB }}
+      - name: deploy apiworker
+        run: curl -X POST $LITOUR_DEPLOY_STAGING_APIWORKER
+        env:
+          LITOUR_DEPLOY_STAGING_APIWORKER: ${{ secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
+      - name: deploy caddy
+        run: curl -X POST $LITOUR_DEPLOY_STAGING_CADDY
+        env:
+          LITOUR_DEPLOY_STAGING_CADDY: ${{ secrets.LITOUR_DEPLOY_STAGING_CADDY }}
+      - name: deploy migrate
+        run: curl -X POST $LITOUR_DEPLOY_STAGING_MIGRATE
+        env:
+          LITOUR_DEPLOY_STAGING_MIGRATE: ${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
