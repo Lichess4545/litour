@@ -18,11 +18,12 @@ services:
     image: ghcr.io/lichess4545/litour-web:latest
     env_file: "stack.env"
     environment:
-      DATABASE_URL=postgresql://todo:todo@postgres:5432/todo
+      DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
       EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
+      - litour_prod_db_url
       - litour_app_secret_key
       - email_host_user
       - email_host_password
@@ -36,13 +37,14 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
-      DATABASE_URL=postgresql://todo:todo@postgres:5432/todo
+      DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
       EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
+      - litour_prod_db_url
       - litour_app_secret_key
       - email_host_user
       - email_host_password
@@ -99,6 +101,8 @@ networks:
     # driver: bridge
 
 secrets:
+  litour_prod_db_url:
+    external: true
   litour_db_password:
     external: true
   litour_app_secret_key:
