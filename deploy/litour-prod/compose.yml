@@ -103,8 +103,6 @@ networks:
 secrets:
   litour_prod_db_url:
     external: true
-  litour_db_password:
-    external: true
   litour_app_secret_key:
     external: true
   email_host_user:
