@@ -67,7 +67,7 @@ class LeagueSeeder(BaseSeeder):
                 "name": "Elite Team Championship",
                 "tag": "elite",
                 "description": "Invite-only team championship for top players",
-                "theme": "blue",
+                "theme": "fide",
                 "time_control": "60+30",
                 "rating_type": "classical",
                 "competitor_type": "team",
