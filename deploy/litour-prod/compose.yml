@@ -18,10 +18,12 @@ services:
     image: ghcr.io/lichess4545/litour-web:latest
     env_file: "stack.env"
     environment:
+      DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
       EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
+      - litour_prod_db_url
       - litour_app_secret_key
       - email_host_user
       - email_host_password
@@ -35,12 +37,14 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
+      DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
       EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
+      - litour_prod_db_url
       - litour_app_secret_key
       - email_host_user
       - email_host_password
@@ -68,29 +72,6 @@ services:
       restart_policy:
         condition: none
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: heltour
-      POSTGRES_USER: heltour
-      POSTGRES_PASSWORD_FILE: /run/secrets/litour_db_password
-    secrets:
-      - litour_db_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U heltour"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - litour
-    deploy:
-      update_config:
-        order: stop-first # always stop first to avoid multiple instances sharing same docker volume
-      placement:
-        max_replicas_per_node: 1
-
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
@@ -108,7 +89,6 @@ services:
         order: stop-first
 
 volumes:
-  postgres_data:
   redis_data:
   caddy_data:
   caddy_config:
@@ -121,7 +101,7 @@ networks:
     # driver: bridge
 
 secrets:
-  litour_db_password:
+  litour_prod_db_url:
     external: true
   litour_app_secret_key:
     external: true
