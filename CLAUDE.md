@@ -178,3 +178,10 @@ This project was originally called heltour and served lichess4545. It has been r
 - Ask for clarification if needed before making assumptions
 - Respect the existing code structure and patterns
 - Do not create new files unless absolutely necessary
+
+### Migration Policy
+- **NEVER** create Django migration files manually
+- **DO NOT** run makemigrations or migrate commands
+- **DO NOT** create any files in migration directories
+- When model changes are made, inform the user that they need to run makemigrations
+- The user will handle all migration creation and execution

@@ -328,6 +328,23 @@ FieldListFilter.register(lambda f: f.remote_field, LeagueRestrictedListFilter, t
 class LeagueAdmin(_BaseAdmin):
     actions = ['import_season', 'export_forfeit_data']
     league_id_field = 'id'
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'tag', 'description', 'theme', 'display_order')
+        }),
+        ('League Settings', {
+            'fields': ('time_control', 'rating_type', 'competitor_type', 'pairing_type', 
+                      'is_active', 'is_default', 'enable_notifications')
+        }),
+        ('Registration Settings', {
+            'fields': ('registration_mode', 'email_required', 'show_provisional_warning', 'ask_availability')
+        }),
+        ('Team Tiebreak Configuration', {
+            'fields': ('team_tiebreak_1', 'team_tiebreak_2', 'team_tiebreak_3', 'team_tiebreak_4'),
+            'description': 'Configure the tiebreak order for team tournaments. Match points is always the primary sort criterion.'
+        }),
+    )
 
     def has_add_permission(self, request):
         return self.has_assigned_perm(request.user, 'add')
@@ -339,7 +356,8 @@ class LeagueAdmin(_BaseAdmin):
         if self.has_assigned_perm(request.user, 'change'):
             return ()
         return ('competitor_type', 'tag', 'theme', 'display_order', 'description', 'is_active',
-                'is_default', 'enable_notifications', 'registration_mode', 'email_required', 'show_provisional_warning', 'ask_availability')
+                'is_default', 'enable_notifications', 'registration_mode', 'email_required', 'show_provisional_warning', 'ask_availability',
+                'team_tiebreak_1', 'team_tiebreak_2', 'team_tiebreak_3', 'team_tiebreak_4')
 
     def get_urls(self):
         urls = super(LeagueAdmin, self).get_urls()

@@ -493,18 +493,26 @@ class TeamScoreTestCase(TestCase):
         )
 
     def test_teamscore_cmp(self):
-        ts1 = TeamScore()
-        ts2 = TeamScore()
+        # Create teams first since TeamScore now requires a team for comparison
+        league = get_league('team')
+        season = get_season('team')
+        team1 = Team.objects.create(season=season, number=10, name='Team 10')
+        team2 = Team.objects.create(season=season, number=11, name='Team 11')
+        
+        ts1 = TeamScore.objects.create(team=team1)
+        ts2 = TeamScore.objects.create(team=team2)
 
         # Only the lt operator is implemented so we have to manually work around that
         self.assertTrue(not (ts1 < ts2))
         self.assertTrue(not (ts2 < ts1))
 
         ts1.match_points = 2
+        ts1.save()
         self.assertLess(ts2, ts1)
 
         ts2.match_points = 2
         ts2.game_points = 1.0
+        ts2.save()
         self.assertLess(ts1, ts2)
 
 
