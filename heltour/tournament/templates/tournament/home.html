@@ -16,6 +16,22 @@
                                class="league-home-container">
                                 <div class="league-homelink league-homelink-{{ l.theme }}">{{ l.name }}</div>
                                 <div class="league-home-details">
+                                    {% with l.registration_season as registration_season %}
+                                        {% if registration_season.welcome_message %}
+                                            <div class="registration-welcome-message">
+                                                {{ registration_season.welcome_message|safe }}
+                                            </div>
+                                        {% endif %}
+                                        <p>
+                                            {% if not registration_season.is_started %}
+                                                Starts on
+                                            {% else%}
+                                                Ends on
+                                            {% endif %}
+                                            {{ registration_season.start_date|date:"M d, Y" }}
+                                            at {{ registration_season.start_date|date:"H:i" }} UTC.
+                                        </p>
+                                    {% endwith %}
                                     <p class="league-home-desc">{{ l.description }}</p>
                                 </div>
                             </a>
