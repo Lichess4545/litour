@@ -88,6 +88,7 @@ invoke status           # Check git status (alias: st)
 
 - `heltour/` - Main Django application
   - `tournament/` - Core tournament management app containing models, views, admin customizations
+  - `tournament_core/` - Pure Python tournament calculation library (no database dependencies)
   - `api_worker/` - Background API worker application
   - `settings.py` - Single settings file using environment variables
   - `comments/` - Custom comments app
@@ -98,6 +99,33 @@ invoke status           # Check git status (alias: st)
 - `Player`, `Team`, `TeamMember` - Participant management
 - `TeamPairing`, `PlayerPairing` - Game pairings
 - `Registration`, `AlternateAssignment` - Registration system
+
+### Tournament Core Module (`tournament_core/`)
+
+A clean, database-independent module for tournament calculations:
+
+- **Structure** (`structure.py`):
+  - `Game`, `Match`, `Round`, `Tournament` - Pure data classes using frozen dataclasses
+  - Helper functions for creating matches (single game, team, bye)
+  - Tournament calculation methods that return results
+
+- **Tiebreaks** (`tiebreaks.py`):
+  - `MatchResult`, `CompetitorScore` - Data classes for results
+  - Tiebreak calculation functions: Sonneborn-Berger, Buchholz, Head-to-Head, Games Won
+  - Functions work with both team and individual tournaments
+
+- **Scoring** (`scoring.py`):
+  - `ScoringSystem` - Configurable scoring (standard 2-1-0, alternative 3-1-0, etc.)
+  - Handles game points, match points, and bye scoring
+
+### Database to Structure Transformation (`tournament/db_to_structure.py`)
+
+Functions to convert Django ORM models to tournament_core structures:
+
+- `season_to_tournament_structure()` - Main entry point
+- `team_tournament_to_structure()` - Handles team tournaments with board pairings
+- `lone_tournament_to_structure()` - Handles individual tournaments
+- Properly handles color alternation in team matches
 
 ### Environment Configuration
 
@@ -134,6 +162,9 @@ Tests are located in `heltour/tournament/tests/`. The project uses Django's unit
 - API: `test_api.py`
 - Views: `test_views.py`
 - Background tasks: `test_tasks.py`
+- DB to Structure transformations: `test_db_to_structure.py`
+
+Pure Python tests for tournament calculations are in `heltour/tournament_core/tests/`.
 
 ## Important Notes
 

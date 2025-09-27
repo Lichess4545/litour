@@ -21,6 +21,7 @@ from django_countries.fields import CountryField
 
 from django.conf import settings
 from heltour.tournament import signals
+from heltour.tournament_core import tiebreaks
 
 logger = logging.getLogger(__name__)
 
@@ -520,70 +521,13 @@ class Season(_BaseModel):
             self._calculate_lone_scores()
 
     def _calculate_team_scores(self):
-        # Note: The scores are calculated in a particular way to allow easy adding of new tiebreaks
-        score_dict = {}
-
-        last_round = None
-        for round_ in self.round_set.filter(is_completed=True).order_by('number'):
-            round_pairings = round_.teampairing_set.all()
-            for team in Team.objects.filter(season=self):
-                white_pairing = find(round_pairings, white_team_id=team.id)
-                black_pairing = find(round_pairings, black_team_id=team.id)
-                is_playoffs = round_.number > self.rounds - self.playoffs
-
-                def increment_score(round_opponent, round_points, round_opponent_points,
-                                    round_wins):
-                    playoff_score, match_count, match_points, game_points, games_won, _, _, _, _ = \
-                        score_dict[(team.pk, last_round.number)] if last_round is not None else (
-                            0, 0, 0, 0, 0, 0, 0, None, 0)
-                    round_match_points = 0
-                    if round_opponent is None:
-                        if not is_playoffs:
-                            # Bye
-                            match_points += 1
-                            game_points += self.boards / 2
-                    else:
-                        if is_playoffs:
-                            if round_points > round_opponent_points:
-                                playoff_score += 2 ** (self.rounds - round_.number)
-                            # TODO: Handle ties/tiebreaks somehow?
-                        else:
-                            match_count += 1
-                            if round_points > round_opponent_points:
-                                round_match_points = 2
-                            elif round_points == round_opponent_points:
-                                round_match_points = 1
-                            match_points += round_match_points
-                            game_points += round_points
-                            games_won += round_wins
-                    score_dict[(team.pk, round_.number)] = _TeamScoreState(playoff_score,
-                                                                           match_count,
-                                                                           match_points,
-                                                                           game_points, games_won,
-                                                                           round_match_points,
-                                                                           round_points,
-                                                                           round_opponent,
-                                                                           round_opponent_points)
-
-                if white_pairing is not None:
-                    increment_score(white_pairing.black_team_id, white_pairing.white_points,
-                                    white_pairing.black_points, white_pairing.white_wins)
-                elif black_pairing is not None:
-                    increment_score(black_pairing.white_team_id, black_pairing.black_points,
-                                    black_pairing.white_points, black_pairing.black_wins)
-                else:
-                    increment_score(None, 0, 0, 0)
-            last_round = round_
-
-        # Precalculate groups of tied teams for the tiebreaks
-        tied_team_map = defaultdict(set)
-        for team in Team.objects.filter(season=self):
-            score_state = score_dict[(team.pk, last_round.number)]
-            tied_team_map[(score_state.match_points, score_state.game_points)].add(team.pk)
-
-        team_scores = TeamScore.objects.filter(team__season=self)
-        for score in team_scores:
-            if last_round is None:
+        from heltour.tournament.db_to_structure import season_to_tournament_structure
+        
+        # Check if we have any completed rounds
+        if not self.round_set.filter(is_completed=True).exists():
+            # No completed rounds - reset all scores
+            team_scores = TeamScore.objects.filter(team__season=self)
+            for score in team_scores:
                 score.playoff_score = 0
                 score.match_count = 0
                 score.match_points = 0
@@ -592,34 +536,52 @@ class Season(_BaseModel):
                 score.games_won = 0
                 score.sb_score = 0
                 score.buchholz = 0
+                score.save()
+            return
+        
+        # Convert to tournament structure and calculate results
+        tournament = season_to_tournament_structure(self)
+        results = tournament.calculate_results()
+        
+        # Get configured tiebreaks
+        tiebreak_order = self.league.get_team_tiebreaks()
+        
+        # Calculate all tiebreaks
+        tiebreak_results = tiebreaks.calculate_all_tiebreaks(results, tiebreak_order)
+        
+        # Update team scores with calculated values
+        team_scores = TeamScore.objects.filter(team__season=self)
+        for score in team_scores:
+            if score.team_id in results:
+                result = results[score.team_id]
+                score.match_points = result.match_points
+                score.game_points = result.game_points
+                
+                # Count games won from match results
+                score.games_won = sum(mr.games_won for mr in result.match_results)
+                
+                # Count matches (excluding byes)
+                score.match_count = sum(1 for mr in result.match_results if not mr.is_bye)
+                
+                # TODO: Handle playoff_score - need to determine if we're in playoffs
+                score.playoff_score = 0
+                
+                # Set tiebreak values
+                tiebreak_values = tiebreak_results.get(score.team_id, {})
+                score.sb_score = tiebreak_values.get('sonneborn_berger', 0)
+                score.buchholz = tiebreak_values.get('buchholz', 0)
+                score.head_to_head = tiebreak_values.get('head_to_head', 0)
             else:
-                score_state = score_dict[(score.team_id, last_round.number)]
-                score.playoff_score = score_state.playoff_score
-                score.match_count = score_state.match_count
-                score.match_points = score_state.match_points
-                score.game_points = score_state.game_points
-                score.games_won = score_state.games_won
-
-                # Tiebreak calculations
-                tied_team_set = tied_team_map[(score_state.match_points, score_state.game_points)]
-                score.head_to_head = 0
+                # Team has no results (no games played)
+                score.playoff_score = 0
+                score.match_count = 0
+                score.match_points = 0
+                score.game_points = 0
+                score.games_won = 0
                 score.sb_score = 0
                 score.buchholz = 0
-                for round_number in range(1, last_round.number + 1):
-                    round_state = score_dict[(score.team_id, round_number)]
-                    opponent = round_state.round_opponent
-                    if opponent is not None:
-                        opponent_match_points = score_dict[(round_state.round_opponent, last_round.number)].match_points
-                        # Sonneborn-Berger: sum of opponents' scores weighted by result
-                        if round_state.round_match_points == 2:
-                            score.sb_score += opponent_match_points
-                        elif round_state.round_match_points == 1:
-                            score.sb_score += opponent_match_points / 2.0
-                        # Buchholz: sum of all opponents' match points
-                        score.buchholz += opponent_match_points
-                        # Head-to-head among tied teams
-                        if opponent in tied_team_set:
-                            score.head_to_head += round_state.round_match_points
+                score.head_to_head = 0
+            
             score.save()
 
     def _calculate_lone_scores(self):
