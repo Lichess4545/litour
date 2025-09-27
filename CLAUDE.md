@@ -216,3 +216,55 @@ This project was originally called heltour and served lichess4545. It has been r
 - **DO NOT** create any files in migration directories
 - When model changes are made, inform the user that they need to run makemigrations
 - The user will handle all migration creation and execution
+
+## Tournament Core Module and Testing
+
+### Tournament Core Architecture
+The `tournament_core` module provides a clean, database-independent representation of tournaments:
+
+- **Pure Python Implementation**: No Django dependencies, just dataclasses and calculation logic
+- **Key Components**:
+  - `structure.py`: Defines `Game`, `Match`, `Round`, and `Tournament` dataclasses
+  - `tiebreaks.py`: Implements tiebreak calculations (Sonneborn-Berger, Buchholz, Head-to-Head, Games Won)
+  - `scoring.py`: Configurable scoring systems (standard 2-1-0, alternative 3-1-0, etc.)
+  - `db_to_structure.py`: Transforms Django ORM models to tournament_core structures
+
+### Testing Best Practices
+
+#### Use Tournament Builder for Tests
+The `tournament_core/tests/test_utils.py` provides a `TournamentBuilder` class for creating tournament structures easily:
+
+```python
+builder = TournamentBuilder([1, 2, 3, 4])  # List of competitor IDs
+builder.add_round(1)
+builder.add_game(1, 2, '1-0')  # Player 1 beats Player 2
+builder.add_game(3, 4, '1/2-1/2')  # Player 3 draws Player 4
+builder.auto_byes()  # Automatically add byes for players who didn't play
+tournament = builder.build()
+```
+
+#### Database Test Requirements
+- **Team Tournaments MUST Have Board Pairings**: The system will error if TeamPairing objects lack TeamPlayerPairing children
+- **Avoid Circular Dependencies**: Create rounds as `is_completed=False`, add all pairings and board results, then mark as completed
+- **No Synthetic Data**: The system does not support aggregate-only scores; all results must come from actual games
+
+#### Testing Workflow
+1. For pure logic tests, use `tournament_core` structures directly
+2. For integration tests, create complete database structures with board pairings
+3. Use `season_to_tournament_structure()` to convert database models to tournament_core
+4. All calculations flow through the tournament_core module for consistency
+
+### Important Design Decisions
+
+1. **No Legacy Support**: We don't support "legacy matches" - all team matches must have board results
+2. **Clean Error Handling**: The system raises clear errors when data is incomplete rather than guessing
+3. **Immutable Structures**: Tournament_core uses frozen dataclasses for thread safety and clarity
+4. **Separation of Concerns**: Database models handle persistence; tournament_core handles calculations
+
+### Future Testing Improvements
+
+The goal is to make tournament testing simple and reliable:
+- Expand `TournamentBuilder` with more convenience methods
+- Create fixture generators for common tournament scenarios  
+- Add property-based testing for tiebreak calculations
+- Ensure all edge cases (byes, forfeits, odd player counts) are well-tested
