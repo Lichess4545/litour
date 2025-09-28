@@ -210,6 +210,10 @@ class League(_BaseModel):
     class Meta:
         permissions = (("view_dashboard", "Can view dashboard"),)
 
+    @property
+    def registration_season(self):
+        return Season.get_registration_season(league=self)
+
     def time_control_initial(self):
         parts = self.time_control.split("+")
         if len(parts) != 2:

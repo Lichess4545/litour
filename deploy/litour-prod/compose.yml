@@ -66,6 +66,10 @@ services:
   migrate:
     image: ghcr.io/lichess4545/litour-migrate:latest
     env_file: "stack.env"
+    environment:
+      DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
+    secrets:
+      - litour_prod_db_url
     networks:
       - litour
     deploy:
