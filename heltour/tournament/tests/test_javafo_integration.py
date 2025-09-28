@@ -14,7 +14,7 @@ from heltour.tournament.models import (
     LonePlayerPairing,
     PlayerBye,
 )
-from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
+from heltour.tournament.builder import TournamentBuilder
 from heltour.tournament.tests.test_utils import can_run_javafo
 from heltour.tournament.db_to_structure import season_to_tournament_structure
 from heltour.tournament_core.tiebreaks import (

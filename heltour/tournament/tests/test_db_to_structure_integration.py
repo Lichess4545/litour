@@ -6,7 +6,7 @@ when used with the actual score calculation methods.
 from django.test import TestCase
 from heltour.tournament.models import Team, TeamScore
 from heltour.tournament.db_to_structure import season_to_tournament_structure
-from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
+from heltour.tournament.builder import TournamentBuilder
 
 
 class DbToStructureIntegrationTests(TestCase):

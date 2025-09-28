@@ -74,7 +74,7 @@ def structure_to_db(builder: TournamentBuilder):
     }
     # Add any additional season settings
     for key, value in metadata.season_settings.items():
-        if key not in season_data:
+        if key not in season_data and key != "player_kwargs":
             season_data[key] = value
 
     season = Season.objects.create(**season_data)
@@ -144,8 +144,10 @@ def structure_to_db(builder: TournamentBuilder):
                 TeamMember.objects.create(team=team, player=player, board_number=i)
     else:
         # Create individual players
+        player_kwargs = metadata.season_settings.get("player_kwargs", {})
         for player_name, player_id in metadata.players.items():
-            rating = 1500  # Default rating
+            kwargs = player_kwargs.get(player_id, {})
+            rating = kwargs.get('rating', 1500)
 
             # Create player
             player = Player.objects.create(

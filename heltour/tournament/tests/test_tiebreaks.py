@@ -9,7 +9,7 @@ from heltour.tournament.models import (
     TeamPlayerPairing,
     TEAM_TIEBREAK_OPTIONS,
 )
-from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
+from heltour.tournament.builder import TournamentBuilder
 
 
 class TeamTiebreakTestCase(TestCase):

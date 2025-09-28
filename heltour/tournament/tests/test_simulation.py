@@ -4,10 +4,7 @@ Tests for the tournament simulation framework.
 
 from django.test import TestCase
 from heltour.tournament.db_to_structure import season_to_tournament_structure
-from heltour.tournament.tests.test_tournament_simulation import (
-    TournamentBuilder,
-    TournamentSimulator,
-)
+from heltour.tournament.builder import TournamentBuilder
 
 
 class TournamentSimulationTests(TestCase):
@@ -126,29 +123,50 @@ class TournamentSimulationTests(TestCase):
 
     def test_alternative_api_style(self):
         """Show alternative API usage for more control."""
-        # Create simulator directly
-        sim = TournamentSimulator("Classical Championship")
-
-        # Set up league and season
-        league = sim.create_league("Classical Masters", "CM", "lone")
-        season = sim.create_season("CM", "Final Stage", rounds=2)
-
+        # Create builder and set up tournament
+        builder = TournamentBuilder()
+        builder.league("Classical Masters", "CM", "lone")
+        builder.season("CM", "Final Stage", rounds=2)
+        
         # Add players
-        carlsen = sim.add_player("Carlsen", 2830)
-        caruana = sim.add_player("Caruana", 2800)
+        builder.player("Carlsen", 2830)
+        builder.player("Caruana", 2800)
+        
+        # Build database objects
+        builder.build()
+        
+        # Play rounds with explicit control using start_round
+        round1 = builder.start_round(1)
+        
+        # Manual pairing - get players
+        from heltour.tournament.models import Player, LonePlayerPairing
+        carlsen = Player.objects.get(lichess_username="Carlsen")
+        caruana = Player.objects.get(lichess_username="Caruana")
+        
+        # Create pairing manually
+        LonePlayerPairing.objects.create(
+            round=round1,
+            white=carlsen,
+            black=caruana,
+            result="1-0",
+            pairing_order=1
+        )
+        builder.complete_round(round1)
 
-        # Play rounds with explicit control
-        round1 = sim.start_round(1)
-        sim.play_game(round1, carlsen, caruana, "1-0")
-        sim.complete_round(round1)
+        round2 = builder.start_round(2)
+        LonePlayerPairing.objects.create(
+            round=round2,
+            white=caruana,
+            black=carlsen,
+            result="1/2-1/2",
+            pairing_order=1
+        )
+        builder.complete_round(round2)
 
-        round2 = sim.start_round(2)
-        sim.play_game(round2, caruana, carlsen, "1/2-1/2")
-        sim.complete_round(round2)
-
-        sim.calculate_standings()
+        builder.calculate_standings()
 
         # Verify
+        season = builder.current_season
         scores = {
             sp.player.lichess_username: sp.loneplayerscore
             for sp in season.seasonplayer_set.all()

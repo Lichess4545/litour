@@ -9,7 +9,7 @@ from unittest import skipUnless
 from django.test import TestCase
 
 from heltour.tournament.models import TeamPairing, TeamBye
-from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
+from heltour.tournament.builder import TournamentBuilder
 from heltour.tournament.tests.test_utils import can_run_javafo
 
 
