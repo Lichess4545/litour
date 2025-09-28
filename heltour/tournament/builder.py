@@ -63,6 +63,7 @@ class TournamentBuilder:
         self.current_round = None
         self._round_number = 0
         self._completed_rounds = set()
+        self._existing_league = None  # For when we're working with an existing league
 
     # Core builder delegation methods
     
@@ -70,7 +71,14 @@ class TournamentBuilder:
         self, name: str, tag: str, type: str = "lone", **kwargs
     ) -> "TournamentBuilder":
         """Create a league with additional configuration."""
-        self.core_builder.league(name, tag, type, **kwargs)
+        # If we have an existing league, just store its info in metadata
+        if self._existing_league:
+            self.core_builder.metadata.league_name = self._existing_league.name
+            self.core_builder.metadata.league_tag = self._existing_league.tag
+            self.core_builder.metadata.league_type = type
+            self.core_builder.metadata.league_settings = kwargs
+        else:
+            self.core_builder.league(name, tag, type, **kwargs)
         return self
 
     def season(
@@ -157,8 +165,8 @@ class TournamentBuilder:
 
         # Build the tournament structure first
         tournament = self.core_builder.build()
-        # Convert to database objects
-        self._db_objects = structure_to_db(self.core_builder)
+        # Convert to database objects, using existing league if provided
+        self._db_objects = structure_to_db(self.core_builder, existing_league=self._existing_league)
         # Update current round reference
         if self._round_number > 0 and self._round_number <= len(
             self._db_objects["rounds"]

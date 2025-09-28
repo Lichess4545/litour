@@ -8,7 +8,7 @@ the TournamentBuilder into Django database models for persistence.
 from heltour.tournament_core.builder import TournamentBuilder
 
 
-def structure_to_db(builder: TournamentBuilder):
+def structure_to_db(builder: TournamentBuilder, existing_league=None):
     """Convert a TournamentBuilder's structure to database objects.
 
     This function creates all necessary database objects including:
@@ -19,6 +19,7 @@ def structure_to_db(builder: TournamentBuilder):
 
     Args:
         builder: A TournamentBuilder instance with tournament structure and metadata
+        existing_league: Optional existing League instance to use instead of creating new
 
     Returns:
         dict: A dictionary containing the created database objects:
@@ -49,21 +50,24 @@ def structure_to_db(builder: TournamentBuilder):
     tournament = builder.tournament
     metadata = builder.metadata
 
-    # Create League
-    league_data = {
-        "name": metadata.league_name or "Test League",
-        "tag": metadata.league_tag or "TL",
-        "competitor_type": metadata.competitor_type,
-        "rating_type": metadata.league_settings.get("rating_type", "standard"),
-        "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
-        "theme": metadata.league_settings.get("theme", "blue"),
-    }
-    # Add any additional league settings
-    for key, value in metadata.league_settings.items():
-        if key not in league_data:
-            league_data[key] = value
+    # Use existing league or create a new one
+    if existing_league:
+        league = existing_league
+    else:
+        league_data = {
+            "name": metadata.league_name or "Test League",
+            "tag": metadata.league_tag or "TL",
+            "competitor_type": metadata.competitor_type,
+            "rating_type": metadata.league_settings.get("rating_type", "standard"),
+            "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
+            "theme": metadata.league_settings.get("theme", "blue"),
+        }
+        # Add any additional league settings
+        for key, value in metadata.league_settings.items():
+            if key not in league_data:
+                league_data[key] = value
 
-    league = League.objects.create(**league_data)
+        league = League.objects.create(**league_data)
 
     # Create Season
     season_data = {

@@ -1,21 +1,16 @@
 """
-Management command to seed the database with test data.
+Management command to seed the database with test data using TournamentBuilder.
 """
 
+import random
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 from faker import Faker
 
-from heltour.tournament.seeders import (
-    LeagueSeeder,
-    PlayerSeeder,
-    SeasonSeeder,
-    RegistrationSeeder,
-    TeamSeeder,
-    RoundSeeder,
-    PairingSeeder,
-    InviteCodeSeeder,
-)
+from heltour.tournament.models import League, Player
+from heltour.tournament.seeders import LeagueSeeder, PlayerSeeder, InviteCodeSeeder
+from heltour.tournament.builder import TournamentBuilder
 
 
 class Command(BaseCommand):
@@ -55,11 +50,9 @@ class Command(BaseCommand):
         # Adjust counts based on dataset size
         if options["minimal"]:
             num_leagues = 2  # Create both team and individual league
-            num_players = (
-                80  # Enough for many teams (8 rounds * 2 * 4 boards = 64 minimum)
-            )
+            num_players = 80  # Enough for teams
         elif options["full"]:
-            num_leagues = 5  # Include the invite-only league
+            num_leagues = 5  # Include various league types
             num_players = 100
         else:
             num_leagues = options["leagues"]
@@ -69,14 +62,9 @@ class Command(BaseCommand):
 
         try:
             with transaction.atomic():
-                # Initialize seeders
+                # Initialize seeders for basic data
                 league_seeder = LeagueSeeder(fake)
                 player_seeder = PlayerSeeder(fake)
-                season_seeder = SeasonSeeder(fake)
-                registration_seeder = RegistrationSeeder(fake)
-                team_seeder = TeamSeeder(fake)
-                round_seeder = RoundSeeder(fake)
-                pairing_seeder = PairingSeeder(fake)
                 invite_code_seeder = InviteCodeSeeder(fake)
 
                 # 1. Create leagues
@@ -99,15 +87,168 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"✓ Created {len(players)} players")
                 )
 
-                # 3. Create seasons for each league
-                self.stdout.write("Creating seasons...")
-                all_seasons = season_seeder.seed(leagues=leagues)
-                self.stdout.write(
-                    self.style.SUCCESS(f"✓ Created {len(all_seasons)} seasons")
-                )
+                # 3. Define season configurations
+                season_configs = [
+                    {
+                        "name_suffix": "Completed Season",
+                        "tag_suffix": "completed",
+                        "is_completed": True,
+                        "is_active": False,
+                        "registration_open": False,
+                        "nominations_open": False,
+                        "start_date": timezone.now() - timezone.timedelta(days=120),
+                        "rounds": 8,
+                    },
+                    {
+                        "name_suffix": "Current Season",
+                        "tag_suffix": "current",
+                        "is_completed": False,
+                        "is_active": True,
+                        "registration_open": False,
+                        "nominations_open": True,
+                        "start_date": timezone.now() - timezone.timedelta(days=35),
+                        "rounds": 8,
+                    },
+                    {
+                        "name_suffix": "Upcoming Season",
+                        "tag_suffix": "upcoming",
+                        "is_completed": False,
+                        "is_active": False,
+                        "registration_open": True,
+                        "nominations_open": False,
+                        "start_date": timezone.now() + timezone.timedelta(days=14),
+                        "rounds": 8,
+                    },
+                ]
 
-                # 3a. Create invite codes for seasons
-                self.stdout.write("Creating invite codes...")
+                if options["full"]:
+                    season_configs.append({
+                        "name_suffix": "Planning Season",
+                        "tag_suffix": "planning",
+                        "is_completed": False,
+                        "is_active": False,
+                        "registration_open": False,
+                        "nominations_open": False,
+                        "start_date": timezone.now() + timezone.timedelta(days=60),
+                        "rounds": 10,
+                    })
+
+                # 4. Create tournaments using TournamentBuilder
+                all_seasons = []
+                team_name_generator = TeamNameGenerator()
+                
+                for league in leagues:
+                    for i, season_config in enumerate(season_configs):
+                        # Skip some configurations for minimal dataset
+                        if options["minimal"] and i > 1:
+                            continue
+                        
+                        self.stdout.write(
+                            f"\nCreating {league.name} - {season_config['name_suffix']}..."
+                        )
+                        
+                        # Create tournament using builder
+                        builder = TournamentBuilder()
+                        
+                        # Use existing league
+                        builder._existing_league = league
+                        
+                        # Create season
+                        season_name = f"{league.name} {season_config['name_suffix']}"
+                        season_tag = f"{league.tag}-{season_config['tag_suffix']}"
+                        boards = 4 if league.is_team_league() else None
+                        
+                        builder.season(
+                            league.tag,
+                            season_name,
+                            rounds=season_config['rounds'],
+                            boards=boards,
+                            tag=season_tag,
+                            start_date=season_config['start_date'],
+                            round_duration=timezone.timedelta(days=7),
+                            is_active=season_config.get('is_active', False),
+                            is_completed=season_config.get('is_completed', False),
+                            registration_open=season_config.get('registration_open', False),
+                            nominations_open=season_config.get('nominations_open', False),
+                        )
+                        
+                        # Add players/teams based on league type
+                        if league.is_team_league():
+                            # Calculate teams needed
+                            num_teams = min(len(players) // boards, 16)
+                            if num_teams % 2 == 1:
+                                num_teams -= 1  # Even number for pairing
+                            
+                            # Sort players by rating for balanced teams
+                            sorted_players = sorted(
+                                players[:num_teams * boards],
+                                key=lambda p: p.rating_for(league) or 1500,
+                                reverse=True
+                            )
+                            
+                            # Create teams with snake draft
+                            for team_idx in range(num_teams):
+                                team_name = team_name_generator.generate()
+                                team_players = []
+                                
+                                for board in range(boards):
+                                    if team_idx % 2 == 0:
+                                        player_idx = team_idx + board * num_teams
+                                    else:
+                                        player_idx = (num_teams - 1 - team_idx) + board * num_teams
+                                    
+                                    if player_idx < len(sorted_players):
+                                        player = sorted_players[player_idx]
+                                        team_players.append((
+                                            player.lichess_username,
+                                            player.rating_for(league) or 1500
+                                        ))
+                                
+                                builder.team(team_name, *team_players)
+                        else:
+                            # Add individual players
+                            num_players_for_season = min(len(players), max(12, len(players) // 3))
+                            for player in players[:num_players_for_season]:
+                                builder.player(
+                                    player.lichess_username,
+                                    rating=player.rating_for(league) or 1500,
+                                    is_active=True
+                                )
+                        
+                        # Build tournament structure
+                        builder.build()
+                        season = builder.current_season
+                        all_seasons.append(season)
+                        
+                        # Generate rounds and pairings for active/completed seasons
+                        if season_config.get('is_active') or season_config.get('is_completed'):
+                            rounds_to_complete = (
+                                season_config['rounds'] if season_config.get('is_completed') 
+                                else max(1, season_config['rounds'] // 3)
+                            )
+                            
+                            for round_num in range(1, rounds_to_complete + 1):
+                                round_obj = builder.start_round(round_num, generate_pairings_auto=True)
+                                
+                                # Simulate results for completed rounds
+                                if season_config.get('is_completed') or round_num < rounds_to_complete:
+                                    builder.simulate_round_results(round_obj)
+                                    builder.complete_round(round_obj)
+                            
+                            # Calculate final standings
+                            builder.calculate_standings()
+                        
+                        # Summary for this season
+                        league_type = "team" if league.is_team_league() else "individual"
+                        self.stdout.write(
+                            self.style.SUCCESS(
+                                f"  ✓ Created {league_type} tournament with "
+                                f"{season_config['rounds']} rounds"
+                            )
+                        )
+
+                # 5. Create invite codes for all seasons
+                self.stdout.write("\nCreating invite codes...")
                 invite_codes = invite_code_seeder.seed(
                     captain_codes=10 if not options["minimal"] else 5,
                     seasons=all_seasons
@@ -116,86 +257,20 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"✓ Created {len(invite_codes)} invite codes")
                 )
 
-                # 4. Process each season
-                for season in all_seasons:
-                    print(season)
-                    league_type = (
-                        "team" if season.league.is_team_league() else "individual"
+                # 6. Create team member codes for team leagues
+                from heltour.tournament.models import Team
+                all_teams = Team.objects.filter(season__in=all_seasons)
+                if all_teams.exists():
+                    team_codes = invite_code_seeder.seed_team_member_codes(
+                        teams=list(all_teams),
+                        codes_per_team=3 if not options["minimal"] else 2
                     )
-                    self.stdout.write(f"\nProcessing {season.name} ({league_type})...")
-
-                    # Create registrations
-                    if (
-                        season.registration_open
-                        or season.is_active
-                        or season.is_completed
-                    ):
-                        registrations = registration_seeder.seed(season, players)
+                    if team_codes:
                         self.stdout.write(
-                            f"  ✓ Created {len(registrations)} registrations"
+                            self.style.SUCCESS(
+                                f"✓ Created {len(team_codes)} team member codes"
+                            )
                         )
-
-                    # Create teams for team leagues
-                    if season.league.is_team_league() and (
-                        season.is_active or season.is_completed
-                    ):
-                        teams = team_seeder.seed(season)
-                        self.stdout.write(f"  ✓ Created {len(teams)} teams")
-                        
-                        # Create team member codes for teams with captains
-                        # Only create if teams were newly created (not existing)
-                        if teams:
-                            team_codes = invite_code_seeder.seed_team_member_codes(
-                                teams=teams,
-                                codes_per_team=3 if not options["minimal"] else 2
-                            )
-                            if team_codes:
-                                self.stdout.write(f"  ✓ Created {len(team_codes)} team member codes")
-
-                    # Create rounds
-                    rounds = round_seeder.seed(season)
-                    self.stdout.write(f"  ✓ Created {len(rounds)} rounds")
-
-                    # Create pairings for each round
-                    total_pairings = 0
-                    for round_obj in rounds:
-                        if round_obj.is_completed or round_obj.publish_pairings:
-                            pairings = pairing_seeder.seed(round_obj)
-                            total_pairings += len(pairings)
-
-                    if total_pairings > 0:
-                        self.stdout.write(f"  ✓ Created {total_pairings} pairings")
-
-                    # Calculate scores for active and completed seasons
-                    if season.is_active or season.is_completed:
-                        # For team leagues, ensure all teams have TeamScore objects
-                        if season.league.is_team_league():
-                            from heltour.tournament.models import Team, TeamScore
-
-                            for team in Team.objects.filter(
-                                season=season, is_active=True
-                            ):
-                                # This will create the TeamScore if it doesn't exist
-                                team.get_teamscore()
-
-                        season.calculate_scores()
-                        self.stdout.write("  ✓ Calculated scores")
-
-                        # Debug info
-                        if season.league.is_team_league():
-                            score_count = TeamScore.objects.filter(
-                                team__season=season
-                            ).count()
-                            self.stdout.write(f"  → TeamScore objects: {score_count}")
-                        else:
-                            from heltour.tournament.models import LonePlayerScore
-
-                            score_count = LonePlayerScore.objects.filter(
-                                season_player__season=season
-                            ).count()
-                            self.stdout.write(
-                                f"  → LonePlayerScore objects: {score_count}"
-                            )
 
                 # Summary
                 self.stdout.write(self.style.SUCCESS("\n" + "=" * 50))
@@ -233,7 +308,6 @@ class Command(BaseCommand):
 
         # Show some sample players for testing
         self.stdout.write("\nSample players for testing:")
-        # Get the first league to show ratings for
         first_league = League.objects.filter(rating_type="classical").first()
         if not first_league:
             first_league = League.objects.first()
@@ -241,3 +315,48 @@ class Command(BaseCommand):
         for player in Player.objects.all()[:5]:
             rating = player.rating_for(first_league) if first_league else "N/A"
             self.stdout.write(f"  - {player.lichess_username} (Rating: {rating})")
+
+
+class TeamNameGenerator:
+    """Generate unique team names."""
+    
+    ADJECTIVES = [
+        "Royal", "Swift", "Mighty", "Silent", "Golden", "Silver", "Crimson", 
+        "Azure", "Fierce", "Noble", "Ancient", "Modern", "Tactical", "Strategic",
+        "Dynamic", "Lightning", "Thunder", "Storm", "Fire", "Ice", "Shadow", 
+        "Brilliant", "Epic", "Legendary", "Mystic", "Valiant"
+    ]
+
+    NOUNS = [
+        "Knights", "Bishops", "Rooks", "Queens", "Kings", "Pawns", "Masters",
+        "Tacticians", "Strategists", "Defenders", "Attackers", "Gladiators",
+        "Warriors", "Champions", "Legends", "Eagles", "Lions", "Tigers", 
+        "Dragons", "Phoenix", "Falcons", "Sharks", "Wolves", "Guardians"
+    ]
+    
+    def __init__(self):
+        self.used_names = set()
+    
+    def generate(self) -> str:
+        """Generate a unique team name."""
+        attempts = 0
+        while attempts < 100:
+            adj = random.choice(self.ADJECTIVES)
+            noun = random.choice(self.NOUNS)
+            name = f"{adj} {noun}"
+            
+            if name not in self.used_names:
+                self.used_names.add(name)
+                return name
+            
+            attempts += 1
+        
+        # Fallback with number
+        base_name = f"{random.choice(self.ADJECTIVES)} {random.choice(self.NOUNS)}"
+        counter = 2
+        while f"{base_name} {counter}" in self.used_names:
+            counter += 1
+        
+        name = f"{base_name} {counter}"
+        self.used_names.add(name)
+        return name
