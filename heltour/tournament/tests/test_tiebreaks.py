@@ -9,100 +9,38 @@ from heltour.tournament.models import (
     TeamPlayerPairing,
     TEAM_TIEBREAK_OPTIONS,
 )
-from heltour.tournament.tests.testutils import (
-    createCommonLeagueData,
-    get_league,
-    get_season,
-)
+from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
 
 
 class TeamTiebreakTestCase(TestCase):
-    def setUp(self):
-        createCommonLeagueData()
-        self.league = get_league("team")
-        self.season = get_season("team")
-
-        # Fix the league to have required fields
-        self.league.theme = "blue"
-        self.league.pairing_type = "swiss-dutch"
-        self.league.save()
-
-        # Get the teams created by createCommonLeagueData (creates 4 teams with 2 boards each)
-        self.teams = list(Team.objects.filter(season=self.season).order_by("number"))
-
-        # Create rounds
-        self.rounds = []
-        for i in range(1, 4):  # 3 rounds
-            round_ = Round.objects.create(
-                season=self.season, number=i, is_completed=False
-            )
-            self.rounds.append(round_)
-
-    def complete_round_with_byes(self, round_):
-        """Complete a round and create TeamBye records for teams without pairings."""
-        # Find teams that didn't play
-        teams_that_played = set()
-        for pairing in TeamPairing.objects.filter(round=round_):
-            teams_that_played.add(pairing.white_team_id)
-            teams_that_played.add(pairing.black_team_id)
-
-        all_teams = set(self.teams)
-        for team in all_teams:
-            if team.id not in teams_that_played:
-                TeamBye.objects.create(
-                    round=round_, team=team, type="full-point-pairing-bye"
-                )
-
-        round_.is_completed = True
-        round_.save()
-
-    def create_pairing_with_results(self, round_, white_team, black_team, results):
-        """
-        Create a team pairing with specified results.
-        results: list of results for each board, e.g., ['1-0', '0-1', '1/2-1/2', '1-0']
-        """
-        pairing = TeamPairing.objects.create(
-            round=round_, white_team=white_team, black_team=black_team, pairing_order=1
+    def create_base_tournament(self, rounds=3, boards=2):
+        """Create a base tournament with 4 teams for testing."""
+        return (
+            TournamentBuilder()
+            .league("Test League", "TL", "team", theme="blue", pairing_type="swiss-dutch", rating_type="classical")
+            .season("TL", "Test Season", rounds=rounds, boards=boards)
+            .team("Team 1", "T1P1", "T1P2")
+            .team("Team 2", "T2P1", "T2P2")
+            .team("Team 3", "T3P1", "T3P2")
+            .team("Team 4", "T4P1", "T4P2")
         )
-
-        white_members = list(white_team.teammember_set.order_by("board_number"))
-        black_members = list(black_team.teammember_set.order_by("board_number"))
-
-        for i, result in enumerate(results):
-            # Board colors alternate: odd boards have white team on white, even boards have black team on white
-            if (i + 1) % 2 == 1:  # Odd board number
-                white_player = white_members[i].player
-                black_player = black_members[i].player
-            else:  # Even board number
-                white_player = black_members[i].player
-                black_player = white_members[i].player
-
-            # Create TeamPlayerPairing directly without creating a separate PlayerPairing
-            TeamPlayerPairing.objects.create(
-                team_pairing=pairing,
-                board_number=i + 1,
-                white=white_player,
-                black=black_player,
-                result=result,
-            )
-
-        pairing.refresh_points()
-        pairing.save()
-        return pairing
 
     def test_match_points_calculation(self):
         """Test that match points are calculated correctly"""
-        # Round 1: Team 1 wins against Team 2 (1.5-0.5)
-        self.create_pairing_with_results(
-            self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Teams 3 and 4 get automatic byes
+            .complete()
+            .calculate()
+            .build()
         )
 
-        self.complete_round_with_byes(self.rounds[0])
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Check match points
@@ -114,18 +52,19 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_game_points_calculation(self):
         """Test that game points are calculated correctly"""
-        # Round 1: Team 1 wins 1.5-0.5
-        self.create_pairing_with_results(
-            self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            .complete()
+            .calculate()
+            .build()
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         self.assertEqual(scores[1].game_points, 1.5)
@@ -133,31 +72,33 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_sonneborn_berger_calculation(self):
         """Test Sonneborn-Berger tiebreak calculation"""
+        tournament = (
+            self.create_base_tournament(rounds=2)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Team 3 gets bye
+            .complete()
+            .round(2)
+            .match("Team 1", "Team 3", "1-0", "0-1")  # Draw 1-1
+            # Team 2 gets bye
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Test Season"]
+        league = season.league
+        
         # Configure sonneborn-berger as a tiebreak
-        self.league.team_tiebreak_1 = "sonneborn_berger"
-        self.league.save()
-
-        # Round 1: Team 1 wins vs Team 2
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1-0", "1/2-1/2"],  # Team 1 wins 1.5-0.5
-        )
-        # Team 3 gets bye
-
-        # Round 2: Team 1 vs Team 3 (draw), Team 2 gets bye
-        self.create_pairing_with_results(
-            self.rounds[1], self.teams[0], self.teams[2], ["1-0", "0-1"]  # Draw 1-1
-        )
-
-        self.complete_round_with_byes(self.rounds[0])
-        self.complete_round_with_byes(self.rounds[1])
-        self.season.calculate_scores()
+        league.team_tiebreak_1 = "sonneborn_berger"
+        league.save()
+        
+        # Recalculate scores with the tiebreak configured
+        season.calculate_scores()
 
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Verify SB calculation
@@ -167,34 +108,33 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_buchholz_calculation(self):
         """Test Buchholz tiebreak calculation"""
+        tournament = (
+            self.create_base_tournament(rounds=2)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Team 3 and 4 get byes
+            .complete()
+            .round(2)
+            .match("Team 1", "Team 3", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5  
+            # Team 2 and 4 get byes
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Test Season"]
+        league = season.league
+        
         # Configure buchholz as a tiebreak
-        self.league.team_tiebreak_2 = "buchholz"  # Add buchholz to the tiebreaks
-        self.league.save()
-
-        # Round 1
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1-0", "1/2-1/2"],  # Team 1 wins 1.5-0.5
-        )
-        # Team 3 gets a bye
-
-        # Round 2
-        self.create_pairing_with_results(
-            self.rounds[1],
-            self.teams[0],
-            self.teams[2],
-            ["1-0", "0-1"],  # Team 1 wins 1.5-0.5
-        )
-
-        self.complete_round_with_byes(self.rounds[0])
-        self.complete_round_with_byes(self.rounds[1])
-        self.season.calculate_scores()
+        league.team_tiebreak_2 = "buchholz"  # Add buchholz to the tiebreaks
+        league.save()
+        
+        # Recalculate scores with the tiebreak configured
+        season.calculate_scores()
 
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Verify individual team scores first
@@ -216,34 +156,24 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_head_to_head_calculation(self):
         """Test head-to-head tiebreak among tied teams"""
-        # Create a scenario where teams are tied on match points and game points
-        # Round 1: Team 1 vs Team 2
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1-0", "1/2-1/2"],  # Team 1 wins 1.5-0.5
+        tournament = (
+            self.create_base_tournament(rounds=2)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Team 3 gets a bye
+            .complete()
+            .round(2)
+            .match("Team 1", "Team 3", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Team 2 gets a bye
+            .complete()
+            .calculate()
+            .build()
         )
-        # Team 3 gets a bye
 
-        # Round 2: Team 1 beats Team 3 directly
-        self.create_pairing_with_results(
-            self.rounds[1],
-            self.teams[0],
-            self.teams[2],
-            ["1-0", "1/2-1/2"],  # Team 1 wins 1.5-0.5
-        )
-        # Team 2 gets a bye in round 2
-
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.rounds[1].is_completed = True
-        self.rounds[1].save()
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Head-to-head only applies among teams tied on both match points and game points
@@ -253,22 +183,20 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_games_won_calculation(self):
         """Test games won tiebreak"""
-        # Round 1
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1-0", "1/2-1/2"],  # Team 1: 1 win, 1 draw
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")  # Team 1: 1 win, 1 draw
+            # Team 3 gets a bye
+            .complete()
+            .calculate()
+            .build()
         )
-        # Team 3 gets a bye in round 1
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         self.assertEqual(scores[1].games_won, 1)
@@ -277,23 +205,30 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_configurable_tiebreak_order(self):
         """Test that tiebreaks are applied in the configured order"""
-        # Configure custom tiebreak order
-        self.league.team_tiebreak_1 = "buchholz"
-        self.league.team_tiebreak_2 = "sonneborn_berger"
-        self.league.team_tiebreak_3 = "game_points"
-        self.league.team_tiebreak_4 = "head_to_head"
-        self.league.save()
-
-        # Create some pairings
-        self.create_pairing_with_results(
-            self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")
+            .complete()
+            .calculate()
+            .build()
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.season.calculate_scores()
+        season = tournament.seasons["Test Season"]
+        league = season.league
+        
+        # Configure custom tiebreak order
+        league.team_tiebreak_1 = "buchholz"
+        league.team_tiebreak_2 = "sonneborn_berger"
+        league.team_tiebreak_3 = "game_points"
+        league.team_tiebreak_4 = "head_to_head"
+        league.save()
 
-        team_score = TeamScore.objects.get(team=self.teams[0])
+        # Recalculate scores with configured tiebreaks
+        season.calculate_scores()
+
+        team = Team.objects.get(season=season, number=1)
+        team_score = TeamScore.objects.get(team=team)
         sort_key = team_score.pairing_sort_key()
 
         # Verify sort key order: playoff_score, match_points, buchholz, sb, game_points, h2h, seed_rating
@@ -310,17 +245,20 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_bye_handling(self):
         """Test that byes are handled correctly in score calculations"""
-        # Only create pairing for teams 1 and 2, team 3 gets a bye
-        self.create_pairing_with_results(
-            self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1/2-1/2")
+            # Team 3 and 4 get automatic byes
+            .complete()
+            .calculate()
+            .build()
         )
 
-        self.complete_round_with_byes(self.rounds[0])
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         scores = {
             ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=self.season)
+            for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Team with bye should get 1 match point and half the board points
@@ -329,47 +267,50 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_tiebreak_choices(self):
         """Test that all tiebreak choices are valid"""
+        tournament = self.create_base_tournament(rounds=1).build()
+        league = tournament.simulator.leagues["TL"]
+        
         valid_choices = [choice[0] for choice in TEAM_TIEBREAK_OPTIONS]
 
         # Test all valid choices can be set
         for choice in valid_choices:
-            self.league.team_tiebreak_1 = choice
-            self.league.full_clean()  # Should not raise ValidationError
+            league.team_tiebreak_1 = choice
+            league.full_clean()  # Should not raise ValidationError
 
         # Test invalid choice raises error
         with self.assertRaises(ValidationError):
-            self.league.team_tiebreak_1 = "invalid_choice"
-            self.league.full_clean()
+            league.team_tiebreak_1 = "invalid_choice"
+            league.full_clean()
 
     def test_standings_sort_order(self):
         """Test that teams are sorted correctly in standings"""
         # Create a simple pairing
-        # Board 1: Team 0 plays white, Team 1 plays black
-        # Board 2: Team 1 plays white, Team 0 plays black
-        # To have Team 0 win 2-0, we need:
-        # - Board 1: '1-0' (Team 0 wins as white)
-        # - Board 2: '0-1' (Team 0 wins as black)
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1-0", "0-1"],  # Team 0 wins 2-0
+        # Board 1: Team 1 plays white, Team 2 plays black
+        # Board 2: Team 2 plays white, Team 1 plays black
+        # To have Team 1 win 2-0, we need:
+        # - Board 1: '1-0' (Team 1 wins as white)
+        # - Board 2: '1-0' (Team 2 wins as white, but this means Team 1 wins the board)
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1-0", "1-0")  # Team 1 wins 2-0
+            .complete()
+            .calculate()
+            .build()
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         # Get all team scores
-        team_scores = TeamScore.objects.filter(team__season=self.season)
+        team_scores = TeamScore.objects.filter(team__season=season)
+        teams = {team.name: team for team in Team.objects.filter(season=season)}
 
         # Verify scores are calculated
         scores_dict = {ts.team: ts for ts in team_scores}
 
         # Team that won should have 2 match points
-        self.assertEqual(scores_dict[self.teams[0]].match_points, 2)
+        self.assertEqual(scores_dict[teams["Team 1"]].match_points, 2)
         # Team that lost should have 0 match points
-        self.assertEqual(scores_dict[self.teams[1]].match_points, 0)
+        self.assertEqual(scores_dict[teams["Team 2"]].match_points, 0)
 
         # Test that sorting works - winner should rank higher than loser
         sorted_scores = sorted(
@@ -379,9 +320,9 @@ class TeamTiebreakTestCase(TestCase):
         loser_index = None
 
         for i, score in enumerate(sorted_scores):
-            if score.team == self.teams[0]:
+            if score.team == teams["Team 1"]:
                 winner_index = i
-            elif score.team == self.teams[1]:
+            elif score.team == teams["Team 2"]:
                 loser_index = i
 
         self.assertIsNotNone(winner_index)
@@ -392,38 +333,39 @@ class TeamTiebreakTestCase(TestCase):
         """Test that tiebreaks are used to sort teams with equal match points"""
         # Create a single pairing where teams draw
         # For a true 1-1 draw:
-        # Board 1: Team 0 (white) draws with Team 1 (black): '1/2-1/2'
-        # Board 2: Team 1 (white) draws with Team 0 (black): '1/2-1/2'
-        self.create_pairing_with_results(
-            self.rounds[0],
-            self.teams[0],
-            self.teams[1],
-            ["1/2-1/2", "1/2-1/2"],  # Draw 1-1 with both boards drawn
+        # Board 1: Team 1 (white) draws with Team 2 (black): '1/2-1/2'
+        # Board 2: Team 2 (white) draws with Team 1 (black): '1/2-1/2'
+        tournament = (
+            self.create_base_tournament(rounds=1)
+            .round(1)
+            .match("Team 1", "Team 2", "1/2-1/2", "1/2-1/2")  # Draw 1-1 with both boards drawn
+            # Teams 3 and 4 get automatic byes
+            .complete()
+            .calculate()
+            .build()
         )
-        # Teams 2 and 3 get byes (1 match point each)
 
-        self.complete_round_with_byes(self.rounds[0])
-        self.season.calculate_scores()
-
+        season = tournament.seasons["Test Season"]
         # Get scores
-        scores = TeamScore.objects.filter(team__season=self.season)
+        scores = TeamScore.objects.filter(team__season=season)
+        teams = list(Team.objects.filter(season=season).order_by("number"))
         scores_dict = {ts.team: ts for ts in scores}
 
-        # Teams 0 and 1 should have 1 match point each (draw)
-        self.assertEqual(scores_dict[self.teams[0]].match_points, 1)
-        self.assertEqual(scores_dict[self.teams[1]].match_points, 1)
-        # Teams 2 and 3 should have 1 match point each (bye)
-        self.assertEqual(scores_dict[self.teams[2]].match_points, 1)
-        self.assertEqual(scores_dict[self.teams[3]].match_points, 1)
+        # Teams 1 and 2 should have 1 match point each (draw)
+        self.assertEqual(scores_dict[teams[0]].match_points, 1)  # Team 1
+        self.assertEqual(scores_dict[teams[1]].match_points, 1)  # Team 2
+        # Teams 3 and 4 should have 1 match point each (bye)
+        self.assertEqual(scores_dict[teams[2]].match_points, 1)  # Team 3
+        self.assertEqual(scores_dict[teams[3]].match_points, 1)  # Team 4
 
         # All teams should have 1 game point
-        self.assertEqual(scores_dict[self.teams[0]].game_points, 1.0)  # 0.5 + 0.5 = 1
-        self.assertEqual(scores_dict[self.teams[1]].game_points, 1.0)  # 0.5 + 0.5 = 1
-        # Teams 2 and 3 with byes get half board points
+        self.assertEqual(scores_dict[teams[0]].game_points, 1.0)  # 0.5 + 0.5 = 1
+        self.assertEqual(scores_dict[teams[1]].game_points, 1.0)  # 0.5 + 0.5 = 1
+        # Teams 3 and 4 with byes get half board points
         self.assertEqual(
-            scores_dict[self.teams[2]].game_points, 1.0
+            scores_dict[teams[2]].game_points, 1.0
         )  # 2 boards / 2 = 1
-        self.assertEqual(scores_dict[self.teams[3]].game_points, 1.0)
+        self.assertEqual(scores_dict[teams[3]].game_points, 1.0)
 
         # All teams are tied on match points and game points
         # Other tiebreaks (like seed rating) determine order
@@ -437,7 +379,7 @@ class TeamTiebreakTestCase(TestCase):
         # Verify that tiebreaks are being calculated
         for score in scores:
             # At least some tiebreak values should be non-zero
-            if score.team in [self.teams[0], self.teams[1]]:
+            if score.team in [teams[0], teams[1]]:
                 # Teams that played should have opponent-based tiebreaks
                 self.assertIsNotNone(score.sb_score)
                 self.assertIsNotNone(score.buchholz)
