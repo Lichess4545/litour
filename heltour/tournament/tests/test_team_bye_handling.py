@@ -10,7 +10,7 @@ from django.test import TestCase
 from heltour.tournament.models import TeamPairing, TeamBye, TeamScore
 from heltour.tournament.db_to_structure import season_to_tournament_structure
 from heltour.tournament.builder import TournamentBuilder
-from heltour.tournament.tests.test_utils import can_run_javafo
+from heltour.tournament.tests.testutils import can_run_javafo
 
 
 @skipUnless(can_run_javafo(), "JavaFo environment not available")

@@ -15,7 +15,7 @@ from heltour.tournament.models import (
     PlayerBye,
 )
 from heltour.tournament.builder import TournamentBuilder
-from heltour.tournament.tests.test_utils import can_run_javafo
+from heltour.tournament.tests.testutils import can_run_javafo
 from heltour.tournament.db_to_structure import season_to_tournament_structure
 from heltour.tournament_core.tiebreaks import (
     calculate_sonneborn_berger,

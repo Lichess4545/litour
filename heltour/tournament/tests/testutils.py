@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.urls import reverse
 
 from heltour.tournament.models import (
@@ -131,3 +132,19 @@ class Shush:
         if exc_type is not None:
             logging.getLogger(__name__).error(f"Error {exc_type}: {exc_value}")
         return True
+
+
+def can_run_javafo():
+    """Check if we can run JavaFo tests."""
+    if not hasattr(settings, "JAVAFO_COMMAND"):
+        print(
+            "\nWARNING: Skipping JavaFo tests - JAVAFO_COMMAND not configured in settings"
+        )
+        return False
+    try:
+        import subprocess
+
+        result = subprocess.run(["java", "-version"], capture_output=True)
+        return result.returncode == 0
+    except:
+        return False
