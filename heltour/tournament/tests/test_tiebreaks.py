@@ -17,7 +17,14 @@ class TeamTiebreakTestCase(TestCase):
         """Create a base tournament with 4 teams for testing."""
         return (
             TournamentBuilder()
-            .league("Test League", "TL", "team", theme="blue", pairing_type="swiss-dutch", rating_type="classical")
+            .league(
+                "Test League",
+                "TL",
+                "team",
+                theme="blue",
+                pairing_type="swiss-dutch",
+                rating_type="classical",
+            )
             .season("TL", "Test Season", rounds=rounds, boards=boards)
             .team("Team 1", "T1P1", "T1P2")
             .team("Team 2", "T2P1", "T2P2")
@@ -39,8 +46,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Check match points
@@ -63,8 +69,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         self.assertEqual(scores[1].game_points, 1.5)
@@ -88,17 +93,16 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         league = season.league
-        
+
         # Configure sonneborn-berger as a tiebreak
         league.team_tiebreak_1 = "sonneborn_berger"
         league.save()
-        
+
         # Recalculate scores with the tiebreak configured
         season.calculate_scores()
 
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Verify SB calculation
@@ -115,7 +119,7 @@ class TeamTiebreakTestCase(TestCase):
             # Team 3 and 4 get byes
             .complete()
             .round(2)
-            .match("Team 1", "Team 3", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5  
+            .match("Team 1", "Team 3", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
             # Team 2 and 4 get byes
             .complete()
             .calculate()
@@ -124,17 +128,16 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         league = season.league
-        
+
         # Configure buchholz as a tiebreak
         league.team_tiebreak_2 = "buchholz"  # Add buchholz to the tiebreaks
         league.save()
-        
+
         # Recalculate scores with the tiebreak configured
         season.calculate_scores()
 
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Verify individual team scores first
@@ -172,8 +175,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Head-to-head only applies among teams tied on both match points and game points
@@ -195,8 +197,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         self.assertEqual(scores[1].games_won, 1)
@@ -216,7 +217,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         league = season.league
-        
+
         # Configure custom tiebreak order
         league.team_tiebreak_1 = "buchholz"
         league.team_tiebreak_2 = "sonneborn_berger"
@@ -257,8 +258,7 @@ class TeamTiebreakTestCase(TestCase):
 
         season = tournament.seasons["Test Season"]
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
         # Team with bye should get 1 match point and half the board points
@@ -269,7 +269,7 @@ class TeamTiebreakTestCase(TestCase):
         """Test that all tiebreak choices are valid"""
         tournament = self.create_base_tournament(rounds=1).build()
         league = tournament.simulator.leagues["TL"]
-        
+
         valid_choices = [choice[0] for choice in TEAM_TIEBREAK_OPTIONS]
 
         # Test all valid choices can be set
@@ -338,7 +338,9 @@ class TeamTiebreakTestCase(TestCase):
         tournament = (
             self.create_base_tournament(rounds=1)
             .round(1)
-            .match("Team 1", "Team 2", "1/2-1/2", "1/2-1/2")  # Draw 1-1 with both boards drawn
+            .match(
+                "Team 1", "Team 2", "1/2-1/2", "1/2-1/2"
+            )  # Draw 1-1 with both boards drawn
             # Teams 3 and 4 get automatic byes
             .complete()
             .calculate()
@@ -362,9 +364,7 @@ class TeamTiebreakTestCase(TestCase):
         self.assertEqual(scores_dict[teams[0]].game_points, 1.0)  # 0.5 + 0.5 = 1
         self.assertEqual(scores_dict[teams[1]].game_points, 1.0)  # 0.5 + 0.5 = 1
         # Teams 3 and 4 with byes get half board points
-        self.assertEqual(
-            scores_dict[teams[2]].game_points, 1.0
-        )  # 2 boards / 2 = 1
+        self.assertEqual(scores_dict[teams[2]].game_points, 1.0)  # 2 boards / 2 = 1
         self.assertEqual(scores_dict[teams[3]].game_points, 1.0)
 
         # All teams are tied on match points and game points

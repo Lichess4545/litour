@@ -11,8 +11,6 @@ from dataclasses import dataclass, field
 from heltour.tournament_core.structure import (
     Tournament,
     Round,
-    Match,
-    Game,
     GameResult,
     create_single_game_match,
     create_team_match,
@@ -24,17 +22,17 @@ from heltour.tournament_core.scoring import ScoringSystem, STANDARD_SCORING
 @dataclass
 class TournamentMetadata:
     """Metadata for the tournament (not part of core structure)."""
-    
+
     league_name: str = ""
     league_tag: str = ""
     season_name: str = ""
     competitor_type: str = "lone"  # "lone" or "team"
     boards: Optional[int] = None
-    
+
     # For tracking players/teams by name
     teams: Dict[str, Dict] = field(default_factory=dict)  # name -> team info
     players: Dict[str, int] = field(default_factory=dict)  # name -> player id
-    
+
     # League settings (for database compatibility)
     league_settings: Dict = field(default_factory=dict)
     season_settings: Dict = field(default_factory=dict)
@@ -44,8 +42,9 @@ class TournamentBuilder:
     """Builder for creating tournament structures easily."""
 
     def __init__(
-        self, competitors: Optional[List[int]] = None, 
-        scoring: ScoringSystem = STANDARD_SCORING
+        self,
+        competitors: Optional[List[int]] = None,
+        scoring: ScoringSystem = STANDARD_SCORING,
     ):
         """Initialize with optional list of competitor IDs."""
         self.competitors = competitors or []
@@ -56,7 +55,7 @@ class TournamentBuilder:
         self._next_team_id = 1
 
     # High-level fluent API methods (matching database TournamentBuilder)
-    
+
     def league(
         self, name: str, tag: str, type: str = "lone", **kwargs
     ) -> "TournamentBuilder":
@@ -68,12 +67,17 @@ class TournamentBuilder:
         return self
 
     def season(
-        self, league_tag: str, name: str, rounds: int = 3, boards: Optional[int] = None, **kwargs
+        self,
+        league_tag: str,
+        name: str,
+        rounds: int = 3,
+        boards: Optional[int] = None,
+        **kwargs,
     ) -> "TournamentBuilder":
         """Define season metadata."""
         self.metadata.season_name = name
         self.metadata.boards = boards
-        self.metadata.season_settings = {'rounds': rounds, **kwargs}
+        self.metadata.season_settings = {"rounds": rounds, **kwargs}
         return self
 
     def team(
@@ -82,15 +86,10 @@ class TournamentBuilder:
         """Add a team with players."""
         team_id = self._next_team_id
         self._next_team_id += 1
-        
+
         # Store team metadata
-        team_info = {
-            "id": team_id,
-            "name": name,
-            "players": [],
-            **kwargs
-        }
-        
+        team_info = {"id": team_id, "name": name, "players": [], **kwargs}
+
         # Process players
         for p in players:
             if isinstance(p, tuple):
@@ -98,34 +97,32 @@ class TournamentBuilder:
             else:
                 player_name = p
                 rating = 1500
-            
+
             player_id = self._get_or_create_player_id(player_name)
-            team_info["players"].append({
-                "name": player_name,
-                "id": player_id,
-                "rating": rating
-            })
-        
+            team_info["players"].append(
+                {"name": player_name, "id": player_id, "rating": rating}
+            )
+
         self.metadata.teams[name] = team_info
-        
+
         # Add team to competitors
         if team_id not in self.competitors:
             self.competitors.append(team_id)
         if team_id not in self.tournament.competitors:
             self.tournament.competitors.append(team_id)
-        
+
         return self
 
     def player(self, name: str, rating: int = 1500, **kwargs) -> "TournamentBuilder":
         """Add a player (for lone tournaments)."""
         player_id = self._get_or_create_player_id(name)
-        
+
         # Add to competitors if not already there
         if player_id not in self.competitors:
             self.competitors.append(player_id)
         if player_id not in self.tournament.competitors:
             self.tournament.competitors.append(player_id)
-        
+
         return self
 
     def round(self, number: int, auto_pair: bool = False) -> "TournamentBuilder":
@@ -138,10 +135,12 @@ class TournamentBuilder:
         """Play a game between two named players."""
         white_id = self.metadata.players.get(white_name)
         black_id = self.metadata.players.get(black_name)
-        
+
         if white_id is None or black_id is None:
-            raise ValueError(f"Player not found: {white_name if white_id is None else black_name}")
-        
+            raise ValueError(
+                f"Player not found: {white_name if white_id is None else black_name}"
+            )
+
         return self.add_game(white_id, black_id, result)
 
     def match(
@@ -150,16 +149,20 @@ class TournamentBuilder:
         """Play a team match between two named teams."""
         white_team_info = self.metadata.teams.get(white_team)
         black_team_info = self.metadata.teams.get(black_team)
-        
+
         if not white_team_info or not black_team_info:
-            raise ValueError(f"Team not found: {white_team if not white_team_info else black_team}")
-        
+            raise ValueError(
+                f"Team not found: {white_team if not white_team_info else black_team}"
+            )
+
         # Build board results
         board_results = []
         for i, result in enumerate(results):
-            if i >= len(white_team_info["players"]) or i >= len(black_team_info["players"]):
+            if i >= len(white_team_info["players"]) or i >= len(
+                black_team_info["players"]
+            ):
                 break
-                
+
             # Alternate colors by board
             if i % 2 == 0:  # Even boards (0, 2, 4...): white team gets white
                 white_player = white_team_info["players"][i]["id"]
@@ -172,10 +175,12 @@ class TournamentBuilder:
                     result = "0-1"
                 elif result == "0-1":
                     result = "1-0"
-            
+
             board_results.append((white_player, black_player, result))
-        
-        return self.add_team_match(white_team_info["id"], black_team_info["id"], board_results)
+
+        return self.add_team_match(
+            white_team_info["id"], black_team_info["id"], board_results
+        )
 
     def complete(self) -> "TournamentBuilder":
         """Complete the current round (for API compatibility)."""
@@ -195,7 +200,7 @@ class TournamentBuilder:
         return self
 
     # Low-level API methods (original TournamentBuilder interface)
-    
+
     def add_round(self, round_number: int) -> "TournamentBuilder":
         """Add a new round to the tournament."""
         self.current_round = Round(number=round_number)
@@ -301,7 +306,7 @@ class TournamentBuilder:
         return self.tournament
 
     # Helper methods
-    
+
     def _get_or_create_player_id(self, name: str) -> int:
         """Get or create a player ID for a named player."""
         if name not in self.metadata.players:

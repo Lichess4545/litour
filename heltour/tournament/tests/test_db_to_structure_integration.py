@@ -17,8 +17,8 @@ class DbToStructureIntegrationTests(TestCase):
         tournament = (
             TournamentBuilder()
             .league(
-                "Test League", 
-                "TL", 
+                "Test League",
+                "TL",
                 "team",
                 rating_type="classical",
                 theme="blue",
@@ -53,13 +53,12 @@ class DbToStructureIntegrationTests(TestCase):
         )
 
         season = tournament.seasons["Test Season"]
-        
+
         # Get the scores
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
-        
+
         # Verify match points
         # Team 1: Win + Draw + Bye = 2 + 1 + 1 = 4
         self.assertEqual(scores[1].match_points, 4)
@@ -102,8 +101,8 @@ class DbToStructureIntegrationTests(TestCase):
         tournament = (
             TournamentBuilder()
             .league(
-                "Test League", 
-                "TL", 
+                "Test League",
+                "TL",
                 "team",
                 rating_type="classical",
                 theme="blue",
@@ -138,10 +137,10 @@ class DbToStructureIntegrationTests(TestCase):
 
         # Convert to tournament structure
         tournament_structure = season_to_tournament_structure(season)
-        
+
         # Calculate results using tournament_core
         results = tournament_structure.calculate_results()
-        
+
         # Verify match points
         # Team 1: Win + Win + Bye = 2 + 2 + 1 = 5
         self.assertEqual(results[teams[0].id].match_points, 5)
@@ -160,18 +159,20 @@ class DbToStructureIntegrationTests(TestCase):
 
         # Compare with database calculation
         season.calculate_scores()
-        db_scores = {ts.team.id: ts for ts in TeamScore.objects.filter(team__season=season)}
-        
+        db_scores = {
+            ts.team.id: ts for ts in TeamScore.objects.filter(team__season=season)
+        }
+
         for team in teams:
             self.assertEqual(
                 db_scores[team.id].match_points,
                 results[team.id].match_points,
-                f"Match points mismatch for {team.name}"
+                f"Match points mismatch for {team.name}",
             )
             self.assertEqual(
                 db_scores[team.id].game_points,
                 results[team.id].game_points,
-                f"Game points mismatch for {team.name}"
+                f"Game points mismatch for {team.name}",
             )
 
     def test_head_to_head_tiebreak(self):
@@ -179,8 +180,8 @@ class DbToStructureIntegrationTests(TestCase):
         tournament = (
             TournamentBuilder()
             .league(
-                "Test League", 
-                "TL", 
+                "Test League",
+                "TL",
                 "team",
                 rating_type="classical",
                 theme="blue",
@@ -214,14 +215,14 @@ class DbToStructureIntegrationTests(TestCase):
         )
 
         season = tournament.seasons["Test Season"]
-        
+
         # Convert to tournament structure
         tournament_structure = season_to_tournament_structure(season)
         results = tournament_structure.calculate_results()
-        
+
         # Get teams by name for easier reference
         teams = {t.name: t for t in Team.objects.filter(season=season)}
-        
+
         # Team A: 3 wins = 6 match points
         self.assertEqual(results[teams["Team A"].id].match_points, 6)
         # Team B: 1 win, 1 draw, 1 loss = 3 match points
@@ -236,8 +237,8 @@ class DbToStructureIntegrationTests(TestCase):
         tournament = (
             TournamentBuilder()
             .league(
-                "Test League", 
-                "TL", 
+                "Test League",
+                "TL",
                 "team",
                 rating_type="classical",
                 theme="blue",
@@ -270,13 +271,12 @@ class DbToStructureIntegrationTests(TestCase):
         )
 
         season = tournament.seasons["Test Season"]
-        
+
         # Get scores
         scores = {
-            ts.team.name: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.name: ts for ts in TeamScore.objects.filter(team__season=season)
         }
-        
+
         # Verify match points
         # Red: Win + Draw + Bye = 2 + 1 + 1 = 4
         self.assertEqual(scores["Red"].match_points, 4)
@@ -300,25 +300,33 @@ class DbToStructureIntegrationTests(TestCase):
         """Test handling of forfeit results in tournament structure."""
         tournament = (
             TournamentBuilder()
-            .league("Test League", "TL", "team", rating_type="classical", theme="blue", pairing_type="swiss-dutch")
+            .league(
+                "Test League",
+                "TL",
+                "team",
+                rating_type="classical",
+                theme="blue",
+                pairing_type="swiss-dutch",
+            )
             .season("TL", "Test Season", rounds=1, boards=2)
             .team("Team 1", "T1P1", "T1P2")
             .team("Team 2", "T2P1", "T2P2")
             .round(1)
-            .match("Team 1", "Team 2", "1X-0F", "0-1")  # Team 1 wins board 1 by forfeit, Team 2 wins board 2 = 1-1
+            .match(
+                "Team 1", "Team 2", "1X-0F", "0-1"
+            )  # Team 1 wins board 1 by forfeit, Team 2 wins board 2 = 1-1
             .complete()
             .calculate()
             .build()
         )
 
         season = tournament.seasons["Test Season"]
-        
+
         # Get scores
         scores = {
-            ts.team.number: ts
-            for ts in TeamScore.objects.filter(team__season=season)
+            ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
-        
+
         # With forfeits on both boards, match should be 1-1
         # Team 1 wins board 1 by forfeit, Team 2 wins board 2 by forfeit
         self.assertEqual(scores[1].match_points, 1)  # Draw

@@ -79,4 +79,3 @@ def create_simple_team_tournament(
         builder.add_team_match(3, 4, board_results)
 
     return builder.build()
-

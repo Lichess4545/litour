@@ -68,4 +68,3 @@ FOOTBALL_SCORING = ScoringSystem(
     match_draw_points=1,
     match_loss_points=0,
 )
-
