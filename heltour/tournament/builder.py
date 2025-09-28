@@ -75,7 +75,7 @@ class TournamentBuilder:
         if self._existing_league:
             self.core_builder.metadata.league_name = self._existing_league.name
             self.core_builder.metadata.league_tag = self._existing_league.tag
-            self.core_builder.metadata.league_type = type
+            self.core_builder.metadata.competitor_type = self._existing_league.competitor_type
             self.core_builder.metadata.league_settings = kwargs
         else:
             self.core_builder.league(name, tag, type, **kwargs)

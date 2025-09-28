@@ -84,7 +84,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
     season = Season.objects.create(**season_data)
 
     # Track created objects
-    db_players = {}  # player_id -> Player instance
+    db_players = {}  # player_name -> Player instance (use name as key instead of ID)
     db_teams = {}  # team_name -> Team instance
     db_rounds = []  # List of Round instances
 
@@ -115,8 +115,8 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                 player_id = player_info["id"]
                 rating = player_info.get("rating", 1500)
 
-                # Create or get player
-                if player_id not in db_players:
+                # Create or get player (using name as key to avoid ID conflicts)
+                if player_name not in db_players:
                     player = Player.objects.create(
                         lichess_username=player_name,
                         rating=rating,
@@ -135,13 +135,15 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                             }
                         },
                     )
-                    db_players[player_id] = player
+                    db_players[player_name] = player
                 else:
-                    player = db_players[player_id]
+                    player = db_players[player_name]
 
-                # Create season player
-                SeasonPlayer.objects.create(
-                    season=season, player=player, seed_rating=rating, is_active=True
+                # Create season player (use get_or_create to avoid duplicates)
+                SeasonPlayer.objects.get_or_create(
+                    season=season,
+                    player=player,
+                    defaults={"seed_rating": rating, "is_active": True}
                 )
 
                 # Create team member
@@ -153,18 +155,21 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             kwargs = player_kwargs.get(player_id, {})
             rating = kwargs.get('rating', 1500)
 
-            # Create player
-            player = Player.objects.create(
-                lichess_username=player_name,
-                rating=rating,
-                profile={
-                    "perfs": {
-                        "standard": {"rating": rating, "games": 100, "prov": False},
-                        "classical": {"rating": rating, "games": 100, "prov": False},
-                    }
-                },
-            )
-            db_players[player_id] = player
+            # Create player (check by name to avoid duplicates)
+            if player_name not in db_players:
+                player = Player.objects.create(
+                    lichess_username=player_name,
+                    rating=rating,
+                    profile={
+                        "perfs": {
+                            "standard": {"rating": rating, "games": 100, "prov": False},
+                            "classical": {"rating": rating, "games": 100, "prov": False},
+                        }
+                    },
+                )
+                db_players[player_name] = player
+            else:
+                player = db_players[player_name]
 
             # Create registration
             Registration.objects.create(
@@ -182,6 +187,12 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                 season=season, player=player, seed_rating=rating, is_active=True
             )
             LonePlayerScore.objects.create(season_player=sp)
+
+    # Create a mapping from builder player IDs to database player instances
+    player_id_to_db = {}
+    for player_name, player_id in metadata.players.items():
+        if player_name in db_players:
+            player_id_to_db[player_id] = db_players[player_name]
 
     # Create rounds and pairings
     for round_struct in tournament.rounds:
@@ -222,7 +233,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                         )
                 else:
                     # Find player by ID
-                    player = db_players.get(match.competitor1_id)
+                    player = player_id_to_db.get(match.competitor1_id)
                     if player:
                         # Use get_or_create to avoid duplicates
                         PlayerBye.objects.get_or_create(
@@ -264,8 +275,8 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                         # Create board pairings
                         for board_num, game in enumerate(match.games, 1):
                             # Get players
-                            white_player = db_players.get(game.player1_id)
-                            black_player = db_players.get(game.player2_id)
+                            white_player = player_id_to_db.get(game.player1_id)
+                            black_player = player_id_to_db.get(game.player2_id)
 
                             if white_player and black_player:
                                 # Convert result
@@ -284,8 +295,8 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                         team_pairing.save()
                 else:
                     # Create individual pairing
-                    player1 = db_players.get(match.competitor1_id)
-                    player2 = db_players.get(match.competitor2_id)
+                    player1 = player_id_to_db.get(match.competitor1_id)
+                    player2 = player_id_to_db.get(match.competitor2_id)
 
                     if player1 and player2 and match.games:
                         game = match.games[0]
@@ -327,7 +338,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         "league": league,
         "season": season,
         "teams": db_teams,
-        "players": {name: db_players[pid] for name, pid in metadata.players.items()},
+        "players": db_players,  # Already keyed by name
         "rounds": db_rounds,
     }
 

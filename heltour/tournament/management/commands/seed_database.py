@@ -149,6 +149,9 @@ class Command(BaseCommand):
                         # Use existing league
                         builder._existing_league = league
                         
+                        # Call league method to set metadata properly
+                        builder.league(league.name, league.tag, league.competitor_type)
+                        
                         # Create season
                         season_name = f"{league.name} {season_config['name_suffix']}"
                         season_tag = f"{league.tag}-{season_config['tag_suffix']}"

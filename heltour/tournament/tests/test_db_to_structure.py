@@ -338,3 +338,38 @@ class DbToStructureTests(TestCase):
         self.assertEqual(len(tournament.rounds), 1)
         self.assertEqual(tournament.rounds[0].number, 1)
 
+    def test_tournament_builder_with_existing_league_sets_boards(self):
+        """Test that boards are properly set when using TournamentBuilder with an existing league."""
+        from heltour.tournament.builder import TournamentBuilder
+        
+        # Create an existing team league
+        league = League.objects.create(
+            name="Test Team League",
+            tag="TTL",
+            competitor_type="team",
+            rating_type="standard",
+        )
+        
+        # Use TournamentBuilder with existing league
+        builder = TournamentBuilder()
+        builder._existing_league = league
+        
+        # Create a season with boards
+        builder.season("TTL", "Test Season", rounds=3, boards=4, tag="test-season")
+        
+        # Add teams
+        builder.team("Team A", ("player1", 2000), ("player2", 1900), ("player3", 1800), ("player4", 1700))
+        builder.team("Team B", ("player5", 1950), ("player6", 1850), ("player7", 1750), ("player8", 1650))
+        
+        # Build the structure
+        builder.build()
+        
+        # Check that the season has boards set
+        season = builder.current_season
+        self.assertIsNotNone(season.boards, "Season boards should not be None for team tournament")
+        self.assertEqual(season.boards, 4, "Season boards should be 4")
+        
+        # Ensure league type is correctly set in metadata
+        self.assertEqual(builder.core_builder.metadata.competitor_type, "team")
+        self.assertEqual(builder.core_builder.metadata.boards, 4)
+
