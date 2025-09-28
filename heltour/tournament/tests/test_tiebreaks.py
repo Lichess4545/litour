@@ -1,27 +1,18 @@
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from heltour.tournament.models import (
-    League,
-    Season,
     Round,
     Team,
     TeamScore,
     TeamPairing,
-    TeamMember,
+    TeamBye,
     TeamPlayerPairing,
-    Player,
-    SeasonPlayer,
-    PlayerPairing,
     TEAM_TIEBREAK_OPTIONS,
 )
 from heltour.tournament.tests.testutils import (
     createCommonLeagueData,
-    create_reg,
     get_league,
-    get_player,
-    get_round,
     get_season,
-    set_rating,
 )
 
 
@@ -46,6 +37,24 @@ class TeamTiebreakTestCase(TestCase):
                 season=self.season, number=i, is_completed=False
             )
             self.rounds.append(round_)
+
+    def complete_round_with_byes(self, round_):
+        """Complete a round and create TeamBye records for teams without pairings."""
+        # Find teams that didn't play
+        teams_that_played = set()
+        for pairing in TeamPairing.objects.filter(round=round_):
+            teams_that_played.add(pairing.white_team_id)
+            teams_that_played.add(pairing.black_team_id)
+
+        all_teams = set(self.teams)
+        for team in all_teams:
+            if team.id not in teams_that_played:
+                TeamBye.objects.create(
+                    round=round_, team=team, type="full-point-pairing-bye"
+                )
+
+        round_.is_completed = True
+        round_.save()
 
     def create_pairing_with_results(self, round_, white_team, black_team, results):
         """
@@ -88,8 +97,7 @@ class TeamTiebreakTestCase(TestCase):
             self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
+        self.complete_round_with_byes(self.rounds[0])
         self.season.calculate_scores()
 
         scores = {
@@ -125,6 +133,10 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_sonneborn_berger_calculation(self):
         """Test Sonneborn-Berger tiebreak calculation"""
+        # Configure sonneborn-berger as a tiebreak
+        self.league.team_tiebreak_1 = "sonneborn_berger"
+        self.league.save()
+
         # Round 1: Team 1 wins vs Team 2
         self.create_pairing_with_results(
             self.rounds[0],
@@ -139,10 +151,8 @@ class TeamTiebreakTestCase(TestCase):
             self.rounds[1], self.teams[0], self.teams[2], ["1-0", "0-1"]  # Draw 1-1
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.rounds[1].is_completed = True
-        self.rounds[1].save()
+        self.complete_round_with_byes(self.rounds[0])
+        self.complete_round_with_byes(self.rounds[1])
         self.season.calculate_scores()
 
         scores = {
@@ -166,19 +176,20 @@ class TeamTiebreakTestCase(TestCase):
             self.rounds[0],
             self.teams[0],
             self.teams[1],
-            ["1-0", "1/2-1/2"],  # Team 1 wins
+            ["1-0", "1/2-1/2"],  # Team 1 wins 1.5-0.5
         )
         # Team 3 gets a bye
 
         # Round 2
         self.create_pairing_with_results(
-            self.rounds[1], self.teams[0], self.teams[2], ["1-0", "1-0"]  # Team 1 wins
+            self.rounds[1],
+            self.teams[0],
+            self.teams[2],
+            ["1-0", "0-1"],  # Team 1 wins 1.5-0.5
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
-        self.rounds[1].is_completed = True
-        self.rounds[1].save()
+        self.complete_round_with_byes(self.rounds[0])
+        self.complete_round_with_byes(self.rounds[1])
         self.season.calculate_scores()
 
         scores = {
@@ -186,10 +197,22 @@ class TeamTiebreakTestCase(TestCase):
             for ts in TeamScore.objects.filter(team__season=self.season)
         }
 
+        # Verify individual team scores first
+        # Team 1: Win R1 (2) + Win R2 (2) = 4 match points
+        self.assertEqual(scores[1].match_points, 4)  # Team 1: 2 wins = 4 points
+        # Team 2: Loss R1 (0) + Bye R2 (1) = 1 match point
+        self.assertEqual(scores[2].match_points, 1)  # Team 2: 1 loss + 1 bye = 1 point
+        # Team 3: Bye R1 (1) + Loss R2 (0) = 1 match point
+        self.assertEqual(scores[3].match_points, 1)  # Team 3: 1 bye + 1 loss = 1 point
+        # Team 4 gets a bye in both rounds = 1 + 1 = 2 match points
+        self.assertEqual(scores[4].match_points, 2)  # Team 4: 2 byes = 2 points
+
         # Team 1 played against Team 2 and Team 3
         # Buchholz is the sum of all opponents' match points
-        # The actual calculation shows 3.0, which might include handling of byes differently
-        self.assertEqual(scores[1].buchholz, 3.0)
+        # Team 2: 0 (loss) + 1 (bye) = 1 match point
+        # Team 3: 1 (bye) + 0 (loss) = 1 match point
+        # Buchholz = 1 + 1 = 2.0
+        self.assertEqual(scores[1].buchholz, 2.0)
 
     def test_head_to_head_calculation(self):
         """Test head-to-head tiebreak among tied teams"""
@@ -292,8 +315,7 @@ class TeamTiebreakTestCase(TestCase):
             self.rounds[0], self.teams[0], self.teams[1], ["1-0", "1/2-1/2"]
         )
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
+        self.complete_round_with_byes(self.rounds[0])
         self.season.calculate_scores()
 
         scores = {
@@ -380,8 +402,7 @@ class TeamTiebreakTestCase(TestCase):
         )
         # Teams 2 and 3 get byes (1 match point each)
 
-        self.rounds[0].is_completed = True
-        self.rounds[0].save()
+        self.complete_round_with_byes(self.rounds[0])
         self.season.calculate_scores()
 
         # Get scores
@@ -420,4 +441,3 @@ class TeamTiebreakTestCase(TestCase):
                 # Teams that played should have opponent-based tiebreaks
                 self.assertIsNotNone(score.sb_score)
                 self.assertIsNotNone(score.buchholz)
-

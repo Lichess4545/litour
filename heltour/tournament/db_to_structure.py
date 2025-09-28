@@ -71,7 +71,7 @@ def team_tournament_to_structure(season) -> Tournament:
     Returns:
         Tournament object with all rounds, matches, and games
     """
-    from heltour.tournament.models import Team, TeamPairing
+    from heltour.tournament.models import Team, TeamPairing, TeamBye
 
     # Get all teams in the season
     teams = list(Team.objects.filter(season=season).values_list("id", flat=True))
@@ -90,10 +90,10 @@ def team_tournament_to_structure(season) -> Tournament:
 
             # Get all board pairings for this team match
             board_results = []
-            board_pairings = list(team_pairing.teamplayerpairing_set.all().order_by(
-                "board_number"
-            ))
-            
+            board_pairings = list(
+                team_pairing.teamplayerpairing_set.all().order_by("board_number")
+            )
+
             # Team tournaments must have board pairings to calculate results
             if not board_pairings:
                 raise ValueError(
@@ -101,7 +101,7 @@ def team_tournament_to_structure(season) -> Tournament:
                     f"in round {round_obj.number} has no board pairings. "
                     "Team tournaments require individual board results."
                 )
-                
+
             for board_pairing in board_pairings:
                 if not board_pairing.white_id or not board_pairing.black_id:
                     continue  # Skip empty boards
@@ -144,15 +144,9 @@ def team_tournament_to_structure(season) -> Tournament:
                 )
                 matches.append(match)
 
-        # Add byes for teams that didn't play
-        teams_that_played = set()
-        for match in matches:
-            teams_that_played.add(match.competitor1_id)
-            teams_that_played.add(match.competitor2_id)
-
-        for team_id in teams:
-            if team_id not in teams_that_played:
-                matches.append(create_bye_match(team_id, season.boards or 1))
+        # Add bye matches for teams with TeamBye records
+        for team_bye in TeamBye.objects.filter(round=round_obj).select_related("team"):
+            matches.append(create_bye_match(team_bye.team_id, season.boards or 1))
 
         if matches:
             rounds.append(Round(round_obj.number, matches))

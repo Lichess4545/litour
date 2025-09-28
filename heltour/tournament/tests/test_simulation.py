@@ -1,342 +1,13 @@
 """
-Tournament simulation framework for clean, Pythonic testing.
-
-This module provides a clean API for simulating tournaments that mirrors
-the tournament_core structure while making it easy to set up test scenarios.
+Tests for the tournament simulation framework.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union
-from enum import Enum
-import random
-
 from django.test import TestCase
-from heltour.tournament.models import (
-    League,
-    Season,
-    Round,
-    Team,
-    Player,
-    SeasonPlayer,
-    TeamMember,
-    TeamScore,
-    LonePlayerScore,
-    TeamPairing,
-    TeamPlayerPairing,
-    LonePlayerPairing,
-)
 from heltour.tournament.db_to_structure import season_to_tournament_structure
-
-
-class PairingStrategy(Enum):
-    """Different pairing strategies for tournaments."""
-
-    ROUND_ROBIN = "round_robin"
-    SWISS = "swiss"
-    MANUAL = "manual"
-
-
-@dataclass
-class SimulatedPlayer:
-    """A player in the simulation."""
-
-    name: str
-    rating: int = 1500
-    db_player: Optional[Player] = None
-
-    def __post_init__(self):
-        """Create database player if needed."""
-        if not self.db_player:
-            self.db_player = Player.objects.create(lichess_username=self.name)
-            # Set rating in profile if needed
-            self.db_player.profile = {"perfs": {"standard": {"rating": self.rating}}}
-            self.db_player.save()
-
-
-@dataclass
-class SimulatedTeam:
-    """A team in the simulation."""
-
-    name: str
-    players: List[SimulatedPlayer] = field(default_factory=list)
-    db_team: Optional[Team] = None
-
-    def add_player(
-        self, name: str, rating: int = 1500, board: Optional[int] = None
-    ) -> SimulatedPlayer:
-        """Add a player to the team."""
-        player = SimulatedPlayer(name=name, rating=rating)
-        if board is not None:
-            self.players.insert(board - 1, player)
-        else:
-            self.players.append(player)
-        return player
-
-
-@dataclass
-class GameResult:
-    """Result of a single game."""
-
-    white: Union[SimulatedPlayer, SimulatedTeam]
-    black: Union[SimulatedPlayer, SimulatedTeam]
-    result: str  # "1-0", "1/2-1/2", "0-1", etc.
-    board: Optional[int] = None  # For team tournaments
-
-
-class TournamentSimulator:
-    """Main simulator for creating and running tournaments."""
-
-    def __init__(self, name: str = "Test Tournament"):
-        self.name = name
-        self.leagues: Dict[str, League] = {}
-        self.seasons: Dict[str, Season] = {}
-        self.current_season: Optional[Season] = None
-
-    def create_league(
-        self, name: str, tag: str, competitor_type: str = "lone"
-    ) -> League:
-        """Create a league."""
-        league = League.objects.create(
-            name=name, tag=tag, competitor_type=competitor_type, rating_type="standard"
-        )
-        self.leagues[tag] = league
-        return league
-
-    def create_season(
-        self, league_tag: str, name: str, rounds: int = 3, boards: Optional[int] = None
-    ) -> Season:
-        """Create a season for a league."""
-        league = self.leagues[league_tag]
-        season = Season.objects.create(
-            league=league,
-            name=name,
-            rounds=rounds,
-            boards=boards if league.competitor_type == "team" else None,
-        )
-        self.seasons[name] = season
-        self.current_season = season
-        return season
-
-    def add_team(self, team_name: str, player_names: List[str] = None) -> SimulatedTeam:
-        """Add a team to the current season."""
-        if (
-            not self.current_season
-            or self.current_season.league.competitor_type != "team"
-        ):
-            raise ValueError("Must have a team season active")
-
-        team = SimulatedTeam(name=team_name)
-        team.db_team = Team.objects.create(
-            season=self.current_season,
-            name=team_name,
-            number=Team.objects.filter(season=self.current_season).count() + 1,
-        )
-        TeamScore.objects.create(team=team.db_team)
-
-        # Add players if provided
-        if player_names:
-            for i, name in enumerate(player_names, 1):
-                player = team.add_player(name, board=i)
-                SeasonPlayer.objects.create(
-                    season=self.current_season, player=player.db_player
-                )
-                TeamMember.objects.create(
-                    team=team.db_team, player=player.db_player, board_number=i
-                )
-
-        return team
-
-    def add_player(self, name: str, rating: int = 1500) -> SimulatedPlayer:
-        """Add a player to the current season (for lone tournaments)."""
-        if (
-            not self.current_season
-            or self.current_season.league.competitor_type != "lone"
-        ):
-            raise ValueError("Must have a lone season active")
-
-        player = SimulatedPlayer(name=name, rating=rating)
-        sp = SeasonPlayer.objects.create(
-            season=self.current_season, player=player.db_player
-        )
-        LonePlayerScore.objects.create(season_player=sp)
-        return player
-
-    def start_round(self, round_number: int) -> Round:
-        """Start a new round."""
-        if not self.current_season:
-            raise ValueError("No active season")
-
-        round_obj = Round.objects.create(
-            season=self.current_season, number=round_number, is_completed=False
-        )
-        return round_obj
-
-    def play_game(
-        self,
-        round_obj: Round,
-        white: SimulatedPlayer,
-        black: SimulatedPlayer,
-        result: str,
-    ) -> LonePlayerPairing:
-        """Play a game in a lone tournament."""
-        pairing = LonePlayerPairing.objects.create(
-            round=round_obj,
-            white=white.db_player,
-            black=black.db_player,
-            result=result,
-            pairing_order=LonePlayerPairing.objects.filter(round=round_obj).count() + 1,
-        )
-        return pairing
-
-    def play_match(
-        self,
-        round_obj: Round,
-        white_team: SimulatedTeam,
-        black_team: SimulatedTeam,
-        board_results: List[str],
-    ) -> TeamPairing:
-        """Play a match in a team tournament."""
-        # Create the team pairing
-        pairing = TeamPairing.objects.create(
-            round=round_obj,
-            white_team=white_team.db_team,
-            black_team=black_team.db_team,
-            pairing_order=TeamPairing.objects.filter(round=round_obj).count() + 1,
-        )
-
-        # Play each board
-        for board_num, result in enumerate(board_results, 1):
-            # Get players for this board
-            white_member = white_team.players[board_num - 1]
-            black_member = black_team.players[board_num - 1]
-
-            # Alternate colors by board
-            if board_num % 2 == 1:  # Odd boards: white team gets white
-                white_player = white_member.db_player
-                black_player = black_member.db_player
-            else:  # Even boards: black team gets white
-                white_player = black_member.db_player
-                black_player = white_member.db_player
-                # Flip result if colors are swapped
-                if result == "1-0":
-                    result = "0-1"
-                elif result == "0-1":
-                    result = "1-0"
-
-            TeamPlayerPairing.objects.create(
-                team_pairing=pairing,
-                board_number=board_num,
-                white=white_player,
-                black=black_player,
-                result=result,
-            )
-
-        # Update pairing points
-        pairing.refresh_points()
-        pairing.save()
-        return pairing
-
-    def complete_round(self, round_obj: Round):
-        """Mark a round as completed."""
-        round_obj.is_completed = True
-        round_obj.save()
-
-    def calculate_standings(self):
-        """Calculate current standings."""
-        if self.current_season:
-            self.current_season.calculate_scores()
-
-
-# Convenience builder for even cleaner syntax
-class TournamentBuilder:
-    """Fluent interface for building tournaments."""
-
-    def __init__(self):
-        self.simulator = TournamentSimulator()
-        self.current_round = None
-
-    def league(self, name: str, tag: str, type: str = "lone") -> "TournamentBuilder":
-        """Create a league."""
-        self.simulator.create_league(name, tag, type)
-        return self
-
-    def season(
-        self, league_tag: str, name: str, rounds: int = 3, boards: int = None
-    ) -> "TournamentBuilder":
-        """Create a season."""
-        self.simulator.create_season(league_tag, name, rounds, boards)
-        return self
-
-    def team(self, name: str, *players: str) -> "TournamentBuilder":
-        """Add a team with players."""
-        self.simulator.add_team(name, list(players) if players else None)
-        return self
-
-    def player(self, name: str, rating: int = 1500) -> "TournamentBuilder":
-        """Add a player."""
-        self.simulator.add_player(name, rating)
-        return self
-
-    def round(self, number: int) -> "TournamentBuilder":
-        """Start a round."""
-        self.current_round = self.simulator.start_round(number)
-        return self
-
-    def game(
-        self, white_name: str, black_name: str, result: str
-    ) -> "TournamentBuilder":
-        """Play a game."""
-        # Find players by name
-        white = next(p for p in Player.objects.filter(lichess_username=white_name))
-        black = next(p for p in Player.objects.filter(lichess_username=black_name))
-        white_sim = SimulatedPlayer(white_name, db_player=white)
-        black_sim = SimulatedPlayer(black_name, db_player=black)
-        self.simulator.play_game(self.current_round, white_sim, black_sim, result)
-        return self
-
-    def match(
-        self, white_team: str, black_team: str, *results: str
-    ) -> "TournamentBuilder":
-        """Play a team match."""
-        # Find teams by name
-        white_t = Team.objects.get(
-            name=white_team, season=self.simulator.current_season
-        )
-        black_t = Team.objects.get(
-            name=black_team, season=self.simulator.current_season
-        )
-
-        # Create simulated teams
-        white_sim = SimulatedTeam(white_team, db_team=white_t)
-        white_sim.players = [
-            SimulatedPlayer(tm.player.lichess_username, db_player=tm.player)
-            for tm in white_t.teammember_set.order_by("board_number")
-        ]
-
-        black_sim = SimulatedTeam(black_team, db_team=black_t)
-        black_sim.players = [
-            SimulatedPlayer(tm.player.lichess_username, db_player=tm.player)
-            for tm in black_t.teammember_set.order_by("board_number")
-        ]
-
-        self.simulator.play_match(
-            self.current_round, white_sim, black_sim, list(results)
-        )
-        return self
-
-    def complete(self) -> "TournamentBuilder":
-        """Complete the current round."""
-        self.simulator.complete_round(self.current_round)
-        return self
-
-    def calculate(self) -> "TournamentBuilder":
-        """Calculate standings."""
-        self.simulator.calculate_standings()
-        return self
-
-    def build(self) -> TournamentSimulator:
-        """Return the simulator."""
-        return self.simulator
+from heltour.tournament.tests.test_tournament_simulation import (
+    TournamentBuilder,
+    TournamentSimulator,
+)
 
 
 class TournamentSimulationTests(TestCase):
@@ -428,9 +99,6 @@ class TournamentSimulationTests(TestCase):
             .match(
                 "Knights", "Wizards", "1-0", "1-0", "0-1", "1/2-1/2"
             )  # Knights win 2.5-1.5
-            .match(
-                "Wizards", "Dragons", "1/2-1/2", "1/2-1/2", "1/2-1/2", "1/2-1/2"
-            )  # Draw 2-2
             .complete()
             .calculate()
             .build()
@@ -442,19 +110,19 @@ class TournamentSimulationTests(TestCase):
 
         # Note: Teams get automatic byes when they don't play in a round
         # Round 1: Dragons beat Knights, Wizards gets bye
-        # Round 2: Knights beat Wizards, Wizards draw Dragons (so Dragons also plays)
+        # Round 2: Knights beat Wizards, Dragons gets bye
 
-        # Dragons: Win vs Knights (2), Draw vs Wizards (1) = 3 match points
+        # Dragons: Win vs Knights (2), Bye (1) = 3 match points
         self.assertEqual(scores["Dragons"].match_points, 3)
-        self.assertEqual(scores["Dragons"].game_points, 4.5)  # 2.5 + 2
+        self.assertEqual(scores["Dragons"].game_points, 4.5)  # 2.5 + 2.0 (bye)
 
         # Knights: Loss vs Dragons (0), Win vs Wizards (2) = 2 match points
         self.assertEqual(scores["Knights"].match_points, 2)
         self.assertEqual(scores["Knights"].game_points, 4.0)  # 1.5 + 2.5
 
-        # Wizards: Bye round 1 (1), Loss vs Knights (0), Draw vs Dragons (1) = 2 match points
-        self.assertEqual(scores["Wizards"].match_points, 2)
-        self.assertEqual(scores["Wizards"].game_points, 5.5)  # 2.0 (bye) + 1.5 + 2
+        # Wizards: Bye round 1 (1), Loss vs Knights (0) = 1 match points
+        self.assertEqual(scores["Wizards"].match_points, 1)
+        self.assertEqual(scores["Wizards"].game_points, 3.5)  # 2.0 (bye) + 1.5
 
     def test_alternative_api_style(self):
         """Show alternative API usage for more control."""
@@ -508,12 +176,12 @@ class TournamentSimulationTests(TestCase):
             # Round 2: Alpha vs Gamma, Beta vs Delta
             .round(2)
             .match("Alpha", "Gamma", "1-0", "1/2-1/2")  # Alpha wins 1.5-0.5
-            .match("Beta", "Delta", "0-1", "1-0")  # Draw 1-1
+            .match("Beta", "Delta", "0-1", "0-1")  # Delta wins 2-0
             .complete()
             # Round 3: Alpha vs Delta, Beta vs Gamma
             .round(3)
             .match("Alpha", "Delta", "1/2-1/2", "1/2-1/2")  # Draw 1-1
-            .match("Beta", "Gamma", "1-0", "0-1")  # Draw 1-1
+            .match("Beta", "Gamma", "1-0", "1-0")  # Beta wins 2-0
             .complete()
             .calculate()
             .build()
@@ -536,20 +204,20 @@ class TournamentSimulationTests(TestCase):
         teams = {team.name: team for team in season.team_set.all()}
 
         # Verify match points from tournament_core
-        # Alpha: 3 wins (2 + 2 + 1) = 5 match points
+        # Alpha: 2 wins, 1 draw (2 + 2 + 1) = 5 match points
         self.assertEqual(results[teams["Alpha"].id].match_points, 5)
-        # Beta: 1 win, 2 draws (0 + 1 + 1) = 2 match points
+        # Beta: 1 win, 2 losses (0 + 0 + 2) = 2 match points
         self.assertEqual(results[teams["Beta"].id].match_points, 2)
-        # Gamma: 2 draws, 1 loss (1 + 0 + 1) = 2 match points
-        self.assertEqual(results[teams["Gamma"].id].match_points, 2)
-        # Delta: 2 draws, 1 loss (1 + 1 + 1) = 3 match points
-        self.assertEqual(results[teams["Delta"].id].match_points, 3)
+        # Gamma: 1 draw, 2 losses (1 + 0 + 0) = 1 match point
+        self.assertEqual(results[teams["Gamma"].id].match_points, 1)
+        # Delta: 1 win, 2 draws (1 + 2 + 1) = 4 match points
+        self.assertEqual(results[teams["Delta"].id].match_points, 4)
 
         # Verify game points (no byes in this tournament - all teams play all rounds)
         self.assertEqual(results[teams["Alpha"].id].game_points, 4.5)  # 2 + 1.5 + 1
-        self.assertEqual(results[teams["Beta"].id].game_points, 2.0)  # 0 + 1 + 1
-        self.assertEqual(results[teams["Gamma"].id].game_points, 2.5)  # 1 + 0.5 + 1
-        self.assertEqual(results[teams["Delta"].id].game_points, 3.0)  # 1 + 1 + 1
+        self.assertEqual(results[teams["Beta"].id].game_points, 2.0)  # 0 + 0 + 2
+        self.assertEqual(results[teams["Gamma"].id].game_points, 1.5)  # 1 + 0.5 + 0
+        self.assertEqual(results[teams["Delta"].id].game_points, 4.0)  # 1 + 2 + 1
 
         # Verify tiebreaks can be calculated from the results
         from heltour.tournament_core.tiebreaks import calculate_sonneborn_berger
