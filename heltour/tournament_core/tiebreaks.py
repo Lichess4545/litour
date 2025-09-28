@@ -9,9 +9,11 @@ team and individual tournaments.
 from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass, field
 
+
 @dataclass(frozen=True)
 class MatchResult:
     """Represents the result of a single match for a competitor."""
+
     opponent_id: Optional[int]  # None for byes
     game_points: float  # Game points scored in this match
     opponent_game_points: float  # Game points opponent scored
@@ -19,9 +21,11 @@ class MatchResult:
     games_won: int = 0  # Number of individual games won (for team tournaments)
     is_bye: bool = False  # Whether this was a bye
 
+
 @dataclass(frozen=True)
 class CompetitorScore:
     """Final scores and match history for a competitor."""
+
     competitor_id: int
     match_points: int
     game_points: float
@@ -78,17 +82,17 @@ def calculate_buchholz(
         The Buchholz score
     """
     buchholz = 0.0
-    
+
     for result in competitor_score.match_results:
         if result.is_bye or result.opponent_id is None:
             continue
-            
+
         opponent_score = all_scores.get(result.opponent_id)
         if opponent_score is None:
             continue
-            
+
         buchholz += opponent_score.match_points
-        
+
     return buchholz
 
 
