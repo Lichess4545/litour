@@ -353,6 +353,9 @@ class DbToStructureTests(TestCase):
         # Use TournamentBuilder with existing league
         builder = TournamentBuilder()
         builder._existing_league = league
+        
+        # Call league method to set metadata properly
+        builder.league(league.name, league.tag, league.competitor_type)
 
         # Create a season with boards
         builder.season("TTL", "Test Season", rounds=3, boards=4, tag="test-season")
