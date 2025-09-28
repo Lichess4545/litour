@@ -8,7 +8,6 @@ They test the full tournament flow: registration, pairings, results, standings.
 import random
 from unittest import skipUnless
 from django.test import TestCase
-from django.conf import settings
 
 from heltour.tournament.models import (
     TeamPairing,
@@ -16,6 +15,7 @@ from heltour.tournament.models import (
     PlayerBye,
 )
 from heltour.tournament.tests.test_tournament_simulation import TournamentBuilder
+from heltour.tournament.tests.test_utils import can_run_javafo
 from heltour.tournament.db_to_structure import season_to_tournament_structure
 from heltour.tournament_core.tiebreaks import (
     calculate_sonneborn_berger,
@@ -24,31 +24,9 @@ from heltour.tournament_core.tiebreaks import (
 )
 
 
-def can_run_javafo():
-    """Check if we can run JavaFo tests."""
-    # Check if JAVAFO_COMMAND is configured
-    if not hasattr(settings, "JAVAFO_COMMAND"):
-        return False
-
-    # Check if Java is available
-    try:
-        import subprocess
-
-        result = subprocess.run(["java", "-version"], capture_output=True)
-        return result.returncode == 0
-    except:
-        return False
-
-
 @skipUnless(can_run_javafo(), "JavaFo environment not available")
 class JavaFoIntegrationTests(TestCase):
     """Test full tournament flow with JavaFo pairings."""
-
-    def setUp(self):
-        """Set up JavaFo settings."""
-        # Ensure JavaFo command is configured
-        if not hasattr(settings, "JAVAFO_COMMAND"):
-            settings.JAVAFO_COMMAND = "java -jar /media/lakin/data/personal-repos/litour/thirdparty/javafo.jar"
 
     def test_lone_tournament_full_flow(self):
         """Test complete lone tournament with JavaFo pairings."""

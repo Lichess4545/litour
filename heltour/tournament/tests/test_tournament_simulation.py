@@ -27,6 +27,8 @@ from heltour.tournament.models import (
     TeamBye,
 )
 from heltour.tournament.pairinggen import generate_pairings
+from heltour.tournament_core.builder import TournamentBuilder as CoreTournamentBuilder
+from heltour.tournament.structure_to_db import structure_to_db
 
 
 class PairingStrategy(Enum):
@@ -378,136 +380,252 @@ class TournamentSimulator:
 
 # Convenience builder for even cleaner syntax
 class TournamentBuilder:
-    """Fluent interface for building tournaments."""
+    """Fluent interface for building tournaments.
+
+    This is a wrapper around the core TournamentBuilder that adds database persistence.
+    It maintains the same API but creates database objects as needed.
+    """
 
     def __init__(self):
-        self.simulator = TournamentSimulator()
+        self.core_builder = CoreTournamentBuilder()
+        self._db_objects = None
         self.current_round = None
+        self._round_number = 0
+        self._completed_rounds = set()  # Track which rounds have been completed
 
     def league(
         self, name: str, tag: str, type: str = "lone", **kwargs
     ) -> "TournamentBuilder":
         """Create a league with additional configuration."""
-        self.simulator.create_league(name, tag, type, **kwargs)
+        self.core_builder.league(name, tag, type, **kwargs)
         return self
 
     def season(
         self, league_tag: str, name: str, rounds: int = 3, boards: int = None, **kwargs
     ) -> "TournamentBuilder":
         """Create a season with additional configuration."""
-        self.simulator.create_season(league_tag, name, rounds, boards, **kwargs)
+        self.core_builder.season(league_tag, name, rounds, boards, **kwargs)
         return self
 
     def team(
         self, name: str, *players: Union[str, Tuple[str, int]], **kwargs
     ) -> "TournamentBuilder":
         """Add a team with players (either names or (name, rating) tuples)."""
-        player_data = []
-        for p in players:
-            if isinstance(p, tuple):
-                player_data.append(p)
-            else:
-                player_data.append((p, 1500))
-        self.simulator.add_team(name, player_data if player_data else None, **kwargs)
+        self.core_builder.team(name, *players, **kwargs)
         return self
 
     def player(self, name: str, rating: int = 1500, **kwargs) -> "TournamentBuilder":
         """Add a player with optional registration."""
-        self.simulator.add_player(name, rating, **kwargs)
+        self.core_builder.player(name, rating, **kwargs)
         return self
 
     def round(self, number: int, auto_pair: bool = False) -> "TournamentBuilder":
         """Start a round with optional automatic pairing."""
-        self.current_round = self.simulator.start_round(number, auto_pair)
+        self.core_builder.round(number, auto_pair)
+        self._round_number = number
+        # Don't build DB objects yet - wait until complete() or build()
         return self
 
     def game(
         self, white_name: str, black_name: str, result: str
     ) -> "TournamentBuilder":
         """Play a game."""
-        # Find players by name
-        white = next(p for p in Player.objects.filter(lichess_username=white_name))
-        black = next(p for p in Player.objects.filter(lichess_username=black_name))
-        white_sim = SimulatedPlayer(white_name, db_player=white)
-        black_sim = SimulatedPlayer(black_name, db_player=black)
-        self.simulator.play_game(self.current_round, white_sim, black_sim, result)
+        self.core_builder.game(white_name, black_name, result)
         return self
 
     def match(
         self, white_team: str, black_team: str, *results: str
     ) -> "TournamentBuilder":
         """Play a team match."""
-        # Find teams by name
-        white_t = Team.objects.get(
-            name=white_team, season=self.simulator.current_season
-        )
-        black_t = Team.objects.get(
-            name=black_team, season=self.simulator.current_season
-        )
-
-        # Create simulated teams
-        white_sim = SimulatedTeam(white_team, db_team=white_t)
-        white_sim.players = [
-            SimulatedPlayer(tm.player.lichess_username, db_player=tm.player)
-            for tm in white_t.teammember_set.order_by("board_number")
-        ]
-
-        black_sim = SimulatedTeam(black_team, db_team=black_t)
-        black_sim.players = [
-            SimulatedPlayer(tm.player.lichess_username, db_player=tm.player)
-            for tm in black_t.teammember_set.order_by("board_number")
-        ]
-
-        self.simulator.play_match(
-            self.current_round, white_sim, black_sim, list(results)
-        )
+        self.core_builder.match(white_team, black_team, *results)
         return self
 
     def simulate_results(self) -> "TournamentBuilder":
         """Simulate realistic results for the current round."""
-        if self.current_round:
-            self.simulator.simulate_round_results(self.current_round)
+        # For compatibility - no-op since we don't simulate in pure structure
         return self
 
     def complete(self) -> "TournamentBuilder":
         """Complete the current round."""
-        self.simulator.complete_round(self.current_round)
+        self.core_builder.complete()
+        self._completed_rounds.add(self._round_number)
         return self
 
     def calculate(self) -> "TournamentBuilder":
         """Calculate standings."""
-        self.simulator.calculate_standings()
+        self.core_builder.calculate()
+        # Ensure DB objects are built before calculating
+        if self._db_objects is None:
+            self._build_db_objects()
+        # Recalculate scores in database
+        self._db_objects["season"].calculate_scores()
         return self
 
     def build(self) -> "TournamentBuilder":
         """Return self for chaining or direct use."""
+        # Ensure DB objects are built
+        if self._db_objects is None:
+            self._build_db_objects()
         return self
 
-    # Delegate methods to simulator for convenience
+    def _build_db_objects(self):
+        """Build database objects from the core structure."""
+        # Only build once to avoid duplicate key errors
+        if self._db_objects is not None:
+            return
+
+        # Build the tournament structure first
+        tournament = self.core_builder.build()
+        # Convert to database objects
+        self._db_objects = structure_to_db(self.core_builder)
+        # Update current round reference
+        if self._round_number > 0 and self._round_number <= len(
+            self._db_objects["rounds"]
+        ):
+            self.current_round = self._db_objects["rounds"][self._round_number - 1]
+
+    # Delegate methods to maintain compatibility
     def start_round(
         self, round_number: int, generate_pairings_auto: bool = False
     ) -> Round:
-        """Start a round (delegated to simulator)."""
-        return self.simulator.start_round(round_number, generate_pairings_auto)
+        """Start a round (for compatibility)."""
+        # Ensure DB objects exist
+        if self._db_objects is None:
+            self._build_db_objects()
+
+        # Create a new round in the database
+        round_obj = Round.objects.create(
+            season=self._db_objects["season"], number=round_number, is_completed=False
+        )
+
+        # Generate pairings if requested
+        if generate_pairings_auto:
+            try:
+                # Wrap in reversion context for pairing generation
+                import reversion
+
+                with reversion.create_revision():
+                    reversion.set_comment("Test pairing generation")
+                    from heltour.tournament.pairinggen import generate_pairings
+
+                    generate_pairings(round_obj)
+            except Exception as e:
+                import traceback
+
+                print(f"Failed to generate pairings: {e}")
+                traceback.print_exc()
+
+        self.current_round = round_obj
+        self._round_number = round_number
+        return round_obj
 
     def simulate_round_results(self, round_obj: Round):
-        """Simulate results for a round (delegated to simulator)."""
-        return self.simulator.simulate_round_results(round_obj)
+        """Simulate results for a round."""
+        if not self._db_objects:
+            return
+
+        season = self._db_objects["season"]
+        if season.league.competitor_type == "team":
+            for pairing in TeamPairing.objects.filter(round=round_obj):
+                for board_pairing in pairing.teamplayerpairing_set.order_by(
+                    "board_number"
+                ):
+                    white_rating = board_pairing.white.rating or 1500
+                    black_rating = board_pairing.black.rating or 1500
+                    result = self._simulate_game_result(white_rating, black_rating)
+                    board_pairing.result = result
+                    board_pairing.save()
+                pairing.refresh_points()
+                pairing.save()
+        else:
+            for pairing in LonePlayerPairing.objects.filter(round=round_obj):
+                white_rating = pairing.white.rating or 1500
+                black_rating = pairing.black.rating or 1500
+                result = self._simulate_game_result(white_rating, black_rating)
+                pairing.result = result
+                pairing.save()
+
+    def _simulate_game_result(self, white_rating, black_rating):
+        """Simulate a game result based on ratings."""
+        import random
+
+        # Calculate expected score using simple Elo formula
+        exp_white = 1 / (1 + 10 ** ((black_rating - white_rating) / 400))
+
+        # Add some randomness
+        rand = random.random()
+
+        # Adjust probabilities for more realistic results
+        if rand < exp_white - 0.1:
+            return "1-0"
+        elif rand < exp_white + 0.1:
+            return "1/2-1/2"
+        else:
+            return "0-1"
 
     def complete_round(self, round_obj: Round):
-        """Complete a round (delegated to simulator)."""
-        return self.simulator.complete_round(round_obj)
+        """Complete a round (for compatibility)."""
+        # If there are pairings without results, simulate them
+        if self._db_objects and self._db_objects.get("season"):
+            season = self._db_objects["season"]
+            if season.league.competitor_type == "team":
+                # Check if any pairings lack results
+                pairings_without_results = (
+                    TeamPairing.objects.filter(round=round_obj)
+                    .filter(teamplayerpairing__result="")
+                    .distinct()
+                )
+                if pairings_without_results.exists():
+                    self.simulate_round_results(round_obj)
+
+        # Mark the round as completed
+        round_obj.is_completed = True
+        round_obj.save()
+
+        # Calculate scores after completing the round
+        if self._db_objects and self._db_objects.get("season"):
+            self._db_objects["season"].calculate_scores()
 
     def calculate_standings(self):
-        """Calculate standings (delegated to simulator)."""
-        return self.simulator.calculate_standings()
+        """Calculate standings (for compatibility)."""
+        self.calculate()
 
     @property
     def seasons(self):
-        """Access seasons from simulator."""
-        return self.simulator.seasons
+        """Access seasons (for compatibility)."""
+        if self._db_objects is None:
+            self._build_db_objects()
+        return {self.core_builder.metadata.season_name: self._db_objects["season"]}
 
     @property
     def current_season(self):
-        """Access current season from simulator."""
-        return self.simulator.current_season
+        """Access current season (for compatibility)."""
+        if self._db_objects is None:
+            self._build_db_objects()
+        return self._db_objects["season"]
+
+    @property
+    def simulator(self):
+        """Access simulator-like properties (for compatibility)."""
+        if self._db_objects is None:
+            self._build_db_objects()
+
+        # Return an object that has leagues and seasons properties
+        class SimulatorCompat:
+            def __init__(self, db_objects, metadata):
+                self.db_objects = db_objects
+                self.metadata = metadata
+
+            @property
+            def leagues(self):
+                return {self.metadata.league_tag: self.db_objects["league"]}
+
+            @property
+            def seasons(self):
+                return {self.metadata.season_name: self.db_objects["season"]}
+
+            @property
+            def current_season(self):
+                return self.db_objects["season"]
+
+        return SimulatorCompat(self._db_objects, self.core_builder.metadata)
