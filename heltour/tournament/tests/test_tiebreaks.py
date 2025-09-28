@@ -1,12 +1,8 @@
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from heltour.tournament.models import (
-    Round,
     Team,
     TeamScore,
-    TeamPairing,
-    TeamBye,
-    TeamPlayerPairing,
     TEAM_TIEBREAK_OPTIONS,
 )
 from heltour.tournament.builder import TournamentBuilder
