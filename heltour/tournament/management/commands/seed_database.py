@@ -8,8 +8,8 @@ from django.db import transaction
 from django.utils import timezone
 from faker import Faker
 
-from heltour.tournament.models import League, Player
-from heltour.tournament.seeders import LeagueSeeder, PlayerSeeder, InviteCodeSeeder
+from heltour.tournament.models import League
+from heltour.tournament.seeders import LeagueSeeder, InviteCodeSeeder
 from heltour.tournament.builder import TournamentBuilder
 
 
@@ -27,7 +27,7 @@ class Command(BaseCommand):
             "--players",
             type=int,
             default=50,
-            help="Number of players to create (default: 50)",
+            help="Number of players per tournament (default: 50)",
         )
         parser.add_argument(
             "--minimal",
@@ -42,6 +42,11 @@ class Command(BaseCommand):
             type=str,
             default="en_US",
             help="Faker locale for data generation (default: en_US)",
+        )
+        parser.add_argument(
+            "--no-clear",
+            action="store_true",
+            help="Don't clear existing data before seeding",
         )
 
     def handle(self, *args, **options):
@@ -59,12 +64,15 @@ class Command(BaseCommand):
             num_players = options["players"]
 
         self.stdout.write(self.style.WARNING(f"Starting database seeding..."))
+        
+        # Clear existing data unless --no-clear is specified
+        if not options["no_clear"]:
+            self._clear_data()
 
         try:
             with transaction.atomic():
                 # Initialize seeders for basic data
                 league_seeder = LeagueSeeder(fake)
-                player_seeder = PlayerSeeder(fake)
                 invite_code_seeder = InviteCodeSeeder(fake)
 
                 # 1. Create leagues
@@ -74,20 +82,7 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"✓ Created {len(leagues)} leagues")
                 )
 
-                # 2. Create players
-                self.stdout.write("Creating players...")
-                players = player_seeder.seed(num_players, leagues=leagues)
-
-                # Add some titled players for realism
-                if options["full"]:
-                    titled_players = player_seeder.seed_titled_players(5)
-                    players.extend(titled_players)
-
-                self.stdout.write(
-                    self.style.SUCCESS(f"✓ Created {len(players)} players")
-                )
-
-                # 3. Define season configurations
+                # 2. Define season configurations
                 season_configs = [
                     {
                         "name_suffix": "Completed Season",
@@ -133,9 +128,10 @@ class Command(BaseCommand):
                         "rounds": 10,
                     })
 
-                # 4. Create tournaments using TournamentBuilder
+                # 3. Create tournaments using TournamentBuilder
                 all_seasons = []
                 team_name_generator = TeamNameGenerator()
+                player_name_generator = PlayerNameGenerator(fake)
                 
                 for league in leagues:
                     for i, season_config in enumerate(season_configs):
@@ -172,17 +168,24 @@ class Command(BaseCommand):
                             nominations_open=season_config.get('nominations_open', False),
                         )
                         
+                        # Generate player data for this tournament
+                        player_data = player_name_generator.generate_players(
+                            num_players, 
+                            league.rating_type,
+                            season_suffix=f"{league.tag}_{season_config['tag_suffix']}"
+                        )
+                        
                         # Add players/teams based on league type
                         if league.is_team_league():
                             # Calculate teams needed
-                            num_teams = min(len(players) // boards, 16)
+                            num_teams = min(len(player_data) // boards, 16)
                             if num_teams % 2 == 1:
                                 num_teams -= 1  # Even number for pairing
                             
                             # Sort players by rating for balanced teams
                             sorted_players = sorted(
-                                players[:num_teams * boards],
-                                key=lambda p: p.rating_for(league) or 1500,
+                                player_data[:num_teams * boards],
+                                key=lambda p: p['rating'],
                                 reverse=True
                             )
                             
@@ -199,19 +202,16 @@ class Command(BaseCommand):
                                     
                                     if player_idx < len(sorted_players):
                                         player = sorted_players[player_idx]
-                                        team_players.append((
-                                            player.lichess_username,
-                                            player.rating_for(league) or 1500
-                                        ))
+                                        team_players.append((player['name'], player['rating']))
                                 
                                 builder.team(team_name, *team_players)
                         else:
                             # Add individual players
-                            num_players_for_season = min(len(players), max(12, len(players) // 3))
-                            for player in players[:num_players_for_season]:
+                            num_players_for_season = min(len(player_data), max(12, len(player_data) // 3))
+                            for player in player_data[:num_players_for_season]:
                                 builder.player(
-                                    player.lichess_username,
-                                    rating=player.rating_for(league) or 1500,
+                                    player['name'],
+                                    rating=player['rating'],
                                     is_active=True
                                 )
                         
@@ -228,7 +228,15 @@ class Command(BaseCommand):
                             )
                             
                             for round_num in range(1, rounds_to_complete + 1):
-                                round_obj = builder.start_round(round_num, generate_pairings_auto=True)
+                                # For seeding, use manual pairing instead of JavaFo
+                                # JavaFo can fail with certain tournament configurations
+                                round_obj = builder.start_round(round_num, generate_pairings_auto=False)
+                                
+                                # Manually create simple pairings
+                                if season.league.is_team_league():
+                                    self._create_manual_team_pairings(round_obj)
+                                else:
+                                    self._create_manual_lone_pairings(round_obj)
                                 
                                 # Simulate results for completed rounds
                                 if season_config.get('is_completed') or round_num < rounds_to_complete:
@@ -247,7 +255,7 @@ class Command(BaseCommand):
                             )
                         )
 
-                # 5. Create invite codes for all seasons
+                # 4. Create invite codes for all seasons
                 self.stdout.write("\nCreating invite codes...")
                 invite_codes = invite_code_seeder.seed(
                     captain_codes=10 if not options["minimal"] else 5,
@@ -257,7 +265,7 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"✓ Created {len(invite_codes)} invite codes")
                 )
 
-                # 6. Create team member codes for team leagues
+                # 5. Create team member codes for team leagues
                 from heltour.tournament.models import Team
                 all_teams = Team.objects.filter(season__in=all_seasons)
                 if all_teams.exists():
@@ -283,6 +291,143 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Error during seeding: {str(e)}"))
             raise
 
+    def _create_manual_team_pairings(self, round_obj):
+        """Create simple manual pairings for team tournaments."""
+        from heltour.tournament.models import Team, TeamPairing, TeamPlayerPairing, TeamBye
+        
+        teams = list(Team.objects.filter(
+            season=round_obj.season, 
+            is_active=True
+        ).order_by('seed_rating'))
+        
+        # Simple pairing: pair adjacent teams
+        paired = set()
+        pairing_order = 1
+        
+        for i in range(0, len(teams) - 1, 2):
+            if i + 1 < len(teams):
+                white_team = teams[i]
+                black_team = teams[i + 1]
+                
+                # Create team pairing
+                team_pairing = TeamPairing.objects.create(
+                    round=round_obj,
+                    white_team=white_team,
+                    black_team=black_team,
+                    pairing_order=pairing_order
+                )
+                
+                # Create board pairings
+                white_members = list(white_team.teammember_set.order_by('board_number'))
+                black_members = list(black_team.teammember_set.order_by('board_number'))
+                
+                for board_num in range(1, round_obj.season.boards + 1):
+                    if board_num <= len(white_members) and board_num <= len(black_members):
+                        # Alternate colors by board
+                        if board_num % 2 == 1:
+                            white_player = white_members[board_num - 1].player
+                            black_player = black_members[board_num - 1].player
+                        else:
+                            white_player = black_members[board_num - 1].player
+                            black_player = white_members[board_num - 1].player
+                        
+                        TeamPlayerPairing.objects.create(
+                            team_pairing=team_pairing,
+                            board_number=board_num,
+                            white=white_player,
+                            black=black_player,
+                            result=""
+                        )
+                
+                paired.add(white_team.id)
+                paired.add(black_team.id)
+                pairing_order += 1
+        
+        # Handle odd team with bye
+        for team in teams:
+            if team.id not in paired:
+                TeamBye.objects.create(
+                    round=round_obj,
+                    team=team,
+                    type='full-point-pairing-bye'
+                )
+
+    def _create_manual_lone_pairings(self, round_obj):
+        """Create simple manual pairings for lone tournaments."""
+        from heltour.tournament.models import SeasonPlayer, LonePlayerPairing, PlayerBye
+        
+        season_players = list(SeasonPlayer.objects.filter(
+            season=round_obj.season,
+            is_active=True
+        ).select_related('player').order_by('-seed_rating'))
+        
+        # Simple pairing: pair adjacent players
+        paired = set()
+        pairing_order = 1
+        
+        for i in range(0, len(season_players) - 1, 2):
+            if i + 1 < len(season_players):
+                white_sp = season_players[i]
+                black_sp = season_players[i + 1]
+                
+                LonePlayerPairing.objects.create(
+                    round=round_obj,
+                    white=white_sp.player,
+                    black=black_sp.player,
+                    pairing_order=pairing_order,
+                    result=""
+                )
+                
+                paired.add(white_sp.player_id)
+                paired.add(black_sp.player_id)
+                pairing_order += 1
+        
+        # Handle odd player with bye
+        for sp in season_players:
+            if sp.player_id not in paired:
+                PlayerBye.objects.create(
+                    round=round_obj,
+                    player=sp.player,
+                    type='full-point'
+                )
+
+    def _clear_data(self):
+        """Clear existing tournament data."""
+        from heltour.tournament.models import (
+            League, Season, Player, Team, Registration,
+            TeamPairing, LonePlayerPairing, TeamPlayerPairing,
+            Round, InviteCode, TeamMember, SeasonPlayer,
+            TeamScore, LonePlayerScore, PlayerBye, TeamBye,
+        )
+        
+        self.stdout.write(self.style.WARNING("Clearing existing data..."))
+        
+        # Delete in dependency order
+        models_to_clear = [
+            TeamPlayerPairing,
+            TeamPairing,
+            LonePlayerPairing,
+            PlayerBye,
+            TeamBye,
+            Round,
+            TeamScore,
+            LonePlayerScore,
+            TeamMember,
+            SeasonPlayer,
+            Registration,
+            InviteCode,
+            Team,
+            Season,
+            Player,
+            League,
+        ]
+        
+        for model in models_to_clear:
+            count = model.objects.count()
+            if count > 0:
+                model.objects.all().delete()
+                self.stdout.write(f"  - Deleted {count} {model.__name__} records")
+
     def _print_summary(self):
         """Print summary of created data."""
         from heltour.tournament.models import (
@@ -302,9 +447,12 @@ class Command(BaseCommand):
         self.stdout.write(f"  - Teams: {Team.objects.count()}")
         self.stdout.write(f"  - Registrations: {Registration.objects.count()}")
         self.stdout.write(f"  - Invite Codes: {InviteCode.objects.count()}")
-        self.stdout.write(
-            f'  - Games: {PlayerPairing.objects.exclude(game_link="").count()}'
-        )
+        
+        # Count games from both pairing types
+        from heltour.tournament.models import TeamPlayerPairing, LonePlayerPairing
+        team_games = TeamPlayerPairing.objects.exclude(result="").count()
+        lone_games = LonePlayerPairing.objects.exclude(result="").count()
+        self.stdout.write(f"  - Games played: {team_games + lone_games}")
 
         # Show some sample players for testing
         self.stdout.write("\nSample players for testing:")
@@ -313,8 +461,58 @@ class Command(BaseCommand):
             first_league = League.objects.first()
 
         for player in Player.objects.all()[:5]:
-            rating = player.rating_for(first_league) if first_league else "N/A"
+            rating = player.rating
             self.stdout.write(f"  - {player.lichess_username} (Rating: {rating})")
+
+
+class PlayerNameGenerator:
+    """Generate unique player names with ratings."""
+    
+    def __init__(self, fake):
+        self.fake = fake
+        self.used_names = set()
+        
+    def generate_players(self, count: int, rating_type: str = "standard", season_suffix: str = "") -> list:
+        """Generate player data with unique names and appropriate ratings."""
+        players = []
+        
+        # Rating ranges based on type
+        if rating_type == "classical":
+            base_rating = 1800
+            spread = 400
+        elif rating_type == "rapid":
+            base_rating = 1700
+            spread = 350
+        else:  # standard/blitz
+            base_rating = 1600
+            spread = 300
+        
+        for i in range(count):
+            # Generate unique username
+            attempts = 0
+            while attempts < 100:
+                username = self.fake.user_name()
+                if season_suffix:
+                    username = f"{username}_{season_suffix}"
+                if username not in self.used_names:
+                    self.used_names.add(username)
+                    break
+                attempts += 1
+            else:
+                # Fallback to numbered username
+                username = f"player{i}_{season_suffix}"
+                self.used_names.add(username)
+            
+            # Generate rating with normal distribution
+            rating = int(random.gauss(base_rating, spread / 3))
+            rating = max(800, min(2800, rating))  # Clamp to reasonable range
+            
+            players.append({
+                'name': username,
+                'rating': rating
+            })
+        
+        return players
 
 
 class TeamNameGenerator:
@@ -324,14 +522,16 @@ class TeamNameGenerator:
         "Royal", "Swift", "Mighty", "Silent", "Golden", "Silver", "Crimson", 
         "Azure", "Fierce", "Noble", "Ancient", "Modern", "Tactical", "Strategic",
         "Dynamic", "Lightning", "Thunder", "Storm", "Fire", "Ice", "Shadow", 
-        "Brilliant", "Epic", "Legendary", "Mystic", "Valiant"
+        "Brilliant", "Epic", "Legendary", "Mystic", "Valiant", "Iron", "Steel",
+        "Crystal", "Quantum", "Cosmic", "Solar", "Lunar", "Arctic", "Blazing"
     ]
 
     NOUNS = [
         "Knights", "Bishops", "Rooks", "Queens", "Kings", "Pawns", "Masters",
         "Tacticians", "Strategists", "Defenders", "Attackers", "Gladiators",
         "Warriors", "Champions", "Legends", "Eagles", "Lions", "Tigers", 
-        "Dragons", "Phoenix", "Falcons", "Sharks", "Wolves", "Guardians"
+        "Dragons", "Phoenix", "Falcons", "Sharks", "Wolves", "Guardians",
+        "Crusaders", "Sentinels", "Titans", "Giants", "Wizards", "Sorcerers"
     ]
     
     def __init__(self):
