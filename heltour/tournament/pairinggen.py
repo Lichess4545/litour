@@ -526,6 +526,75 @@ class JavafoPairingResult:
         self.black = black
 
 
+def generate_trf_content(total_round_count, players):
+    """Generate TRF file content for JavaFo.
+
+    Arguments:
+    total_round_count -- number of rounds in the tournament
+    players -- a list of JavafoPlayer objects ordered by seed
+
+    Returns:
+    A string containing the TRF file content
+    """
+    lines = []
+    lines.append("XXR %d\n" % total_round_count)
+
+    for n, player in enumerate(players, 1):
+        line = "001  {0: >3}  {1:74.1f}     ".format(n, player.score)
+        for pairing in player.pairings:
+            opponent_num = next(
+                (
+                    num
+                    for num, p in enumerate(players, 1)
+                    if p.player == pairing.opponent
+                ),
+                "0000",
+            )
+            color = (
+                "w"
+                if pairing.color == "white"
+                else "b" if pairing.color == "black" else "-"
+            )
+            if pairing.forfeit:
+                score = (
+                    "+"
+                    if pairing.score == 1
+                    else (
+                        "-"
+                        if pairing.score == 0
+                        else "=" if pairing.score == 0.5 else " "
+                    )
+                )
+            else:
+                score = (
+                    "1"
+                    if pairing.score == 1
+                    else (
+                        "0"
+                        if pairing.score == 0
+                        else "=" if pairing.score == 0.5 else " "
+                    )
+                )
+            if score == " ":
+                color = "-"
+            line += "{0: >6} {1} {2}".format(opponent_num, color, score)
+        if not player.include:
+            line += "{0: >6} {1} {2}".format("0000", "-", "-")
+        line += "\n"
+        lines.append(line)
+
+    # Add acceleration scores if present
+    for n, player in enumerate(players, 1):
+        if player.acceleration_scores:
+            line = "XXA {0: >4} {1}\n".format(
+                n,
+                " ".join("{0: >4.1f}".format(s) for s in player.acceleration_scores),
+            )
+            lines.append(line)
+
+    return "".join(lines)
+
+
 # TODO: Verify for score >= 10
 class JavafoInstance:
     """Interfaces with javafo.jar
@@ -550,61 +619,9 @@ class JavafoInstance:
         input_file = tempfile.NamedTemporaryFile(suffix=".trfx", mode="w+")
         output_file_name = input_file.name + ".out.txt"
         try:
-            # Write to input file
-            input_file.write("XXR %d\n" % self.total_round_count)
-            for n, player in enumerate(self.players, 1):
-                line = "001  {0: >3}  {1:74.1f}     ".format(n, player.score)
-                for pairing in player.pairings:
-                    opponent_num = next(
-                        (
-                            num
-                            for num, player in enumerate(self.players, 1)
-                            if player.player == pairing.opponent
-                        ),
-                        "0000",
-                    )
-                    color = (
-                        "w"
-                        if pairing.color == "white"
-                        else "b" if pairing.color == "black" else "-"
-                    )
-                    if pairing.forfeit:
-                        score = (
-                            "+"
-                            if pairing.score == 1
-                            else (
-                                "-"
-                                if pairing.score == 0
-                                else "=" if pairing.score == 0.5 else " "
-                            )
-                        )
-                    else:
-                        score = (
-                            "1"
-                            if pairing.score == 1
-                            else (
-                                "0"
-                                if pairing.score == 0
-                                else "=" if pairing.score == 0.5 else " "
-                            )
-                        )
-                    if score == " ":
-                        color = "-"
-                    line += "{0: >6} {1} {2}".format(opponent_num, color, score)
-                if not player.include:
-                    line += "{0: >6} {1} {2}".format("0000", "-", "-")
-                line += "\n"
-                input_file.write(line)
-            for n, player in enumerate(self.players, 1):
-                if player.acceleration_scores:
-                    line = "XXA {0: >4} {1}\n".format(
-                        n,
-                        " ".join(
-                            "{0: >4.1f}".format(s) for s in player.acceleration_scores
-                        ),
-                    )
-                    input_file.write(line)
-                    pass
+            # Generate TRF content and write to input file
+            trf_content = generate_trf_content(self.total_round_count, self.players)
+            input_file.write(trf_content)
             input_file.flush()
 
             self._call_proc(input_file.name, output_file_name, "-q 10000")
