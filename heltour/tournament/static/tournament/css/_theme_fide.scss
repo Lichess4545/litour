@@ -2,32 +2,27 @@ $theme-name: 'fide';
 $logo: '/static/tournament/img/fide-logo.png';  // Placeholder for custom FIDE logo
 $logo-position: 6px 1px;
 $logo-size: 48px 48px;
-$primary-color: #102644;  // FIDE dark purple background color
-$dark-primary-color: #102644;  // Same for both themes
-$secondary-color: #000000;  // Black for menu items
+$primary-color: #000000;  // Black for main backgrounds
+$dark-primary-color: #000000;  // Same for both themes
+$secondary-color: #102644;  // Dark purple for headers
 $nav-focus-color: #1a3355;  // Slightly lighter for nav focus
 
 @import 'theme_base';
 
-// Import Google Font
-@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
-
 // FIDE-specific theme customizations
-$fide-button: #8181ea;  // FIDE purple for buttons
-$fide-bg-light: #B5B5B5;  // Lighter grey for form fields
-$fide-bg-main: #102644;  // Main FIDE dark purple background
-$fide-bg-section: #1a3355;  // Lighter blue/purple for content sections
-$fide-bg-menu: #000000;  // Black for menu items
-$fide-bg-header: #15171c;  // Off-black for section headers
-$fide-text-primary: #E9FFEB;  // Almost white FIDE text color
+$fide-button: #8181ea;  // FIDE purple/pink for buttons
+$fide-bg-light: #f0f0f0;  // Light grey for form fields
+$fide-bg-dark: #000000;  // Black for backgrounds
+$fide-header: #102644;  // Dark purple for headers
+$fide-text-light: #ffffff;  // White text on dark backgrounds
 $fide-text-dark: #333333;  // Dark text on light backgrounds
-$fide-border: #2a2c33;  // Slightly lighter than off-black for borders
+$fide-border: #102644;  // Dark purple for borders
 
 body.theme-#{$theme-name} {
-    // Use FIDE's Prompt Google font
-    font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    // Use professional sans-serif font stack
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: $primary-color;
-    color: $fide-text-primary;
+    color: $fide-text-light;
     
     // Override white backgrounds
     .container {
@@ -35,38 +30,33 @@ body.theme-#{$theme-name} {
     }
     
     .well {
-        background-color: $fide-bg-section;  // Lighter blue/purple for visibility
+        background-color: $fide-bg-dark;
         border-color: $fide-border;
     }
     
     .well-head {
-        background-color: $fide-bg-header;  // Off-black headers
-        color: $fide-text-primary;
+        background-color: $fide-header;  // Dark purple headers
+        color: $fide-text-light;
         border-bottom: 2px solid $fide-button;
         
         h3 {
             font-weight: 600;
             letter-spacing: 0.5px;
-            color: $fide-text-primary;
+            color: $fide-text-light;
         }
     }
     
     .well-body {
-        background-color: $fide-bg-section;  // Lighter blue/purple
-        color: $fide-text-primary;
+        background-color: $fide-bg-dark;
+        color: $fide-text-light;
     }
     
-    // Button styling - FIDE purple with no rounded corners
+    // Button styling - pink/purple
     .btn-primary {
         background: $fide-button;
         border-color: darken($fide-button, 10%);
         color: #ffffff;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.64em;
-        text-transform: uppercase;
-        padding: 16px 35px 14px;
-        border-radius: 0;
+        font-weight: 500;
         
         &:hover,
         &:focus {
@@ -83,12 +73,6 @@ body.theme-#{$theme-name} {
         background: $fide-button;
         border-color: darken($fide-button, 10%);
         color: #ffffff;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.64em;
-        text-transform: uppercase;
-        padding: 16px 35px 14px;
-        border-radius: 0;
         
         &:hover,
         &:focus {
@@ -98,45 +82,15 @@ body.theme-#{$theme-name} {
         }
     }
     
-    // Remove rounded corners from all button types and apply FIDE styling
-    .btn {
-        border-radius: 0;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.64em;
-        text-transform: uppercase;
-        padding: 16px 35px 14px;
-    }
-    
-    .btn-success,
-    .btn-warning,
-    .btn-danger,
-    .btn-info {
-        border-radius: 0;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.64em;
-        text-transform: uppercase;
-        padding: 16px 35px 14px;
-    }
-    
-    .btn-link {
-        border-radius: 0;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.64em;
-        text-transform: uppercase;
-    }
-    
     // Table styling
     .table {
-        background-color: $fide-bg-section;
-        color: $fide-text-primary;
+        background-color: $fide-bg-dark;
+        color: $fide-text-light;
         border: 1px solid $fide-border;
         
         > thead > tr > th {
-            background-color: $fide-bg-header;  // Off-black headers
-            color: $fide-text-primary;
+            background-color: $fide-header;  // Dark purple headers
+            color: $fide-text-light;
             font-weight: 600;
             text-transform: uppercase;
             font-size: 0.875rem;
@@ -146,9 +100,9 @@ body.theme-#{$theme-name} {
         }
         
         > tbody > tr > td {
-            background-color: $fide-bg-section;
+            background-color: $fide-bg-dark;
             border-color: $fide-border;
-            color: $fide-text-primary;
+            color: $fide-text-light;
         }
         
         > tbody > tr:hover {
@@ -162,7 +116,7 @@ body.theme-#{$theme-name} {
     
     // Navbar styling
     .navbar {
-        background-color: $fide-bg-menu;  // Black navbar
+        background-color: $fide-header;  // Dark purple navbar
         border-bottom: 2px solid $fide-button;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     }
@@ -171,11 +125,11 @@ body.theme-#{$theme-name} {
         font-weight: 700;
         letter-spacing: 1px;
         text-transform: uppercase;
-        color: $fide-text-primary !important;
+        color: $fide-text-light !important;
     }
     
     .navbar .navbar-nav > li > a {
-        color: $fide-text-primary !important;
+        color: $fide-text-light !important;
     }
     
     // Navbar active/hover states
@@ -206,14 +160,14 @@ body.theme-#{$theme-name} {
         }
     }
     
-    // Form elements - light grey backgrounds
+    // Form elements - light backgrounds
     .form-control {
         background-color: $fide-bg-light;
         border-color: darken($fide-bg-light, 15%);
         color: $fide-text-dark;
         
         &:focus {
-            background-color: lighten($fide-bg-light, 5%);
+            background-color: #ffffff;
             border-color: $fide-button;
             box-shadow: 0 0 0 0.2rem rgba(129, 129, 234, 0.25);
             color: $fide-text-dark;
@@ -226,12 +180,12 @@ body.theme-#{$theme-name} {
     
     // Dropdown styling
     .dropdown-menu {
-        background-color: $fide-bg-menu;
+        background-color: $fide-bg-dark;
         border-color: $fide-border;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         
         > li > a {
-            color: $fide-text-primary;
+            color: $fide-text-light;
             
             &:hover,
             &:focus {
@@ -254,25 +208,25 @@ body.theme-#{$theme-name} {
     
     // Panels and cards
     .panel {
-        background-color: $fide-bg-section;
+        background-color: $fide-bg-dark;
         border-color: $fide-border;
         
         .panel-heading {
-            background-color: $fide-bg-header;  // Off-black headers
-            color: $fide-text-primary;
+            background-color: $fide-header;
+            color: $fide-text-light;
             border-color: $fide-border;
         }
         
         .panel-body {
-            background-color: $fide-bg-section;
-            color: $fide-text-primary;
+            background-color: $fide-bg-dark;
+            color: $fide-text-light;
         }
     }
     
     // Override any remaining white backgrounds
     .bg-white,
     .background-white {
-        background-color: $fide-bg-section !important;
+        background-color: $fide-bg-dark !important;
     }
     
     // Page background
@@ -281,14 +235,14 @@ body.theme-#{$theme-name} {
 
 // League home link specific styling
 .league-homelink-#{$theme-name} {
-    background-color: $fide-bg-menu !important;
-    color: $fide-text-primary !important;
+    background-color: $fide-header !important;
+    color: $fide-text-light !important;
     text-decoration: none;
     
     &:hover {
         color: #ffffff !important;
         text-decoration: none;
-        background-color: lighten($fide-bg-menu, 10%) !important;
+        background-color: lighten($fide-header, 10%) !important;
     }
 }
 
@@ -298,17 +252,17 @@ body.dark {
         background-color: $primary-color;
         
         .well-head {
-            background-color: $fide-bg-header;  // Off-black headers
+            background-color: $fide-header;
             border-bottom: 2px solid $fide-button;
         }
         
         .navbar {
-            background-color: $fide-bg-menu;
+            background-color: $fide-header;
             border-bottom: 2px solid $fide-button;
         }
         
         .table > thead > tr > th {
-            background-color: $fide-bg-header;  // Off-black headers
+            background-color: $fide-header;
             border-bottom: 2px solid $fide-button;
         }
         
@@ -346,10 +300,10 @@ body.dark {
     }
     
     .league-homelink-#{$theme-name} {
-        background-color: $fide-bg-menu !important;
+        background-color: $fide-header !important;
     }
     
     .my-pairing .league-icon.#{$theme-name} {
-        background-color: $fide-bg-menu !important;
+        background-color: $fide-header !important;
     }
 }
