@@ -303,7 +303,20 @@ class TournamentBuilder:
 
     def build(self) -> Tournament:
         """Return the built tournament."""
-        return self.tournament
+        # Add name mappings to the tournament for assertion purposes
+        tournament = self.tournament
+
+        # Build name to ID mapping based on competitor type
+        if self.metadata.competitor_type == "team":
+            tournament.name_to_id = {
+                team_info["name"]: team_info["id"]
+                for team_info in self.metadata.teams.values()
+            }
+        else:
+            # For individual tournaments, use player names
+            tournament.name_to_id = self.metadata.players.copy()
+
+        return tournament
 
     # Helper methods
 
