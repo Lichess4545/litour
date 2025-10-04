@@ -127,29 +127,26 @@ class TournamentSimulationTests(TestCase):
         builder = TournamentBuilder()
         builder.league("Classical Masters", "CM", "lone")
         builder.season("CM", "Final Stage", rounds=2)
-        
+
         # Add players
         builder.player("Carlsen", 2830)
         builder.player("Caruana", 2800)
-        
+
         # Build database objects
         builder.build()
-        
+
         # Play rounds with explicit control using start_round
         round1 = builder.start_round(1)
-        
+
         # Manual pairing - get players
         from heltour.tournament.models import Player, LonePlayerPairing
+
         carlsen = Player.objects.get(lichess_username="Carlsen")
         caruana = Player.objects.get(lichess_username="Caruana")
-        
+
         # Create pairing manually
         LonePlayerPairing.objects.create(
-            round=round1,
-            white=carlsen,
-            black=caruana,
-            result="1-0",
-            pairing_order=1
+            round=round1, white=carlsen, black=caruana, result="1-0", pairing_order=1
         )
         builder.complete_round(round1)
 
@@ -159,7 +156,7 @@ class TournamentSimulationTests(TestCase):
             white=caruana,
             black=carlsen,
             result="1/2-1/2",
-            pairing_order=1
+            pairing_order=1,
         )
         builder.complete_round(round2)
 
