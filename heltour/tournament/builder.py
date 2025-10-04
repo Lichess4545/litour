@@ -12,15 +12,20 @@ from heltour.tournament_core.builder import TournamentBuilder as CoreTournamentB
 from heltour.tournament.structure_to_db import structure_to_db
 
 
-def simulate_game_result(white_rating: int, black_rating: int, allow_forfeit: bool = True, forfeit_rate: float = 0.05) -> str:
+def simulate_game_result(
+    white_rating: int,
+    black_rating: int,
+    allow_forfeit: bool = True,
+    forfeit_rate: float = 0.05,
+) -> str:
     """Simulate a game result based on ratings.
-    
+
     Args:
         white_rating: White player's rating
-        black_rating: Black player's rating  
+        black_rating: Black player's rating
         allow_forfeit: Whether to allow forfeit results
         forfeit_rate: Probability of a forfeit (default 5%)
-        
+
     Returns:
         Result string: '1-0', '1/2-1/2', '0-1', '1X-0F', '0F-1X', or '0F-0F'
     """
@@ -30,7 +35,7 @@ def simulate_game_result(white_rating: int, black_rating: int, allow_forfeit: bo
         if forfeit_type < 0.4:
             return "1X-0F"  # Black forfeits
         elif forfeit_type < 0.8:
-            return "0F-1X"  # White forfeits  
+            return "0F-1X"  # White forfeits
         else:
             return "0F-0F"  # Both forfeit
 
@@ -66,7 +71,7 @@ class TournamentBuilder:
         self._existing_league = None  # For when we're working with an existing league
 
     # Core builder delegation methods
-    
+
     def league(
         self, name: str, tag: str, type: str = "lone", **kwargs
     ) -> "TournamentBuilder":
@@ -75,7 +80,9 @@ class TournamentBuilder:
         if self._existing_league:
             self.core_builder.metadata.league_name = self._existing_league.name
             self.core_builder.metadata.league_tag = self._existing_league.tag
-            self.core_builder.metadata.competitor_type = self._existing_league.competitor_type
+            self.core_builder.metadata.competitor_type = (
+                self._existing_league.competitor_type
+            )
             self.core_builder.metadata.league_settings = kwargs
         else:
             self.core_builder.league(name, tag, type, **kwargs)
@@ -92,8 +99,10 @@ class TournamentBuilder:
                 self.core_builder.metadata.season_settings["player_kwargs"] = {}
             for player_name, rating in player_ratings.items():
                 player_id = self.core_builder._get_or_create_player_id(player_name)
-                self.core_builder.metadata.season_settings["player_kwargs"][player_id] = {"rating": rating}
-                
+                self.core_builder.metadata.season_settings["player_kwargs"][
+                    player_id
+                ] = {"rating": rating}
+
         self.core_builder.season(league_tag, name, rounds, boards, **kwargs)
         return self
 
@@ -111,7 +120,10 @@ class TournamentBuilder:
         player_id = self.core_builder.metadata.players[name]
         if "player_kwargs" not in self.core_builder.metadata.season_settings:
             self.core_builder.metadata.season_settings["player_kwargs"] = {}
-        self.core_builder.metadata.season_settings["player_kwargs"][player_id] = {"rating": rating, **kwargs}
+        self.core_builder.metadata.season_settings["player_kwargs"][player_id] = {
+            "rating": rating,
+            **kwargs,
+        }
         return self
 
     def round(self, number: int, auto_pair: bool = False) -> "TournamentBuilder":
@@ -166,19 +178,19 @@ class TournamentBuilder:
         # Build the tournament structure first
         tournament = self.core_builder.build()
         # Convert to database objects, using existing league if provided
-        self._db_objects = structure_to_db(self.core_builder, existing_league=self._existing_league)
+        self._db_objects = structure_to_db(
+            self.core_builder, existing_league=self._existing_league
+        )
         # Update current round reference
         if self._round_number > 0 and self._round_number <= len(
             self._db_objects["rounds"]
         ):
             self.current_round = self._db_objects["rounds"][self._round_number - 1]
 
-    def start_round(
-        self, round_number: int, generate_pairings_auto: bool = False
-    ):
+    def start_round(self, round_number: int, generate_pairings_auto: bool = False):
         """Start a round, optionally generating pairings with JavaFo."""
         from heltour.tournament.models import Round
-        
+
         # Ensure DB objects exist
         if self._db_objects is None:
             self._build_db_objects()
@@ -212,7 +224,7 @@ class TournamentBuilder:
     def simulate_round_results(self, round_obj):
         """Simulate results for all pairings in a round."""
         from heltour.tournament.models import TeamPairing, LonePlayerPairing
-        
+
         if not self._db_objects:
             return
 
@@ -240,7 +252,7 @@ class TournamentBuilder:
     def complete_round(self, round_obj):
         """Complete a round, simulating results if needed."""
         from heltour.tournament.models import TeamPairing
-        
+
         # If there are pairings without results, simulate them
         if self._db_objects and self._db_objects.get("season"):
             season = self._db_objects["season"]
@@ -309,7 +321,7 @@ class TournamentBuilder:
         return SimulatorCompat(self._db_objects, self.core_builder.metadata)
 
     # Backwards compatibility methods
-    
+
     def simulate_results(self) -> "TournamentBuilder":
         """Simulate results for current round (no-op for compatibility)."""
         return self
