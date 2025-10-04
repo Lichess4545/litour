@@ -4,4 +4,4 @@ FROM base AS web
 ENV DJANGO_SETTINGS_MODULE=heltour.settings \
     PYTHONUNBUFFERED=1
 
-CMD ["sh", "-c", "pg_isready --host=postgres --timeout=60 && python manage.py migrate"]
+CMD ["sh", "-c", "pg_isready --dbname=$(cat $DATABASE_URL_FILE) --timeout=60 && python manage.py migrate"]
