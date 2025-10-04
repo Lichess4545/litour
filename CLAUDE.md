@@ -228,20 +228,69 @@ The `tournament_core` module provides a clean, database-independent representati
   - `tiebreaks.py`: Implements tiebreak calculations (Sonneborn-Berger, Buchholz, Head-to-Head, Games Won)
   - `scoring.py`: Configurable scoring systems (standard 2-1-0, alternative 3-1-0, etc.)
   - `db_to_structure.py`: Transforms Django ORM models to tournament_core structures
+  - `builder.py`: Fluent API for building tournament structures
+  - `assertions.py`: Fluent assertion interface for testing tournament standings
 
 ### Testing Best Practices
 
 #### Use Tournament Builder for Tests
-The `tournament_core/tests/test_utils.py` provides a `TournamentBuilder` class for creating tournament structures easily:
+The `tournament_core/builder.py` provides a fluent `TournamentBuilder` class for creating tournament structures easily:
 
 ```python
-builder = TournamentBuilder([1, 2, 3, 4])  # List of competitor IDs
-builder.add_round(1)
-builder.add_game(1, 2, '1-0')  # Player 1 beats Player 2
-builder.add_game(3, 4, '1/2-1/2')  # Player 3 draws Player 4
-builder.auto_byes()  # Automatically add byes for players who didn't play
+# Team tournament example
+builder = TournamentBuilder()
+builder.league("Test League", "TL", "team")
+builder.season("TL", "Spring 2024", rounds=3, boards=2)
+builder.team("Dragons", ("Alice", 2000), ("Bob", 1900))
+builder.team("Knights", ("Charlie", 1950), ("David", 1850))
+builder.round(1)
+builder.match("Dragons", "Knights", "1-0", "1/2-1/2")  # Dragons win 1.5-0.5
+builder.complete()
+tournament = builder.build()
+
+# Individual tournament example
+builder = TournamentBuilder()
+builder.league("Chess Club", "CC", "lone")
+builder.season("CC", "Winter 2024", rounds=3)
+builder.player("Alice", 2100)
+builder.player("Bob", 2000)
+builder.round(1)
+builder.game("Alice", "Bob", "1-0")
+builder.complete()
 tournament = builder.build()
 ```
+
+#### Fluent Assertion Interface
+The `tournament_core/assertions.py` provides a fluent interface for testing tournament standings:
+
+```python
+from heltour.tournament_core.assertions import assert_tournament
+
+# Assert team tournament standings
+assert_tournament(tournament).team("Dragons").assert_()
+    .wins(2).losses(0).draws(1)
+    .match_points(5).game_points(4.5)
+    .games_won(3)  # For team tournaments
+    .position(1)
+
+# Assert individual tournament standings  
+assert_tournament(tournament).player("Alice").assert_()
+    .wins(2).losses(1).draws(0)
+    .match_points(4).game_points(2.0)
+    .byes(1)
+    .position(2)
+
+# Assert tiebreak scores
+assert_tournament(tournament).player("Alice").assert_()
+    .tiebreak("sonneborn_berger", 3.5)
+    .tiebreak("buchholz", 6.0)
+```
+
+**Important Notes for Team Tournament Assertions**:
+- Match results are provided from the first team's perspective
+- `"1-0"` means the first team's player wins on that board
+- On alternating boards (odd-numbered), colors are swapped automatically
+- Example: `.match("Dragons", "Knights", "1-0", "1-0")` means Dragons win both boards
 
 #### Database Test Requirements
 - **Team Tournaments MUST Have Board Pairings**: The system will error if TeamPairing objects lack TeamPlayerPairing children
@@ -260,6 +309,7 @@ tournament = builder.build()
 2. **Clean Error Handling**: The system raises clear errors when data is incomplete rather than guessing
 3. **Immutable Structures**: Tournament_core uses frozen dataclasses for thread safety and clarity
 4. **Separation of Concerns**: Database models handle persistence; tournament_core handles calculations
+5. **Name Mappings**: The builder adds `name_to_id` mappings to tournaments for assertion convenience
 
 ### Future Testing Improvements
 
