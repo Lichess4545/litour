@@ -106,7 +106,6 @@ THEME_OPTIONS = (
     ('green', 'Green'),
     ('red', 'Red'),
     ('yellow', 'Yellow'),
-    ('fide', 'FIDE'),
 )
 RATING_TYPE_OPTIONS = (
     ('classical', 'Classical'),
