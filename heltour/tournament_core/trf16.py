@@ -301,18 +301,37 @@ class TRF16Parser:
             fide_id = parts[idx] if idx < len(parts) else ""
             idx += 1
 
-            # Birth date (YYYY/MM/DD format)
+            # Birth date (YYYY/MM/DD format) - might be missing
             birth_str = parts[idx] if idx < len(parts) else ""
-            birth_year = (
-                int(birth_str.split("/")[0])
-                if "/" in birth_str and birth_str.split("/")[0].isdigit()
-                else 0
-            )
-            idx += 1
+
+            # Check if this looks like a birth date or if it's actually points
+            if "/" in birth_str:
+                # It's a birth date
+                birth_year = (
+                    int(birth_str.split("/")[0])
+                    if birth_str.split("/")[0].isdigit()
+                    else 0
+                )
+                idx += 1
+            else:
+                # Birth date is missing, this might be points already
+                # Check if it looks like points (contains decimal point)
+                if "." in birth_str:
+                    # This is points, birth date was missing
+                    birth_year = 0
+                    # Don't increment idx, we'll parse this as points next
+                else:
+                    # Ambiguous - could be rank or year without slashes
+                    # For now assume it's missing birth date if it doesn't have /
+                    birth_year = 0
+                    # Don't increment idx
 
             # Points (decimal)
-            points = float(parts[idx]) if idx < len(parts) else 0.0
-            idx += 1
+            points = (
+                float(parts[idx]) if idx < len(parts) and "." in parts[idx] else 0.0
+            )
+            if idx < len(parts) and "." in parts[idx]:
+                idx += 1
 
             # Rank
             rank = int(parts[idx]) if idx < len(parts) and parts[idx].isdigit() else 0

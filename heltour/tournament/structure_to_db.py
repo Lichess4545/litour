@@ -74,6 +74,14 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
             "theme": metadata.league_settings.get("theme", "blue"),
         }
+        
+        # Configure tiebreaks for team tournaments
+        if metadata.competitor_type == "team":
+            # Default tiebreak order: Game Points, Sonneborn-Berger, Buchholz, Games Won
+            league_data["team_tiebreak_1"] = metadata.league_settings.get("team_tiebreak_1", "game_points")
+            league_data["team_tiebreak_2"] = metadata.league_settings.get("team_tiebreak_2", "sonneborn_berger")
+            league_data["team_tiebreak_3"] = metadata.league_settings.get("team_tiebreak_3", "buchholz")
+            league_data["team_tiebreak_4"] = metadata.league_settings.get("team_tiebreak_4", "games_won")
         # Add any additional league settings
         for key, value in metadata.league_settings.items():
             if key not in league_data:
