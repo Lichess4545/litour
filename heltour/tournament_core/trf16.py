@@ -220,7 +220,22 @@ class TRF16Parser:
                 result_data = player.results[round_number - 1]
                 opponent_id, color, result = result_data
 
-                if opponent_id and color == "w":  # White player
+                # Handle forfeits (opponent_id=0, color="-", result="+" or "-")
+                if opponent_id == 0 and color == "-":
+                    if result == "+":  # Forfeit win
+                        pairing = TRF16Pairing(
+                            round_number=round_number,
+                            board_number=player.board_number,
+                            white_player_id=player_id,
+                            black_player_id=0,  # No opponent
+                            result=self._convert_result_format(result),
+                        )
+                        pairings.append(pairing)
+                    # Note: We don't create pairings for forfeit losses (result="-")
+                    # because there's no actual game played
+
+                # Handle normal games
+                elif opponent_id and color == "w":  # White player
                     # Create pairing (only from white's perspective to avoid duplicates)
                     pairing = TRF16Pairing(
                         round_number=round_number,
@@ -344,10 +359,17 @@ class TRF16Parser:
                     idx + 2 < len(parts)
                     and parts[idx] == "0000"
                     and parts[idx + 1] == "-"
-                    and parts[idx + 2] == "-"
                 ):
-                    # Bye round
-                    results.append((None, "-", "-"))
+                    # Could be a bye (0000 - -) or forfeit (0000 - + or 0000 - -)
+                    if parts[idx + 2] == "-":
+                        # Bye round
+                        results.append((None, "-", "-"))
+                    elif parts[idx + 2] == "+":
+                        # Forfeit win
+                        results.append((0, "-", "+"))
+                    else:
+                        # Unknown format, treat as bye
+                        results.append((None, "-", "-"))
                     idx += 3
                 elif idx + 2 < len(parts):
                     # Normal result: opponent_id color result
@@ -393,9 +415,9 @@ class TRF16Parser:
         elif result == "=" or result == "1/2":
             return "1/2-1/2"
         elif result == "+":
-            return "1-0"  # Win by forfeit
+            return "1X-0F"  # Win by forfeit
         elif result == "-":
-            return "0-1"  # Loss by forfeit
+            return "0F-1X"  # Loss by forfeit
         else:
             return ""  # Unknown or no result
 

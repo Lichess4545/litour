@@ -33,7 +33,7 @@ class TRF16Converter:
 
     def create_tournament_builder(self, league_tag: str = "TRF16") -> TournamentBuilder:
         """Create a TournamentBuilder with teams and players from TRF16.
-        
+
         Args:
             league_tag: Tag for the league (default: "TRF16")
         """
@@ -116,7 +116,7 @@ class TRF16Converter:
         pairings = self.parser.parse_round_pairings(round_number)
 
         # Group pairings by teams
-        team_matches = self._group_pairings_by_teams(pairings)
+        team_matches = self._group_pairings_by_teams(pairings, round_number)
 
         # Add each team match
         for (white_team, black_team), board_results in team_matches.items():
@@ -132,9 +132,13 @@ class TRF16Converter:
         builder.complete()
 
     def _group_pairings_by_teams(
-        self, pairings: List[TRF16Pairing]
+        self, pairings: List[TRF16Pairing], round_number: int = 1
     ) -> Dict[Tuple[str, str], List[Tuple[int, str]]]:
         """Group individual pairings into team matches.
+
+        Args:
+            pairings: List of individual pairings
+            round_number: Round number (needed for forfeit handling)
 
         Returns:
             Dict mapping (white_team, black_team) to list of (board_number, result)
@@ -146,12 +150,22 @@ class TRF16Converter:
             white_player = self.players.get(pairing.white_player_id)
             black_player = self.players.get(pairing.black_player_id)
 
-            if not white_player or not black_player:
+            # Handle forfeit wins (opponent ID is 0)
+            is_forfeit_win = pairing.black_player_id == 0 and pairing.result == "1X-0F"
+
+            if not white_player:
+                continue
+
+            if not black_player and not is_forfeit_win:
                 continue
 
             # Find teams for each player
             white_team_name = self._find_player_team(pairing.white_player_id)
-            black_team_name = self._find_player_team(pairing.black_player_id)
+            black_team_name = (
+                self._find_player_team(pairing.black_player_id)
+                if not is_forfeit_win
+                else None
+            )
 
             if white_team_name and black_team_name:
                 # Normalize team order - always put teams in alphabetical order
@@ -198,6 +212,111 @@ class TRF16Converter:
                             result = "1-0"
 
                     team_matches[match_key].append((game["board"], result))
+
+        # Second pass: Handle forfeit wins
+        # Find all forfeit wins that weren't assigned to a team match
+        forfeit_wins = []
+        for pairing in pairings:
+            if pairing.black_player_id == 0 and pairing.result == "1X-0F":
+                # Note: white_player_id here is just the winner, not necessarily white
+                winner = self.players.get(pairing.white_player_id)
+                if winner:
+                    winner_team_name = self._find_player_team(pairing.white_player_id)
+                    if winner_team_name:
+                        forfeit_wins.append(
+                            {
+                                "winner_id": pairing.white_player_id,
+                                "winner": winner,
+                                "winner_team": winner_team_name,
+                                "board": winner.board_number,
+                            }
+                        )
+
+        # For each forfeit win, find which team match it belongs to
+        for forfeit in forfeit_wins:
+            winner_team = forfeit["winner_team"]
+            board = forfeit["board"]
+
+            # Find the team match that includes this team
+            matched = False
+            for match_key, boards in team_matches.items():
+                match_white_team, match_black_team = match_key
+
+                # Check if this forfeit belongs to this match
+                if winner_team == match_white_team or winner_team == match_black_team:
+                    # Check if this board is already filled
+                    board_numbers = [b[0] for b in boards]
+                    if board not in board_numbers:
+                        # Determine what color the winner actually had in this match
+                        if winner_team == match_white_team:
+                            # Winner was playing white in this match
+                            boards.append((board, "1X-0F"))  # White wins by forfeit
+                        else:
+                            # Winner was playing black in this match
+                            boards.append((board, "0F-1X"))  # Black wins by forfeit
+                        # Sort boards by board number
+                        boards.sort(key=lambda x: x[0])
+                        matched = True
+                        break
+
+            # If we didn't find a match in existing team_matches, we need to create one
+            if not matched:
+                # Find the opponent team based on board assignments
+                opponent_team = None
+                opponent_player = None
+
+                # Look through all teams to find who should have played on this board
+                for team_name, team in self.teams.items():
+                    if team_name != winner_team:
+                        # Check if this team has a player on the same board
+                        for pid in team.player_ids:
+                            if (
+                                pid in self.players
+                                and self.players[pid].board_number == board
+                            ):
+                                # Check if this player didn't play in this round
+                                if round_number <= len(self.players[pid].results):
+                                    opp_id, color, result = self.players[pid].results[
+                                        round_number - 1
+                                    ]
+                                    if opp_id == 0 and color == "-" and result == "-":
+                                        # This player didn't play - likely the forfeit opponent
+                                        opponent_team = team_name
+                                        opponent_player = self.players[pid]
+                                        break
+                        if opponent_team:
+                            break
+
+                if opponent_team:
+                    # Check if there's already a match between these teams
+                    existing_match = None
+                    for mk in team_matches:
+                        if set(mk) == {winner_team, opponent_team}:
+                            existing_match = mk
+                            break
+
+                    if existing_match:
+                        # Use the existing match orientation
+                        match_key = existing_match
+                        boards = team_matches[match_key]
+
+                        # Add the forfeit with correct orientation
+                        if existing_match[0] == winner_team:
+                            # winner is on white team
+                            boards.append((board, "1X-0F"))  # White wins by forfeit
+                        else:
+                            # winner is on black team
+                            boards.append((board, "0F-1X"))  # Black wins by forfeit
+                        boards.sort(key=lambda x: x[0])
+                    else:
+                        # No existing match, create new one
+                        # Determine match orientation - alphabetically first team is "white"
+                        if winner_team < opponent_team:
+                            match_key = (winner_team, opponent_team)
+                            team_matches[match_key] = [(board, "1X-0F")]
+                        else:
+                            match_key = (opponent_team, winner_team)
+                            team_matches[match_key] = [(board, "0F-1X")]
 
         return team_matches
 
