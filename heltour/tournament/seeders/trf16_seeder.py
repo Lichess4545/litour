@@ -193,7 +193,7 @@ def seed_complete_tournament(existing_league=None):
     converter.parse()
 
     # Create tournament builder
-    builder = converter.create_tournament_builder()
+    builder = converter.create_tournament_builder(league_tag="friendship-cup")
 
     # Add all rounds
     converter.add_rounds_to_builder(builder)
@@ -255,7 +255,7 @@ def seed_progressive_tournament(
     converter.parse()
 
     # Create tournament builder
-    builder = converter.create_tournament_builder()
+    builder = converter.create_tournament_builder(league_tag="friendship-cup")
 
     # Add specified rounds
     if include_results:

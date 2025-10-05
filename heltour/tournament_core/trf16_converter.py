@@ -31,8 +31,12 @@ class TRF16Converter:
         self.header, self.players, self.teams = self.parser.parse_all()
         self.parser.update_board_numbers()
 
-    def create_tournament_builder(self) -> TournamentBuilder:
-        """Create a TournamentBuilder with teams and players from TRF16."""
+    def create_tournament_builder(self, league_tag: str = "TRF16") -> TournamentBuilder:
+        """Create a TournamentBuilder with teams and players from TRF16.
+        
+        Args:
+            league_tag: Tag for the league (default: "TRF16")
+        """
         if not self.header:
             self.parse()
 
@@ -40,8 +44,6 @@ class TRF16Converter:
 
         # Set up league and season
         league_name = self.header.tournament_name
-        # Use a simple tag that will be web-safe
-        league_tag = "TRF16"
 
         # Configure tiebreaks based on TRF16 format
         # EGGSB BH:MP = Extended Game-Game Sonneborn-Berger, Buchholz, Match Points

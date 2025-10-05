@@ -87,7 +87,10 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             if key not in league_data:
                 league_data[key] = value
 
-        league = League.objects.create(**league_data)
+        league, created = League.objects.get_or_create(
+            tag=league_data["tag"],
+            defaults=league_data
+        )
 
     # Import timezone at the top if not already
     from django.utils import timezone
@@ -107,6 +110,16 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         if key not in season_data and key != "player_kwargs":
             season_data[key] = value
 
+    # Check if a season with this name already exists for this league
+    existing_seasons = Season.objects.filter(league=league, name=season_data["name"])
+    if existing_seasons.exists():
+        # Append a number to make it unique
+        base_name = season_data["name"]
+        counter = 2
+        while Season.objects.filter(league=league, name=f"{base_name} ({counter})").exists():
+            counter += 1
+        season_data["name"] = f"{base_name} ({counter})"
+    
     season = Season.objects.create(**season_data)
 
     # Track created objects
@@ -155,24 +168,31 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                             # If slugify results in empty string, create a fallback
                             username = f"player-{player_id}"
 
-                    player = Player.objects.create(
+                    # Try to find existing player first
+                    player, created = Player.objects.get_or_create(
                         lichess_username=username,
-                        rating=rating,
-                        profile={
-                            "perfs": {
-                                "standard": {
-                                    "rating": rating,
-                                    "games": 100,
-                                    "prov": False,
-                                },
-                                "classical": {
-                                    "rating": rating,
-                                    "games": 100,
-                                    "prov": False,
-                                },
-                            }
-                        },
+                        defaults={
+                            "rating": rating,
+                            "profile": {
+                                "perfs": {
+                                    "standard": {
+                                        "rating": rating,
+                                        "games": 100,
+                                        "prov": False,
+                                    },
+                                    "classical": {
+                                        "rating": rating,
+                                        "games": 100,
+                                        "prov": False,
+                                    },
+                                }
+                            },
+                        }
                     )
+                    if not created:
+                        # Update rating if player already exists
+                        player.rating = rating
+                        player.save()
                     db_players[player_name] = player
                 else:
                     player = db_players[player_name]
