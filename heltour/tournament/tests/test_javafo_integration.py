@@ -30,6 +30,9 @@ class JavaFoIntegrationTests(TestCase):
 
     def test_lone_tournament_full_flow(self):
         """Test complete lone tournament with JavaFo pairings."""
+        # Set random seed for deterministic rating generation
+        random.seed(42)
+        
         # Build tournament with varied ratings
         tournament = (
             TournamentBuilder()
@@ -227,6 +230,9 @@ class JavaFoIntegrationTests(TestCase):
 
     def test_pairing_constraints(self):
         """Test that pairings respect constraints like not playing same opponent twice."""
+        # Set random seed for deterministic pairing generation
+        random.seed(42)
+        
         tournament = (
             TournamentBuilder()
             .league("Swiss Test", "ST", "lone")
