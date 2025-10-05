@@ -44,14 +44,14 @@ class TRF16Converter:
         league_tag = "TRF16"
 
         # Configure tiebreaks based on TRF16 format
-        # EGGSB BH:MP = Extended Sonneborn-Berger, Buchholz, Match Points
+        # EGGSB BH:MP = Extended Game-Game Sonneborn-Berger, Buchholz, Match Points
         builder.league(
             name=league_name,
             tag=league_tag,
             type="team",  # TRF16 team format
-            # Tiebreaks: Match points primary, then Game points, Sonneborn-Berger, Buchholz
+            # Tiebreaks: Match points primary, then Game points, EGGSB, Buchholz
             team_tiebreak_1="game_points",  # After match points, use game points
-            team_tiebreak_2="sonneborn_berger",  # EGGSB - Extended Sonneborn-Berger
+            team_tiebreak_2="eggsb",  # EGGSB - Extended Game-Game Sonneborn-Berger
             team_tiebreak_3="buchholz",  # BH - Buchholz
             team_tiebreak_4="head_to_head",  # Additional tiebreak
         )

@@ -137,6 +137,10 @@ TEAM_TIEBREAK_OPTIONS = (
     ("games_won", "Games Won"),
     ("sonneborn_berger", "Sonneborn-Berger"),
     ("buchholz", "Buchholz"),
+    ("eggsb", "EGGSB - Extended Game-Game Sonneborn-Berger"),
+    ("emmsb", "EMMSB - Extended Match-Match Sonneborn-Berger"),
+    ("emgsb", "EMGSB - Extended Match-Game Sonneborn-Berger"),
+    ("egmsb", "EGMSB - Extended Game-Match Sonneborn-Berger"),
 )
 
 
@@ -630,7 +634,15 @@ class Season(_BaseModel):
 
                 # Set tiebreak values
                 tiebreak_values = tiebreak_results.get(score.team_id, {})
-                score.sb_score = tiebreak_values.get("sonneborn_berger", 0)
+                # Use any of the Extended Sonneborn-Berger variants if configured, 
+                # otherwise fall back to regular Sonneborn-Berger
+                score.sb_score = (
+                    tiebreak_values.get("eggsb", 0) or
+                    tiebreak_values.get("emmsb", 0) or
+                    tiebreak_values.get("emgsb", 0) or
+                    tiebreak_values.get("egmsb", 0) or
+                    tiebreak_values.get("sonneborn_berger", 0)
+                )
                 score.buchholz = tiebreak_values.get("buchholz", 0)
                 score.head_to_head = tiebreak_values.get("head_to_head", 0)
             else:

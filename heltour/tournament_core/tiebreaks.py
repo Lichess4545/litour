@@ -66,6 +66,133 @@ def calculate_sonneborn_berger(
     return sb_score
 
 
+def calculate_eggsb(
+    competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
+) -> float:
+    """
+    Calculate Extended Game-Game Sonneborn-Berger (EGGSB) for teams.
+
+    EGGSB = Sum of (Total GP opponent × GP scored against that opponent)
+
+    This is one of the four Extended Sonneborn-Berger variants defined by FIDE
+    for team tournaments.
+
+    Args:
+        competitor_score: The competitor's score data
+        all_scores: Dictionary mapping competitor IDs to their final scores
+
+    Returns:
+        The EGGSB score
+    """
+    eggsb_score = 0.0
+
+    for result in competitor_score.match_results:
+        if result.is_bye or result.opponent_id is None:
+            continue
+
+        opponent_score = all_scores.get(result.opponent_id)
+        if opponent_score is None:
+            continue
+
+        # Total GP opponent × GP scored against that opponent
+        eggsb_score += opponent_score.game_points * result.game_points
+
+    return eggsb_score
+
+
+def calculate_emmsb(
+    competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
+) -> float:
+    """
+    Calculate Extended Match-Match Sonneborn-Berger (EMMSB) for teams.
+
+    EMMSB = Sum of (Total MP opponent × MP scored against that opponent)
+
+    Args:
+        competitor_score: The competitor's score data
+        all_scores: Dictionary mapping competitor IDs to their final scores
+
+    Returns:
+        The EMMSB score
+    """
+    emmsb_score = 0.0
+
+    for result in competitor_score.match_results:
+        if result.is_bye or result.opponent_id is None:
+            continue
+
+        opponent_score = all_scores.get(result.opponent_id)
+        if opponent_score is None:
+            continue
+
+        # Total MP opponent × MP scored against that opponent
+        emmsb_score += opponent_score.match_points * result.match_points
+
+    return emmsb_score
+
+
+def calculate_emgsb(
+    competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
+) -> float:
+    """
+    Calculate Extended Match-Game Sonneborn-Berger (EMGSB) for teams.
+
+    EMGSB = Sum of (Total MP opponent × GP scored against that opponent)
+
+    Args:
+        competitor_score: The competitor's score data
+        all_scores: Dictionary mapping competitor IDs to their final scores
+
+    Returns:
+        The EMGSB score
+    """
+    emgsb_score = 0.0
+
+    for result in competitor_score.match_results:
+        if result.is_bye or result.opponent_id is None:
+            continue
+
+        opponent_score = all_scores.get(result.opponent_id)
+        if opponent_score is None:
+            continue
+
+        # Total MP opponent × GP scored against that opponent
+        emgsb_score += opponent_score.match_points * result.game_points
+
+    return emgsb_score
+
+
+def calculate_egmsb(
+    competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
+) -> float:
+    """
+    Calculate Extended Game-Match Sonneborn-Berger (EGMSB) for teams.
+
+    EGMSB = Sum of (Total GP opponent × MP scored against that opponent)
+
+    Args:
+        competitor_score: The competitor's score data
+        all_scores: Dictionary mapping competitor IDs to their final scores
+
+    Returns:
+        The EGMSB score
+    """
+    egmsb_score = 0.0
+
+    for result in competitor_score.match_results:
+        if result.is_bye or result.opponent_id is None:
+            continue
+
+        opponent_score = all_scores.get(result.opponent_id)
+        if opponent_score is None:
+            continue
+
+        # Total GP opponent × MP scored against that opponent
+        egmsb_score += opponent_score.game_points * result.match_points
+
+    return egmsb_score
+
+
 def calculate_buchholz(
     competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
 ) -> float:
@@ -242,6 +369,14 @@ def calculate_all_tiebreaks(
                 tiebreaks["sonneborn_berger"] = calculate_sonneborn_berger(
                     score, competitor_scores
                 )
+            elif tiebreak_name == "eggsb":
+                tiebreaks["eggsb"] = calculate_eggsb(score, competitor_scores)
+            elif tiebreak_name == "emmsb":
+                tiebreaks["emmsb"] = calculate_emmsb(score, competitor_scores)
+            elif tiebreak_name == "emgsb":
+                tiebreaks["emgsb"] = calculate_emgsb(score, competitor_scores)
+            elif tiebreak_name == "egmsb":
+                tiebreaks["egmsb"] = calculate_egmsb(score, competitor_scores)
             elif tiebreak_name == "buchholz":
                 tiebreaks["buchholz"] = calculate_buchholz(score, competitor_scores)
             elif tiebreak_name == "head_to_head":
