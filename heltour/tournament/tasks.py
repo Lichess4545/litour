@@ -663,7 +663,7 @@ def start_games():
 def _create_team_string(season: Season) -> str:
     if not season.league.is_team_league():
         return ""
-    teams = Team.objects.filter(season=season)
+    teams = Team.objects.filter(season=season).order_by('number')
     lines = []
     for team in teams:
         for teamplayer in TeamMember.objects.filter(team=team).order_by(

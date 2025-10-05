@@ -1004,9 +1004,23 @@ class StandingsView(SeasonView):
             team_scores = list(enumerate(sorted(
                 TeamScore.objects.filter(team__season=self.season).select_related('team').nocache(),
                 reverse=True), 1))
+            # Get configured tiebreaks for display
+            tiebreaks = []
+            tiebreak_names = {
+                'game_points': 'Game Points',
+                'head_to_head': 'Head-to-Head',
+                'games_won': 'Games Won',
+                'sonneborn_berger': 'Sonneborn-Berger',
+                'buchholz': 'Buchholz',
+            }
+            for tb in self.league.get_team_tiebreaks():
+                if tb in tiebreak_names:
+                    tiebreaks.append((tb, tiebreak_names[tb]))
+            
             context = {
                 'round_numbers': round_numbers,
                 'team_scores': team_scores,
+                'tiebreaks': tiebreaks,
             }
             return self.render('tournament/team_standings.html', context)
 

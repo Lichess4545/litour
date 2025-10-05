@@ -84,13 +84,18 @@ def shell(c):
     c.run(f"python {manage_py} shell", pty=True)
 
 
-@task(help={"test": "Specific test module, class, or method to run"})
-def test(c, test=""):
-    """Run Django tests. Optionally specify a specific test path."""
+@task(
+    help={"tests": "Specific test module(s), class(es), or method(s) to run"},
+    iterable=["tests"]
+)
+def test(c, tests=None):
+    """Run Django tests. Optionally specify test path(s)."""
     manage_py = project_relative("manage.py")
     test_cmd = f"python {manage_py} test --settings=heltour.test_settings"
-    if test:
-        c.run(f"{test_cmd} {test}")
+    if tests:
+        # Join all test paths with spaces
+        test_paths = " ".join(tests)
+        c.run(f"{test_cmd} {test_paths}")
     else:
         c.run(test_cmd)
 

@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     "phonenumber_field",
     "django_countries",
     "heltour.tournament",
+    "heltour.tournament_core",
     "heltour.comments",
     "heltour.api_worker",
     "django_celery_beat",
