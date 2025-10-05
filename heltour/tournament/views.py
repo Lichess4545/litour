@@ -1005,17 +1005,18 @@ class StandingsView(SeasonView):
                 TeamScore.objects.filter(team__season=self.season).select_related('team').nocache(),
                 reverse=True), 1))
             # Get configured tiebreaks for display
+            # Get tiebreak names from the model choices
+            from heltour.tournament.models import TEAM_TIEBREAK_OPTIONS
+            tiebreak_names = dict(TEAM_TIEBREAK_OPTIONS)
+            
             tiebreaks = []
-            tiebreak_names = {
-                'game_points': 'Game Points',
-                'head_to_head': 'Head-to-Head',
-                'games_won': 'Games Won',
-                'sonneborn_berger': 'Sonneborn-Berger',
-                'buchholz': 'Buchholz',
-            }
             for tb in self.league.get_team_tiebreaks():
                 if tb in tiebreak_names:
-                    tiebreaks.append((tb, tiebreak_names[tb]))
+                    # Use short display name for Extended SB variants
+                    display_name = tiebreak_names[tb]
+                    if ' - ' in display_name:
+                        display_name = display_name.split(' - ')[0]
+                    tiebreaks.append((tb, display_name))
             
             context = {
                 'round_numbers': round_numbers,
