@@ -93,6 +93,14 @@ class TRF16Converter:
         # Create mapping of player line numbers to player data
         player_by_line = self.players
 
+        # First, add all individual players with their actual IDs
+        # This ensures the builder uses the correct player IDs
+        for player_id, player in player_by_line.items():
+            # Set the player ID mapping in the builder
+            builder.metadata.players[player.name] = player_id
+            if builder._next_player_id <= player_id:
+                builder._next_player_id = player_id + 1
+
         # Add each team
         for team_name, team in self.teams.items():
             # Collect players for this team
@@ -118,16 +126,48 @@ class TRF16Converter:
         # Group pairings by teams
         team_matches = self._group_pairings_by_teams(pairings, round_number)
 
-        # Add each team match
+        # Add each team match using actual player pairings
         for (white_team, black_team), board_results in team_matches.items():
             # Sort by board number
             board_results.sort(key=lambda x: x[0])
 
-            # Extract just the results
-            results = [result for _, result in board_results]
+            # Get team IDs
+            white_team_id = None
+            black_team_id = None
+            for team_name, team_info in builder.metadata.teams.items():
+                if team_name == white_team:
+                    white_team_id = team_info["id"]
+                elif team_name == black_team:
+                    black_team_id = team_info["id"]
 
-            if results:
-                builder.match(white_team, black_team, *results)
+            if white_team_id is not None and black_team_id is not None:
+                # Build the board results with actual player IDs
+                actual_board_results = []
+
+                for board_num, result in board_results:
+                    # Get the actual players for this board
+                    if (
+                        hasattr(self, "_board_players")
+                        and (white_team, black_team) in self._board_players
+                    ):
+                        player_ids = self._board_players[(white_team, black_team)].get(
+                            board_num
+                        )
+                        if player_ids:
+                            white_player_id, black_player_id = player_ids
+                            actual_board_results.append(
+                                (white_player_id, black_player_id, result)
+                            )
+                        else:
+                            # Fallback: this shouldn't happen but just in case
+                            print(f"Warning: No player IDs found for board {board_num}")
+                    else:
+                        print(f"Warning: No board players mapping found")
+
+                if actual_board_results:
+                    builder.add_team_match(
+                        white_team_id, black_team_id, actual_board_results
+                    )
 
         builder.complete()
 
@@ -150,22 +190,17 @@ class TRF16Converter:
             white_player = self.players.get(pairing.white_player_id)
             black_player = self.players.get(pairing.black_player_id)
 
-            # Handle forfeit wins (opponent ID is 0)
+            # Handle forfeit wins (opponent ID is 0) - skip these in the normal pairing logic
             is_forfeit_win = pairing.black_player_id == 0 and pairing.result == "1X-0F"
+            if is_forfeit_win:
+                continue  # Handle forfeits separately
 
-            if not white_player:
-                continue
-
-            if not black_player and not is_forfeit_win:
+            if not white_player or not black_player:
                 continue
 
             # Find teams for each player
             white_team_name = self._find_player_team(pairing.white_player_id)
-            black_team_name = (
-                self._find_player_team(pairing.black_player_id)
-                if not is_forfeit_win
-                else None
-            )
+            black_team_name = self._find_player_team(pairing.black_player_id)
 
             if white_team_name and black_team_name:
                 # Normalize team order - always put teams in alphabetical order
@@ -174,14 +209,15 @@ class TRF16Converter:
                 if teams not in team_games:
                     team_games[teams] = []
 
-                # Store the game with info about which team had white
+                # Store the actual game pairing from TRF
                 team_games[teams].append(
                     {
                         "white_team": white_team_name,
                         "black_team": black_team_name,
                         "white_player": white_player,
                         "black_player": black_player,
-                        "board": white_player.board_number,
+                        "white_player_id": pairing.white_player_id,
+                        "black_player_id": pairing.black_player_id,
                         "result": pairing.result,
                     }
                 )
@@ -192,16 +228,30 @@ class TRF16Converter:
         for teams, games in team_games.items():
             if len(games) > 0:
                 # Determine which team should be considered "white" for the match
-                # Use the team that has white on board 1
-                board1_game = next((g for g in games if g["board"] == 1), games[0])
+                # Use the team that has white on board 1, or first game if no board 1
+                board1_game = next(
+                    (g for g in games if g["white_player"].board_number == 1), games[0]
+                )
                 match_white_team = board1_game["white_team"]
                 match_black_team = board1_game["black_team"]
 
                 match_key = (match_white_team, match_black_team)
                 team_matches[match_key] = []
+                boards_used = set()  # Track which boards are used
 
-                # Add all games for this match
-                for game in sorted(games, key=lambda g: g["board"]):
+                # Add all games for this match, using actual TRF pairings
+                # Sort games by white player board number to maintain some order
+                sorted_games = sorted(
+                    games, key=lambda g: g["white_player"].board_number
+                )
+
+                for game in sorted_games:
+                    # Find the next available board number starting from 1
+                    board_num = 1
+                    while board_num in boards_used:
+                        board_num += 1
+                    boards_used.add(board_num)
+
                     # Adjust result if the game colors don't match the match colors
                     result = game["result"]
                     if game["white_team"] != match_white_team:
@@ -210,8 +260,30 @@ class TRF16Converter:
                             result = "0-1"
                         elif result == "0-1":
                             result = "1-0"
+                        elif result == "1X-0F":
+                            result = "0F-1X"
+                        elif result == "0F-1X":
+                            result = "1X-0F"
 
-                    team_matches[match_key].append((game["board"], result))
+                    team_matches[match_key].append((board_num, result))
+
+                    # Store the actual player IDs for this board
+                    # This helps us identify the players correctly
+                    if not hasattr(self, "_board_players"):
+                        self._board_players = {}
+                    if match_key not in self._board_players:
+                        self._board_players[match_key] = {}
+
+                    if game["white_team"] == match_white_team:
+                        self._board_players[match_key][board_num] = (
+                            game["white_player_id"],
+                            game["black_player_id"],
+                        )
+                    else:
+                        self._board_players[match_key][board_num] = (
+                            game["black_player_id"],
+                            game["white_player_id"],
+                        )
 
         # Second pass: Handle forfeit wins
         # Find all forfeit wins that weren't assigned to a team match
@@ -244,20 +316,43 @@ class TRF16Converter:
 
                 # Check if this forfeit belongs to this match
                 if winner_team == match_white_team or winner_team == match_black_team:
-                    # Check if this board is already filled
+                    # Find an available board number
                     board_numbers = [b[0] for b in boards]
-                    if board not in board_numbers:
-                        # Determine what color the winner actually had in this match
-                        if winner_team == match_white_team:
-                            # Winner was playing white in this match
-                            boards.append((board, "1X-0F"))  # White wins by forfeit
-                        else:
-                            # Winner was playing black in this match
-                            boards.append((board, "0F-1X"))  # Black wins by forfeit
-                        # Sort boards by board number
-                        boards.sort(key=lambda x: x[0])
-                        matched = True
-                        break
+
+                    # Find the next available board starting from 1
+                    forfeit_board = 1
+                    while forfeit_board in board_numbers:
+                        forfeit_board += 1
+
+                    # Determine what color the winner actually had in this match
+                    if winner_team == match_white_team:
+                        # Winner was playing white in this match
+                        boards.append((forfeit_board, "1X-0F"))  # White wins by forfeit
+                    else:
+                        # Winner was playing black in this match
+                        boards.append((forfeit_board, "0F-1X"))  # Black wins by forfeit
+
+                    # Store the forfeit player info
+                    if not hasattr(self, "_board_players"):
+                        self._board_players = {}
+                    if match_key not in self._board_players:
+                        self._board_players[match_key] = {}
+
+                    if winner_team == match_white_team:
+                        self._board_players[match_key][forfeit_board] = (
+                            forfeit["winner_id"],
+                            -1,
+                        )  # -1 for bye
+                    else:
+                        self._board_players[match_key][forfeit_board] = (
+                            -1,
+                            forfeit["winner_id"],
+                        )
+
+                    # Sort boards by board number
+                    boards.sort(key=lambda x: x[0])
+                    matched = True
+                    break
 
             # If we didn't find a match in existing team_matches, we need to create one
             if not matched:

@@ -175,6 +175,10 @@ class TournamentBuilder:
                     result = "0-1"
                 elif result == "0-1":
                     result = "1-0"
+                elif result == "1X-0F":
+                    result = "0F-1X"
+                elif result == "0F-1X":
+                    result = "1X-0F"
 
             board_results.append((white_player, black_player, result))
 
