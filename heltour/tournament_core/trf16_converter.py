@@ -40,7 +40,8 @@ class TRF16Converter:
 
         # Set up league and season
         league_name = self.header.tournament_name
-        league_tag = self._generate_league_tag(league_name)
+        # Use a simple tag that will be web-safe
+        league_tag = "TRF16"
 
         builder.league(
             name=league_name, tag=league_tag, type="team"  # TRF16 team format
@@ -195,16 +196,6 @@ class TRF16Converter:
             if player_id in team.player_ids:
                 return team_name
         return None
-
-    def _generate_league_tag(self, league_name: str) -> str:
-        """Generate a short tag from league name."""
-        # Take first letters of each word, up to 4 characters
-        words = league_name.split()
-        if len(words) >= 2:
-            tag = "".join(word[0].upper() for word in words[:4])
-        else:
-            tag = league_name[:4].upper()
-        return tag
 
     def get_team_standings_after_round(
         self, round_number: int

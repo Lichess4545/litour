@@ -6,7 +6,7 @@ the parsing into modular components that can be used independently.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 import re
 
@@ -179,21 +179,31 @@ class TRF16Parser:
 
     def parse_teams(self) -> Dict[str, TRF16Team]:
         """Parse team information from the TRF16 file."""
-        # Team entries start with 013
-        team_line_re = re.compile(r"^013\s+(.+?)\s+(\d+(?:\s+\d+)*)\s*$")
-
         for line in self.lines:
             if line.startswith("013"):
-                # Extract team name and player IDs
-                match = team_line_re.match(line)
-                if match:
-                    team_name = match.group(1).strip()
-                    player_ids_str = match.group(2)
-                    player_ids = [int(pid) for pid in player_ids_str.split()]
+                # Remove the "013" prefix
+                team_data = line[3:]
 
-                    self.teams[team_name] = TRF16Team(
-                        name=team_name, player_ids=player_ids
-                    )
+                # Look for multiple spaces (2 or more) to find where team name ends
+                # This handles team names with numbers like "ΓΑΖΙ 1"
+                import re
+
+                match = re.search(r"  +", team_data)
+
+                if match:
+                    # Team name is everything before the multiple spaces
+                    team_name = team_data[: match.start()].strip()
+                    # Player IDs are in the part after the multiple spaces
+                    player_ids_str = team_data[match.end() :]
+                    # Extract all numeric values as player IDs
+                    player_ids = [
+                        int(pid) for pid in player_ids_str.split() if pid.isdigit()
+                    ]
+
+                    if team_name and player_ids:
+                        self.teams[team_name] = TRF16Team(
+                            name=team_name, player_ids=player_ids
+                        )
 
         return self.teams
 
@@ -381,4 +391,3 @@ class TRF16Parser:
                 if player_id in self.players:
                     self.players[player_id].board_number = board
                     board += 1
-

@@ -54,9 +54,21 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
     if existing_league:
         league = existing_league
     else:
+        # Generate a web-safe slug if tag contains non-ASCII characters
+        import re
+        from django.utils.text import slugify
+
+        tag = metadata.league_tag or "TL"
+        # If tag contains non-ASCII characters, slugify it
+        if not tag.isascii():
+            tag = slugify(tag)
+            # If slugify results in empty string, use a default
+            if not tag:
+                tag = "trf16-import"
+
         league_data = {
             "name": metadata.league_name or "Test League",
-            "tag": metadata.league_tag or "TL",
+            "tag": tag,
             "competitor_type": metadata.competitor_type,
             "rating_type": metadata.league_settings.get("rating_type", "standard"),
             "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
@@ -69,12 +81,18 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
 
         league = League.objects.create(**league_data)
 
+    # Import timezone at the top if not already
+    from django.utils import timezone
+
     # Create Season
     season_data = {
         "league": league,
         "name": metadata.season_name or "Test Season",
         "rounds": metadata.season_settings.get("rounds", len(tournament.rounds)) or 1,
         "boards": metadata.boards if metadata.competitor_type == "team" else None,
+        "is_active": True,  # Make the season visible
+        "tag": "current",  # Default season tag
+        "start_date": timezone.now(),  # Set start date
     }
     # Add any additional season settings
     for key, value in metadata.season_settings.items():
@@ -117,8 +135,14 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
 
                 # Create or get player (using name as key to avoid ID conflicts)
                 if player_name not in db_players:
+                    # Slugify the username for web-safe URLs
+                    slugified_username = slugify(player_name)
+                    if not slugified_username:
+                        # If slugify results in empty string, create a fallback
+                        slugified_username = f"player-{player_id}"
+
                     player = Player.objects.create(
-                        lichess_username=player_name,
+                        lichess_username=slugified_username,
                         rating=rating,
                         profile={
                             "perfs": {
@@ -143,7 +167,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                 SeasonPlayer.objects.get_or_create(
                     season=season,
                     player=player,
-                    defaults={"seed_rating": rating, "is_active": True}
+                    defaults={"seed_rating": rating, "is_active": True},
                 )
 
                 # Create team member
@@ -153,17 +177,27 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         player_kwargs = metadata.season_settings.get("player_kwargs", {})
         for player_name, player_id in metadata.players.items():
             kwargs = player_kwargs.get(player_id, {})
-            rating = kwargs.get('rating', 1500)
+            rating = kwargs.get("rating", 1500)
 
             # Create player (check by name to avoid duplicates)
             if player_name not in db_players:
+                # Slugify the username for web-safe URLs
+                slugified_username = slugify(player_name)
+                if not slugified_username:
+                    # If slugify results in empty string, create a fallback
+                    slugified_username = f"player-{player_id}"
+
                 player = Player.objects.create(
-                    lichess_username=player_name,
+                    lichess_username=slugified_username,
                     rating=rating,
                     profile={
                         "perfs": {
                             "standard": {"rating": rating, "games": 100, "prov": False},
-                            "classical": {"rating": rating, "games": 100, "prov": False},
+                            "classical": {
+                                "rating": rating,
+                                "games": 100,
+                                "prov": False,
+                            },
                         }
                     },
                 )
@@ -195,10 +229,23 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             player_id_to_db[player_id] = db_players[player_name]
 
     # Create rounds and pairings
+    from datetime import timedelta
+    from django.utils import timezone
+
     for round_struct in tournament.rounds:
-        # Create round (initially not completed)
-        round_obj = Round.objects.create(
-            season=season, number=round_struct.number, is_completed=False
+        # Create round with proper dates
+        round_start = timezone.now() + timedelta(weeks=(round_struct.number - 1))
+        round_end = round_start + timedelta(days=7)
+
+        round_obj, created = Round.objects.get_or_create(
+            season=season,
+            number=round_struct.number,
+            defaults={
+                "start_date": round_start,
+                "end_date": round_end,
+                "is_completed": False,
+                "publish_pairings": True,
+            },
         )
         db_rounds.append(round_obj)
 
