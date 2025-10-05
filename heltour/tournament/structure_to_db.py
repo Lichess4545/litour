@@ -46,6 +46,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         TeamBye,
         PlayerBye,
     )
+    from django.utils.text import slugify
 
     tournament = builder.tournament
     metadata = builder.metadata
@@ -56,7 +57,6 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
     else:
         # Generate a web-safe slug if tag contains non-ASCII characters
         import re
-        from django.utils.text import slugify
 
         tag = metadata.league_tag or "TL"
         # If tag contains non-ASCII characters, slugify it
