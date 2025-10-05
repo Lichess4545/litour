@@ -135,14 +135,20 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
 
                 # Create or get player (using name as key to avoid ID conflicts)
                 if player_name not in db_players:
-                    # Slugify the username for web-safe URLs
-                    slugified_username = slugify(player_name)
-                    if not slugified_username:
-                        # If slugify results in empty string, create a fallback
-                        slugified_username = f"player-{player_id}"
+                    # Check if the player name is already a valid username (alphanumeric, hyphen, underscore)
+                    import re
+                    if re.match(r'^[-\w]+$', player_name):
+                        # Already looks like a valid username, use as-is
+                        username = player_name
+                    else:
+                        # Need to slugify for web-safe URLs
+                        username = slugify(player_name)
+                        if not username:
+                            # If slugify results in empty string, create a fallback
+                            username = f"player-{player_id}"
 
                     player = Player.objects.create(
-                        lichess_username=slugified_username,
+                        lichess_username=username,
                         rating=rating,
                         profile={
                             "perfs": {
@@ -181,14 +187,20 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
 
             # Create player (check by name to avoid duplicates)
             if player_name not in db_players:
-                # Slugify the username for web-safe URLs
-                slugified_username = slugify(player_name)
-                if not slugified_username:
-                    # If slugify results in empty string, create a fallback
-                    slugified_username = f"player-{player_id}"
+                # Check if the player name is already a valid username (alphanumeric, hyphen, underscore)
+                import re
+                if re.match(r'^[-\w]+$', player_name):
+                    # Already looks like a valid username, use as-is
+                    username = player_name
+                else:
+                    # Need to slugify for web-safe URLs
+                    username = slugify(player_name)
+                    if not username:
+                        # If slugify results in empty string, create a fallback
+                        username = f"player-{player_id}"
 
                 player = Player.objects.create(
-                    lichess_username=slugified_username,
+                    lichess_username=username,
                     rating=rating,
                     profile={
                         "perfs": {
@@ -247,6 +259,10 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                 "publish_pairings": True,
             },
         )
+        # Ensure publish_pairings is True even for existing rounds
+        if not created and not round_obj.publish_pairings:
+            round_obj.publish_pairings = True
+            round_obj.save()
         db_rounds.append(round_obj)
 
         # Track who played in this round and who has byes
