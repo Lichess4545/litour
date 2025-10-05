@@ -248,7 +248,24 @@ def create_bye_match(competitor_id: int, games_per_match: int = 1) -> Match:
     """Create a bye match."""
     # For a bye, we might still need to know how many games would have been played
     # to calculate the appropriate game points
-    games = [Game(competitor_id, -1, GameResult.P1_WIN) for _ in range(games_per_match)]
+    #
+    # For team tournaments: team bye = draw-equivalent scoring (half points)
+    # For individual tournaments: player bye = win (full points)
+    if games_per_match > 1:
+        # Team tournament: bye should give draw-equivalent points (half the boards)
+        # Create half wins, half draws to achieve 50% scoring
+        games = []
+        for i in range(games_per_match):
+            if i < games_per_match // 2:
+                games.append(Game(competitor_id, -1, GameResult.P1_WIN))
+            else:
+                games.append(Game(competitor_id, -1, GameResult.DRAW))
+    else:
+        # Individual tournament: bye = full win
+        games = [
+            Game(competitor_id, -1, GameResult.P1_WIN) for _ in range(games_per_match)
+        ]
+
     return Match(competitor_id, -1, games, is_bye=True)
 
 

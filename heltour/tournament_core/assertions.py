@@ -11,10 +11,7 @@ from heltour.tournament_core.structure import Tournament
 from heltour.tournament_core.tiebreaks import CompetitorScore, calculate_all_tiebreaks
 
 
-class AssertionError(Exception):
-    """Custom assertion error for tournament assertions."""
-
-    pass
+# Use the built-in AssertionError for proper test framework integration
 
 
 @dataclass
@@ -193,9 +190,10 @@ class CompetitorResultAssertion(StandingsAssertion):
         """Assert a specific tiebreak value."""
         # Calculate tiebreaks if not already done
         if self._tiebreaks is None:
-            # Default tiebreak order
+            # Default tiebreak order including EGGSB
             tiebreak_order = [
                 "sonneborn_berger",
+                "eggsb",
                 "buchholz",
                 "head_to_head",
                 "games_won",
@@ -228,6 +226,7 @@ class CompetitorResultAssertion(StandingsAssertion):
         if self._tiebreaks is None:
             tiebreak_order = [
                 "sonneborn_berger",
+                "eggsb",
                 "buchholz",
                 "head_to_head",
                 "games_won",
@@ -242,6 +241,7 @@ class CompetitorResultAssertion(StandingsAssertion):
             if comp_id in self._tiebreaks:
                 for tb_name in [
                     "sonneborn_berger",
+                    "eggsb",
                     "buchholz",
                     "head_to_head",
                     "games_won",

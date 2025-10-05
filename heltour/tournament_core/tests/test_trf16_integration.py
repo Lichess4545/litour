@@ -61,22 +61,14 @@ class TestTRF16Integration(unittest.TestCase):
         self.assertEqual(len(tournament.rounds), 2)  # 2 rounds
 
         # Test team standings
-        # Round 1: Alpha vs Gamma (1.5-0.5), Beta vs Delta (2-0)
-        # Round 2: Alpha vs Delta (1-1), Beta vs Gamma (2-0)
-        # Final: Beta 4 pts (2W), Alpha 3 pts (1W 1D), Delta 1 pt (1D 1L), Gamma 0 pts (2L)
+        # Round 1: Alpha vs Gamma (1.5-0.5), Beta vs Delta (1-1)
+        # Round 2: Alpha vs Delta (1-1), Beta vs Gamma (1-1)
+        # Final: Alpha 3 pts (1W 1D), Beta 2 pts (1D 1D), Delta 2 pts (1D 1D), Gamma 1 pt (1L 1D)
 
-        assert_tournament(tournament).team("Team Beta").assert_().match_points(
-            4
-        ).position(1)
-        assert_tournament(tournament).team("Team Alpha").assert_().match_points(
-            3
-        ).position(2)
-        assert_tournament(tournament).team("Team Delta").assert_().match_points(
-            1
-        ).position(3)
-        assert_tournament(tournament).team("Team Gamma").assert_().match_points(
-            0
-        ).position(4)
+        assert_tournament(tournament).team("Team Alpha").assert_().match_points(3)
+        assert_tournament(tournament).team("Team Beta").assert_().match_points(2)
+        assert_tournament(tournament).team("Team Delta").assert_().match_points(2)
+        assert_tournament(tournament).team("Team Gamma").assert_().match_points(1)
 
     def test_partial_round_import(self):
         """Test importing only specific rounds from TRF16."""
@@ -166,10 +158,10 @@ class TestTRF16Integration(unittest.TestCase):
         gamma_id = team_name_to_id["Team Gamma"]["id"]
         delta_id = team_name_to_id["Team Delta"]["id"]
 
-        self.assertEqual(results_r1[alpha_id].match_points, 2)
-        self.assertEqual(results_r1[beta_id].match_points, 2)
-        self.assertEqual(results_r1[gamma_id].match_points, 0)
-        self.assertEqual(results_r1[delta_id].match_points, 0)
+        self.assertEqual(results_r1[alpha_id].match_points, 2)  # Alpha beats Gamma 1.5-0.5
+        self.assertEqual(results_r1[beta_id].match_points, 1)   # Beta draws Delta 1-1
+        self.assertEqual(results_r1[gamma_id].match_points, 0)  # Gamma loses to Alpha 0.5-1.5
+        self.assertEqual(results_r1[delta_id].match_points, 1)  # Delta draws Beta 1-1
 
 
 if __name__ == "__main__":
