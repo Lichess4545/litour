@@ -231,6 +231,8 @@ class TournamentBuilder:
             "1X-0F": GameResult.P1_FORFEIT_WIN,
             "0F-1X": GameResult.P2_FORFEIT_WIN,
             "0F-0F": GameResult.DOUBLE_FORFEIT,
+            "+": GameResult.P1_FORFEIT_WIN,  # TRF forfeit win notation
+            "-": GameResult.P2_FORFEIT_WIN,  # TRF forfeit loss notation
         }
 
         game_result = result_map.get(result)
@@ -261,6 +263,8 @@ class TournamentBuilder:
             "1X-0F": GameResult.P1_FORFEIT_WIN,
             "0F-1X": GameResult.P2_FORFEIT_WIN,
             "0F-0F": GameResult.DOUBLE_FORFEIT,
+            "+": GameResult.P1_FORFEIT_WIN,  # TRF forfeit win notation
+            "-": GameResult.P2_FORFEIT_WIN,  # TRF forfeit loss notation
         }
 
         # Convert string results to GameResult enums
