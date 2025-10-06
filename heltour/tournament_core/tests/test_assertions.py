@@ -4,7 +4,7 @@ Tests for the fluent assertion interface.
 
 import unittest
 from heltour.tournament_core.builder import TournamentBuilder
-from heltour.tournament_core.assertions import assert_tournament, AssertionError
+from heltour.tournament_core.assertions import assert_tournament
 from heltour.tournament_core.scoring import STANDARD_SCORING
 
 
