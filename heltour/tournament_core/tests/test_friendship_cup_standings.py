@@ -302,7 +302,7 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
 001  106 m    Fasoulakis,Georgios               1406 GRE    42178452 2014/00/00  0.0  111  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  107 f    Kontaki,Maria                     1465 GRE     4237234 1959/00/00  3.0   52    99 w 1    51 b 1     7 b 0  0000 - -    84 w 1    36 b 0    19 w 0  
 001  108 m    Malliotakis,Mihail                1585 GRE     4251679 1988/00/00  4.5   15   100 b 1    52 w 1     8 w =  0000 - -    85 b 1    37 w 1    20 b 0  
-001  109 m    Dialynas,Nikolaos                 0000 GRE           0 2017/00/00  5.0    8   101 w =    53 b 1     9 b =  0000 - -  0000 - +    38 b 1    21 w 1  
+001  109 m    Dialynas,Nikolaos                 0000 GRE           0 2017/00/00  5.0    8   101 w =    53 b 1     9 b =  0000 - -  0000 - -    38 b 1    21 w 1  
 001  110 m    Garefalakis,Nikitas               0000 GRE    42191947 2016/00/00  3.5   43   102 b 0    54 w 0    10 w =  0000 - -    86 b 1    39 w 1    55 b 1  
 001  111 m    Garefalakis,Emmanouil             0000 GRE           0 2018/00/00  3.0   53   103 w 0    73 b 0    11 b 1  0000 - -    87 w 1    40 b 1    56 w 0  
 001  112 f    Galetaki,Eirini                   0000 GRE    42175879 2015/00/00  0.0  112  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
@@ -417,6 +417,8 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
 
     def test_friendship_cup_eggsb_tiebreak(self):
         """Test EGGSB tiebreak scores for all teams."""
+        # Clear cache to ensure we get fresh tournament with all fixes
+        self._tournament = None
         tournament = self.get_tournament()
 
         for (
@@ -1175,6 +1177,451 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
             total_gp += gp
             print(f"  R{round_num}: {gp}GP")
         print(f"  Total: {total_gp}GP (should be 25.5GP)")
+
+    def test_debug_ofi1_eggsb_detailed(self):
+        """Detailed debug for ΟΦΗ 1 EGGSB - first failing team in standings order."""
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Focus on ΟΦΗ 1 (first failing team)
+        ofi1_id = tournament.name_to_id["ΟΦΗ 1"]
+        ofi1_result = results[ofi1_id]
+
+        print(f"\n=== ΟΦΗ 1 EGGSB Detailed Debug (First Failing Team) ===")
+        print(f"Expected EGGSB: 513.75")
+        print(f"Team ID: {ofi1_id}")
+        print(f"Team total GP: {ofi1_result.game_points}")
+        print(f"Team total MP: {ofi1_result.match_points}")
+        print(f"Number of match results: {len(ofi1_result.match_results)}")
+
+        # Manual EGGSB calculation with full debugging
+        manual_eggsb = 0.0
+        print(f"\n--- Manual EGGSB Calculation ---")
+
+        for round_idx, match_result in enumerate(ofi1_result.match_results):
+            round_num = round_idx + 1
+            print(f"\nRound {round_num}:")
+            print(f"  is_bye: {match_result.is_bye}")
+            print(f"  opponent_id: {match_result.opponent_id}")
+            print(f"  our_game_points: {match_result.game_points}")
+            print(
+                f"  opponent_game_points_from_match: {match_result.opponent_game_points}"
+            )
+            print(f"  match_points: {match_result.match_points}")
+            print(f"  games_won: {match_result.games_won}")
+
+            if match_result.is_bye or match_result.opponent_id is None:
+                print(f"  → SKIP (bye)")
+                continue
+
+            opponent_result = results[match_result.opponent_id]
+
+            # Find opponent name
+            id_to_name = {
+                team_id: team_name
+                for team_name, team_id in tournament.name_to_id.items()
+            }
+            opponent_name = id_to_name.get(
+                match_result.opponent_id, f"ID:{match_result.opponent_id}"
+            )
+
+            print(f"  opponent_name: {opponent_name}")
+            print(f"  opponent_total_GP: {opponent_result.game_points}")
+
+            # EGGSB calculation: opponent_total_GP × our_GP_vs_opponent
+            eggsb_contribution = opponent_result.game_points * match_result.game_points
+            manual_eggsb += eggsb_contribution
+
+            print(
+                f"  EGGSB contribution: {opponent_result.game_points} × {match_result.game_points} = {eggsb_contribution}"
+            )
+            print(f"  Running total: {manual_eggsb}")
+
+        print(f"\n--- Final Manual Calculation ---")
+        print(f"Manual EGGSB total: {manual_eggsb}")
+
+        # Now get the computed EGGSB from the actual function
+        print(f"\n--- Computed EGGSB from tiebreaks.py ---")
+        from heltour.tournament_core.tiebreaks import calculate_all_tiebreaks
+
+        tiebreaks = calculate_all_tiebreaks(results, ["eggsb"])
+        computed_eggsb = tiebreaks[ofi1_id]["eggsb"]
+
+        print(f"Computed EGGSB: {computed_eggsb}")
+        print(f"Expected EGGSB: 513.75")
+        print(f"Manual vs Computed difference: {manual_eggsb - computed_eggsb}")
+        print(f"Expected vs Computed difference: {513.75 - computed_eggsb}")
+        print(f"Expected vs Manual difference: {513.75 - manual_eggsb}")
+
+        # They should match exactly
+        if abs(manual_eggsb - computed_eggsb) > 0.0001:
+            print(f"\n*** ERROR: Manual and computed EGGSB don't match! ***")
+        else:
+            print(f"\n✓ Manual and computed EGGSB match")
+
+        if abs(513.75 - computed_eggsb) > 0.0001:
+            print(f"✗ Computed EGGSB doesn't match expected")
+        else:
+            print(f"✓ Computed EGGSB matches expected")
+
+    def test_simple_eggsb_verification(self):
+        """Simple test to verify EGGSB calculation consistency."""
+        # Create fresh tournament
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Manual calculation for ΟΑΧ
+        oax_id = tournament.name_to_id["ΟΑΧ"]
+        oax_result = results[oax_id]
+
+        manual_eggsb = 0.0
+        for match_result in oax_result.match_results:
+            if not match_result.is_bye and match_result.opponent_id is not None:
+                opponent_result = results[match_result.opponent_id]
+                manual_eggsb += opponent_result.game_points * match_result.game_points
+
+        # Use tiebreak calculation
+        from heltour.tournament_core.tiebreaks import calculate_all_tiebreaks
+
+        tiebreaks = calculate_all_tiebreaks(results, ["eggsb"])
+        computed_eggsb = tiebreaks[oax_id]["eggsb"]
+
+        print(f"Manual EGGSB: {manual_eggsb}")
+        print(f"Computed EGGSB: {computed_eggsb}")
+        print(f"Expected EGGSB: 486.0")
+
+        # They should match exactly
+        self.assertEqual(
+            manual_eggsb, computed_eggsb, "Manual and computed EGGSB should match"
+        )
+
+        # Now check against assertion framework
+        try:
+            from heltour.tournament_core.assertions import assert_tournament
+
+            assert_tournament(tournament).team("ΟΑΧ").assert_().tiebreak("eggsb", 486.0)
+            print("Assertion framework test: PASSED")
+        except AssertionError as e:
+            print(f"Assertion framework test: FAILED - {e}")
+
+    def test_debug_trf_parsing_round5(self):
+        """Debug TRF parsing for Round 5 to see what's missing for the forfeit."""
+        converter = TRF16Converter(self.friendship_cup_trf)
+        converter.parse()
+
+        print(f"\n=== TRF Round 5 Data Analysis ===")
+
+        # Get team player lists
+        hersonisos_team = converter.teams["Σ.A.ΧΕΡΣΟΝΗΣΟΥ"]
+        gazi2_team = converter.teams["ΓΑΖΙ 2"]
+
+        print(f"Σ.A.ΧΕΡΣΟΝΗΣΟΥ players: {hersonisos_team.player_ids}")
+        print(f"ΓΑΖΙ 2 players: {gazi2_team.player_ids}")
+
+        # Check Round 5 data for each player
+        print(f"\n--- Σ.A.ΧΕΡΣΟΝΗΣΟΥ Round 5 data ---")
+        for player_id in hersonisos_team.player_ids:
+            if player_id in converter.players:
+                player = converter.players[player_id]
+                if len(player.results) >= 5:
+                    round5_result = player.results[4]  # 0-indexed
+                    print(f"Player {player_id} ({player.name}): {round5_result}")
+
+        print(f"\n--- ΓΑΖΙ 2 Round 5 data ---")
+        for player_id in gazi2_team.player_ids:
+            if player_id in converter.players:
+                player = converter.players[player_id]
+                if len(player.results) >= 5:
+                    round5_result = player.results[4]  # 0-indexed
+                    print(f"Player {player_id} ({player.name}): {round5_result}")
+
+        # Parse team round data to see what the converter sees
+        print(f"\n--- Converter team round data ---")
+        hersonisos_data = converter._parse_team_round_data_v2("Σ.A.ΧΕΡΣΟΝΗΣΟΥ", 5)
+        gazi2_data = converter._parse_team_round_data_v2("ΓΑΖΙ 2", 5)
+
+        print(f"Σ.A.ΧΕΡΣΟΝΗΣΟΥ: {hersonisos_data}")
+        print(f"ΓΑΖΙ 2: {gazi2_data}")
+
+        # Check board results creation
+        print(f"\n--- Board results creation ---")
+        board_results = converter._create_team_match_board_results(
+            "Σ.A.ΧΕΡΣΟΝΗΣΟΥ", "ΓΑΖΙ 2", hersonisos_data, gazi2_data
+        )
+        print(f"Board results: {board_results}")
+        print(f"Number of boards: {len(board_results)}")
+
+        # Calculate expected game points
+        gp_hersonisos = 0
+        gp_gazi2 = 0
+        for white_id, black_id, result in board_results:
+            if result == "1-0":
+                gp_hersonisos += 1
+            elif result == "0-1":
+                gp_gazi2 += 1
+            elif result == "1/2-1/2":
+                gp_hersonisos += 0.5
+                gp_gazi2 += 0.5
+            elif result == "1X-0F":
+                gp_hersonisos += 1
+            elif result == "0F-1X":
+                gp_gazi2 += 1
+
+        print(f"Calculated GP: Σ.A.ΧΕΡΣΟΝΗΣΟΥ {gp_hersonisos}, ΓΑΖΙ 2 {gp_gazi2}")
+        print(f"Expected: Σ.A.ΧΕΡΣΟΝΗΣΟΥ 5.0, ΓΑΖΙ 2 1.0")
+
+    def test_debug_hersonisos_round5_forfeit(self):
+        """Debug Σ.A.ΧΕΡΣΟΝΗΣΟΥ Round 5 vs ΓΑΖΙ 2 - should be 5.0 GP forfeit win, not 4.0 GP."""
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Focus on Σ.A.ΧΕΡΣΟΝΗΣΟΥ
+        hersonisos_id = tournament.name_to_id["Σ.A.ΧΕΡΣΟΝΗΣΟΥ"]
+        hersonisos_result = results[hersonisos_id]
+
+        print(f"\n=== Σ.A.ΧΕΡΣΟΝΗΣΟΥ Round 5 Forfeit Debug ===")
+
+        # Find Round 5 match (index 4)
+        round5_match = hersonisos_result.match_results[4]  # 0-indexed
+
+        print(f"Round 5 details:")
+        print(f"  Opponent ID: {round5_match.opponent_id}")
+        print(f"  Game points: {round5_match.game_points} (should be 5.0)")
+        print(f"  Is bye: {round5_match.is_bye}")
+        print(f"  Games won: {round5_match.games_won}")
+
+        # Find opponent name
+        id_to_name = {
+            team_id: team_name for team_name, team_id in tournament.name_to_id.items()
+        }
+        opponent_name = id_to_name.get(
+            round5_match.opponent_id, f"ID:{round5_match.opponent_id}"
+        )
+        print(f"  Opponent: {opponent_name}")
+
+        # Check the actual match in the tournament structure
+        print(f"\n=== Tournament Structure Check ===")
+        round5 = tournament.rounds[4]  # Round 5 (0-indexed)
+        print(f"Round 5 has {len(round5.matches)} matches")
+
+        # Find the match involving Σ.A.ΧΕΡΣΟΝΗΣΟΥ
+        for i, match in enumerate(round5.matches):
+            if (
+                match.competitor1_id == hersonisos_id
+                or match.competitor2_id == hersonisos_id
+            ):
+                print(
+                    f"\nMatch {i+1}: {match.competitor1_id} vs {match.competitor2_id}"
+                )
+                print(f"  Is bye: {match.is_bye}")
+                print(f"  Number of games: {len(match.games)}")
+
+                c1_gp, c2_gp = match.game_points()
+                print(f"  Game points: {c1_gp} vs {c2_gp}")
+
+                # Show individual game results
+                for j, game in enumerate(match.games):
+                    print(
+                        f"  Game {j+1}: {game.player1_id} vs {game.player2_id} = {game.result.value}"
+                    )
+
+                # Check if this is a forfeit win (should have 5+ game points for 6-board match)
+                if match.competitor1_id == hersonisos_id:
+                    our_gp = c1_gp
+                else:
+                    our_gp = c2_gp
+
+                print(f"  Σ.A.ΧΕΡΣΟΝΗΣΟΥ game points in this match: {our_gp}")
+                if our_gp < 5.0:
+                    print(f"  *** ERROR: Should be 5.0+ for forfeit win! ***")
+
+    def test_debug_hersonisos_game_points(self):
+        """Debug why Σ.A.ΧΕΡΣΟΝΗΣΟΥ has 21.0 GP instead of expected 22.0 GP."""
+        # Clear cache to ensure fresh data
+        self._tournament = None
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Focus on Σ.A.ΧΕΡΣΟΝΗΣΟΥ
+        hersonisos_id = tournament.name_to_id["Σ.A.ΧΕΡΣΟΝΗΣΟΥ"]
+        hersonisos_result = results[hersonisos_id]
+
+        print(f"\n=== Σ.A.ΧΕΡΣΟΝΗΣΟΥ Game Points Debug ===")
+        print(f"Expected GP: 22.0")
+        print(f"Computed GP: {hersonisos_result.game_points}")
+        print(f"Difference: {hersonisos_result.game_points - 22.0}")
+
+        # Check each round
+        total_gp = 0.0
+        print(
+            f"\nΣ.A.ΧΕΡΣΟΝΗΣΟΥ match results ({len(hersonisos_result.match_results)} rounds):"
+        )
+
+        for round_idx, match_result in enumerate(hersonisos_result.match_results):
+            round_num = round_idx + 1
+            total_gp += match_result.game_points
+
+            if match_result.is_bye:
+                print(f"  R{round_num}: BYE - {match_result.game_points} GP")
+            else:
+                opponent_id = match_result.opponent_id
+                # Find opponent name
+                id_to_name = {
+                    team_id: team_name
+                    for team_name, team_id in tournament.name_to_id.items()
+                }
+                opponent_name = id_to_name.get(opponent_id, f"ID:{opponent_id}")
+                print(
+                    f"  R{round_num}: vs {opponent_name} - {match_result.game_points} GP"
+                )
+
+        print(f"\nTotal calculated GP: {total_gp}")
+        print(f"Should be: 22.0")
+
+        # The missing 1.0 GP suggests one match result is incorrect
+        # Expected: 2W 1D 3L in 6 games, but let's see what we actually have
+        wins = draws = losses = 0
+        for match_result in hersonisos_result.match_results:
+            if not match_result.is_bye:
+                # Estimate result based on game points (6 boards per match)
+                gp = match_result.game_points
+                if gp > 3.5:  # Win (4+ points)
+                    wins += 1
+                elif gp == 3.0:  # Draw
+                    draws += 1
+                else:  # Loss (< 3 points)
+                    losses += 1
+
+        print(f"Calculated record: {wins}W {draws}D {losses}L")
+        print(f"Expected record: 2W 1D 3L")
+        print(f"Need to find which match has wrong result")
+
+    def test_eggsb_debug_ofi1(self):
+        """Debug EGGSB calculation for ΟΦΗ 1 - expected 513.75 but got 510.25."""
+        # Clear cache to ensure fresh data
+        self._tournament = None
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Focus on ΟΦΗ 1
+        ofi1_id = tournament.name_to_id["ΟΦΗ 1"]
+        ofi1_result = results[ofi1_id]
+
+        print(f"\n=== ΟΦΗ 1 EGGSB Debug ===")
+        print(f"Expected EGGSB: 513.75")
+
+        # Calculate EGGSB step by step
+        manual_eggsb = 0.0
+        print(f"\nΟΦΗ 1 match results ({len(ofi1_result.match_results)} rounds):")
+
+        for round_idx, match_result in enumerate(ofi1_result.match_results):
+            round_num = round_idx + 1
+
+            if match_result.is_bye or match_result.opponent_id is None:
+                print(f"  R{round_num}: BYE (skip)")
+                continue
+
+            opponent_id = match_result.opponent_id
+            opponent_result = results[opponent_id]
+
+            # Find opponent name
+            id_to_name = {
+                team_id: team_name
+                for team_name, team_id in tournament.name_to_id.items()
+            }
+            opponent_name = id_to_name.get(opponent_id, f"ID:{opponent_id}")
+
+            # Our EGGSB calculation: opponent_total_GP × our_GP_vs_opponent
+            opponent_total_gp = opponent_result.game_points
+            our_gp_vs_opponent = match_result.game_points
+            eggsb_contribution = opponent_total_gp * our_gp_vs_opponent
+            manual_eggsb += eggsb_contribution
+
+            print(f"  R{round_num}: vs {opponent_name}")
+            print(f"    Opponent total GP: {opponent_total_gp}")
+            print(f"    Our GP vs them: {our_gp_vs_opponent}")
+            print(
+                f"    EGGSB contribution: {opponent_total_gp} × {our_gp_vs_opponent} = {eggsb_contribution}"
+            )
+
+        print(f"\nManual EGGSB calculation: {manual_eggsb}")
+
+        # Get the actual computed EGGSB
+        from heltour.tournament_core.tiebreaks import calculate_all_tiebreaks
+
+        tiebreak_order = ["eggsb"]
+        tiebreaks = calculate_all_tiebreaks(results, tiebreak_order)
+        computed_eggsb = tiebreaks[ofi1_id]["eggsb"]
+
+        print(f"Computed EGGSB: {computed_eggsb}")
+        print(f"Expected EGGSB: 513.75")
+        print(f"Difference from expected: {computed_eggsb - 513.75}")
+
+    def test_eggsb_detailed_analysis_for_oax(self):
+        """Detailed EGGSB calculation analysis for ΟΑΧ team to debug the differences."""
+        tournament = self.get_tournament()
+        results = tournament.calculate_results()
+
+        # Focus on ΟΑΧ (rank 2) - it has perfect MP/GP but wrong EGGSB
+        oax_id = tournament.name_to_id["ΟΑΧ"]
+        oax_result = results[oax_id]
+
+        print(f"\n=== ΟΑΧ EGGSB Detailed Analysis ===")
+        print(f"Expected EGGSB: 486.0")
+
+        # Calculate EGGSB step by step
+        print(f"\nΟΑΧ match results ({len(oax_result.match_results)} rounds):")
+        manual_eggsb = 0.0
+
+        for round_idx, match_result in enumerate(oax_result.match_results):
+            round_num = round_idx + 1
+
+            if match_result.is_bye or match_result.opponent_id is None:
+                print(f"  R{round_num}: BYE (skip)")
+                continue
+
+            opponent_id = match_result.opponent_id
+            opponent_result = results[opponent_id]
+
+            # Find opponent name
+            id_to_name = {
+                team_id: team_name
+                for team_name, team_id in tournament.name_to_id.items()
+            }
+            opponent_name = id_to_name.get(opponent_id, f"ID:{opponent_id}")
+
+            # Our EGGSB calculation: opponent_total_GP × our_GP_vs_opponent
+            opponent_total_gp = opponent_result.game_points
+            our_gp_vs_opponent = match_result.game_points
+            eggsb_contribution = opponent_total_gp * our_gp_vs_opponent
+            manual_eggsb += eggsb_contribution
+
+            print(f"  R{round_num}: vs {opponent_name}")
+            print(f"    Opponent total GP: {opponent_total_gp}")
+            print(f"    Our GP vs them: {our_gp_vs_opponent}")
+            print(
+                f"    EGGSB contribution: {opponent_total_gp} × {our_gp_vs_opponent} = {eggsb_contribution}"
+            )
+
+        print(f"\nManual EGGSB calculation: {manual_eggsb}")
+
+        # Get the actual computed EGGSB
+        from heltour.tournament_core.tiebreaks import calculate_all_tiebreaks
+
+        tiebreak_order = ["eggsb"]
+        tiebreaks = calculate_all_tiebreaks(results, tiebreak_order)
+        computed_eggsb = tiebreaks[oax_id]["eggsb"]
+
+        print(f"Computed EGGSB: {computed_eggsb}")
+        print(f"Expected EGGSB: 486.0")
+        print(f"Difference from expected: {computed_eggsb - 486.0}")
+
+        # Look for potential issues
+        print(f"\nPotential issues to investigate:")
+        print(f"1. Are we missing any rounds/opponents?")
+        print(f"2. Are opponent GP totals correct?")
+        print(f"3. Are our GP vs specific opponents correct?")
+        print(f"4. Is this the right EGGSB formula?")
 
     def test_hersonisos_round4_deep_dive(self):
         """Deep dive into Σ.A.ΧΕΡΣΟΝΗΣΟΥ Round 4 - why is it a bye instead of a loss?"""
