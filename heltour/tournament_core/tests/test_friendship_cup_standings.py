@@ -281,7 +281,7 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
 001   85 m    Tsagkarakis,Defkalion             1477 GRE    42138370 2010/00/00  3.0   57    30 w -    71 b 1  0000 - -    14 w 0   108 w 0    52 b 1     8 b 1  
 001   86 m    Tripias,Angelos                   1515 GRE    42147115 2013/00/00  2.0   78    32 w 0    79 b 0  0000 - -    16 w 0   110 w 0    54 b 1    10 b 1  
 001   87 f    Theodosouli,Eleanna               1430 GRE    42124301 2010/00/00  2.0   79    33 b 0    80 w 0  0000 - -    17 b 0   111 b 0    73 w 1    11 w 1  
-001   88 m    Chatzisavvas,Nikolaos             1503 GRE    42124247 2012/00/00  2.5   74    34 w 0    81 b 0  0000 - -    18 w =  0000 - +    74 b =    12 b =  
+001   88 m    Chatzisavvas,Nikolaos             1503 GRE    42124247 2012/00/00  2.5   74    34 w 0    81 b 0  0000 - -    18 w =  0000 - -    74 b =    12 b =  
 001   89 m    Koiladis,Emmnaouil                0000 GRE           0 2015/00/00  0.0  106  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001   90 m    Maris,Ioannis                     1874 GRE     4201540 1947/00/00  0.0  107  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001   91 m    Lygerakis,Ioannis                 0000 GRE           0             0.0  108  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
@@ -302,7 +302,7 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
 001  106 m    Fasoulakis,Georgios               1406 GRE    42178452 2014/00/00  0.0  111  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  107 f    Kontaki,Maria                     1465 GRE     4237234 1959/00/00  3.0   52    99 w 1    51 b 1     7 b 0  0000 - -    84 w 1    36 b 0    19 w 0  
 001  108 m    Malliotakis,Mihail                1585 GRE     4251679 1988/00/00  4.5   15   100 b 1    52 w 1     8 w =  0000 - -    85 b 1    37 w 1    20 b 0  
-001  109 m    Dialynas,Nikolaos                 0000 GRE           0 2017/00/00  5.0    8   101 w =    53 b 1     9 b =  0000 - -  0000 - -    38 b 1    21 w 1  
+001  109 m    Dialynas,Nikolaos                 0000 GRE           0 2017/00/00  5.0    8   101 w =    53 b 1     9 b =  0000 - -  0000 - +    38 b 1    21 w 1  
 001  110 m    Garefalakis,Nikitas               0000 GRE    42191947 2016/00/00  3.5   43   102 b 0    54 w 0    10 w =  0000 - -    86 b 1    39 w 1    55 b 1  
 001  111 m    Garefalakis,Emmanouil             0000 GRE           0 2018/00/00  3.0   53   103 w 0    73 b 0    11 b 1  0000 - -    87 w 1    40 b 1    56 w 0  
 001  112 f    Galetaki,Eirini                   0000 GRE    42175879 2015/00/00  0.0  112  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
@@ -315,7 +315,7 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
 001  119 m    Zachos,Georgios                   0000 GRE           0 1971/00/00  0.0  119  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  120 m    Agnantis,Dimitrios                1756 GRE     4229126 1969/00/00  0.0  120  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  121 f    Diamanti,Eleni                    1507 GRE    25874381 2007/00/00  0.0  121  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
-001  122 m    Grammenos,Nikolaos                0000 GRE           0 2015/00/00  0.0  122  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - +  0000 - -  
+001  122 m    Grammenos,Nikolaos                0000 GRE           0 2015/00/00  0.0  122  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  123 m    Petsalaki,Eleni                   0000 GRE           0 1986/00/00  0.0  123  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  124 m    Rakitzaki,Maria                   0000 GRE           0 1983/00/00  0.0  124  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
 001  125 m    Garefalakis,Vlassis               0000 GRE           0 1976/00/00  0.0  125  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  0000 - -  
