@@ -175,7 +175,8 @@ class BoardReorderingTestCase(TestCase):
         )
 
         self.assertFalse(form.is_valid())
-        self.assertIn("Board numbers must be continuous", str(form.errors))
+        self.assertIn("must be assigned", str(form.errors))
+        self.assertIn("[3]", str(form.errors))
 
     def test_board_order_form_deadline_enforcement(self):
         """Test that form enforces deadline for non-admin users"""

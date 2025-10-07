@@ -119,9 +119,12 @@
                                     </div>
                                 {% endif %}
                                 <div class="alert alert-info" style="margin-bottom: 15px;">
-                                    <strong>Tip:</strong> 
-                                    <span class="hidden-xs">Drag and drop players using the <span class="glyphicon glyphicon-menu-hamburger"></span> icon to reorder boards.</span>
-                                    <span class="visible-xs">Use the up/down arrows to reorder boards.</span>
+                                    <strong>Board Assignment:</strong> 
+                                    <ul style="margin-bottom: 5px;">
+                                        <li>Boards 1-{{ team.season.boards }} are <strong>active playing positions</strong></li>
+                                        <li>Boards {{ team.season.boards|add:1 }}+ are <strong>reserve positions</strong></li>
+                                        <li><span class="hidden-xs">Drag and drop players using the <span class="glyphicon glyphicon-menu-hamburger"></span> icon to reorder</span><span class="visible-xs">Use the up/down arrows to reorder boards</span></li>
+                                    </ul>
                                 </div>
                                 <table class="table table-hover" id="board-order-table">
                                     <thead>
@@ -136,9 +139,15 @@
                                     <tbody id="sortable-boards">
                                         {% for team_member in team_members %}
                                             <tr data-player-id="{{ team_member.player.id }}"
-                                                data-player-name="{{ team_member.player.lichess_username }}">
+                                                data-player-name="{{ team_member.player.lichess_username }}"
+                                                {% if team_member.board_number > team.season.boards %}class="text-muted"{% endif %}>
                                                 <td>
-                                                    <span class="board-display" style="font-size: 16px; font-weight: bold;">{{ team_member.board_number }}</span>
+                                                    <span class="board-display" style="font-size: 16px; font-weight: bold;">
+                                                        {{ team_member.board_number }}
+                                                        {% if team_member.board_number > team.season.boards %}
+                                                            <small class="text-muted">(Reserve)</small>
+                                                        {% endif %}
+                                                    </span>
                                                     <input type="hidden"
                                                            name="player_{{ team_member.player.id }}"
                                                            value="{{ team_member.board_number }}"
@@ -202,8 +211,13 @@
                                 </thead>
                                 <tbody>
                                     {% for team_member in team_members %}
-                                        <tr>
-                                            <td>{{ team_member.board_number }}</td>
+                                        <tr{% if team_member.board_number > team.season.boards %} class="text-muted"{% endif %}>
+                                            <td>
+                                                {{ team_member.board_number }}
+                                                {% if team_member.board_number > team.season.boards %}
+                                                    <small class="text-muted">(Reserve)</small>
+                                                {% endif %}
+                                            </td>
                                             <td>
                                                 <a href="{% leagueurl 'player_profile' league.tag season.tag team_member.player.lichess_username %}">
                                                     {{ team_member.player.lichess_username }}
