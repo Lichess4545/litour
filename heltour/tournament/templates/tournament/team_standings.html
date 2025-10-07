@@ -2,6 +2,14 @@
 {% load static tournament_extras %}
 {% block title %}Standings - {{ season.name }} - {{ league.name }}{% endblock %}
 {% block nav_standings %}active{% endblock %}
+{% block css %}
+<style>
+.cell-bye {
+    background-color: #f9f9f9 !important;
+    border: 1px solid #e0e0e0 !important;
+}
+</style>
+{% endblock %}
 {% block content %}
     <div class="row row-condensed-xs">
         <div class="col-md-12">
@@ -60,12 +68,28 @@
                                                 {% endif %}
                                             </td>
                                             {% endfor %}
-                                            {% for score, opp_score, round_num in team_score.round_scores %}
-                                                <td class="text-center cell-score {% resultclass score opp_score %}">
-                                                    {% if score != None %}
-                                                        <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag round_num team_score.team.number %}">{{ score|floatformat }}</a>
-                                                    {% endif %}
-                                                </td>
+                                            {% for round_score_data in team_score.round_scores %}
+                                                {% if round_score_data|length == 4 %}
+                                                    {% with round_score_data as score_opp_round_bye %}
+                                                        <td class="text-center cell-score {% if score_opp_round_bye.3 %}cell-bye{% else %}{% resultclass score_opp_round_bye.0 score_opp_round_bye.1 %}{% endif %}">
+                                                            {% if score_opp_round_bye.0 != None %}
+                                                                {% if score_opp_round_bye.3 %}
+                                                                    <span style="font-style: italic; color: #888;">BYE</span>
+                                                                {% else %}
+                                                                    <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag score_opp_round_bye.2 team_score.team.number %}">{{ score_opp_round_bye.0|floatformat }}</a>
+                                                                {% endif %}
+                                                            {% endif %}
+                                                        </td>
+                                                    {% endwith %}
+                                                {% else %}
+                                                    {% with round_score_data as score_opp_round %}
+                                                        <td class="text-center cell-score {% resultclass score_opp_round.0 score_opp_round.1 %}">
+                                                            {% if score_opp_round.0 != None %}
+                                                                <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag score_opp_round.2 team_score.team.number %}">{{ score_opp_round.0|floatformat }}</a>
+                                                            {% endif %}
+                                                        </td>
+                                                    {% endwith %}
+                                                {% endif %}
                                             {% endfor %}
                                         </tr>
                                     {% endfor %}

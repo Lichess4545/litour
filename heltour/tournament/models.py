@@ -1836,6 +1836,7 @@ class TeamScore(_BaseModel):
     def round_scores(self):
         white_pairings = self.team.pairings_as_white.all()
         black_pairings = self.team.pairings_as_black.all()
+        team_byes = self.team.teambye_set.all()
         for round_ in Round.objects.filter(season_id=self.team.season_id).order_by(
             "number"
         ):
@@ -1844,15 +1845,26 @@ class TeamScore(_BaseModel):
                 continue
             points = None
             opp_points = None
-            white_pairing = find(white_pairings, round_id=round_.id)
-            black_pairing = find(black_pairings, round_id=round_.id)
-            if white_pairing is not None:
-                points = white_pairing.white_points
-                opp_points = white_pairing.black_points
-            if black_pairing is not None:
-                points = black_pairing.black_points
-                opp_points = black_pairing.white_points
-            yield points, opp_points, round_.number
+            is_bye = False
+
+            # Check for team bye first
+            team_bye = find(team_byes, round_id=round_.id)
+            if team_bye is not None:
+                points = team_bye.score()
+                opp_points = None
+                is_bye = True
+            else:
+                # Check for regular pairings
+                white_pairing = find(white_pairings, round_id=round_.id)
+                black_pairing = find(black_pairings, round_id=round_.id)
+                if white_pairing is not None:
+                    points = white_pairing.white_points
+                    opp_points = white_pairing.black_points
+                if black_pairing is not None:
+                    points = black_pairing.black_points
+                    opp_points = black_pairing.white_points
+
+            yield points, opp_points, round_.number, is_bye
 
     def cross_scores(self, sorted_teams=None):
         if sorted_teams is None:
