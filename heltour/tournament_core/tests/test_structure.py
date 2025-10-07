@@ -76,8 +76,9 @@ class TournamentUtilsTests(unittest.TestCase):
 
         # Test Buchholz
         bh1 = calculate_buchholz(results[1], results)
-        # P1: Opponents P2 (3 MP) + P3 (2 MP) = 5
-        self.assertEqual(bh1, 5.0)
+        # P1: Opponents P2 (3 MP) + P3 (2 MP) + Virtual opponent from bye (4 MP) = 9
+        # Per FIDE 16.4: virtual opponent has same MP as participant (P1 has 4 MP)
+        self.assertEqual(bh1, 9.0)
 
     def test_team_tournament(self):
         """Test a team tournament with multiple boards per match."""

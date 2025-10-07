@@ -176,17 +176,18 @@ class Tournament:
                         )
                     )
 
-                    # Add result for competitor 2
-                    results[match.competitor2_id].append(
-                        MatchResult(
-                            opponent_id=match.competitor1_id,
-                            game_points=c2_game_pts,
-                            opponent_game_points=c1_game_pts,
-                            match_points=c2_match_pts,
-                            games_won=c2_games_won,
-                            is_bye=False,
+                    # Add result for competitor 2 (only if it's a real competitor, not -1 for bye)
+                    if match.competitor2_id in results:
+                        results[match.competitor2_id].append(
+                            MatchResult(
+                                opponent_id=match.competitor1_id,
+                                game_points=c2_game_pts,
+                                opponent_game_points=c1_game_pts,
+                                match_points=c2_match_pts,
+                                games_won=c2_games_won,
+                                is_bye=False,
+                            )
                         )
-                    )
                 else:
                     # Handle bye
                     results[match.competitor1_id].append(

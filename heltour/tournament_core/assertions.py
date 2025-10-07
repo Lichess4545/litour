@@ -281,4 +281,3 @@ class CompetitorResultAssertion(StandingsAssertion):
 def assert_tournament(tournament: Tournament) -> StandingsAssertion:
     """Entry point for tournament assertions."""
     return StandingsAssertion(tournament)
-

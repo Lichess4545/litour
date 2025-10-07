@@ -122,11 +122,16 @@ class TestTournamentAssertions(unittest.TestCase):
             5
         )  # Last place among 5 players
 
+        # Test David (2 match points, 1.0 game points, 1 bye)
+        assert_tournament(tournament).player("David").assert_().wins(0).losses(1).draws(
+            1
+        ).match_points(2).game_points(1.0).byes(1).position(3)
+
         # Test Bob (2 match points, 1.0 game points)
         assert_tournament(tournament).player("Bob").assert_().wins(1).losses(2).draws(
             0
         ).match_points(2).game_points(1.0).byes(0).position(
-            3
+            4
         )  # Bob, David, Eve all have 2 points, positions 3-5
 
     def test_tiebreak_assertions(self):

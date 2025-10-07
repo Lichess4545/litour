@@ -135,11 +135,13 @@ class TRF16Converter:
                     opponent_id = opponent_team_info["id"]
 
                     # Create board results for the team match
+                    # Ensure board results have team_name's players first (for correct scoring)
                     board_results = self._create_team_match_board_results(
                         team_name,
                         opponent_team,
                         team_round_data,
                         all_team_round_data[opponent_team],
+                        first_team_name=team_name,  # Pass which team should be first
                     )
 
                     if board_results:
@@ -226,12 +228,38 @@ class TRF16Converter:
         }
 
     def _create_team_match_board_results(
-        self, team1_name: str, team2_name: str, team1_data: Dict, team2_data: Dict
+        self,
+        team1_name: str,
+        team2_name: str,
+        team1_data: Dict,
+        team2_data: Dict,
+        first_team_name: str,
     ) -> List[Tuple[int, int, str]]:
-        """Create board results for a team vs team match (Pass 2)."""
+        """Create board results for a team vs team match (Pass 2).
+
+        Returns board results where first_team_name's players are always in the
+        first position, ensuring correct team scoring in the match structure.
+        """
         board_results = []
 
-        # Find games between these two teams
+        # Get team player sets for identification
+        team1_players = set()
+        team2_players = set()
+
+        if team1_name in self.teams:
+            team1_players = set(self.teams[team1_name].player_ids)
+        if team2_name in self.teams:
+            team2_players = set(self.teams[team2_name].player_ids)
+
+        # Determine which team should be first
+        if first_team_name == team1_name:
+            first_team_players = team1_players
+            second_team_players = team2_players
+        else:
+            first_team_players = team2_players
+            second_team_players = team1_players
+
+        # Find games between these two teams from both perspectives
         team1_games = [
             p for p in team1_data["player_results"] if p["opponent_team"] == team2_name
         ]
@@ -239,31 +267,64 @@ class TRF16Converter:
             p for p in team2_data["player_results"] if p["opponent_team"] == team1_name
         ]
 
-        # Create board results from team1's perspective
-        for game in team1_games:
+        # Process all games, ensuring team1 players are always first
+        all_games = team1_games + team2_games
+        processed_pairs = set()
+
+        for game in all_games:
             player_id = game["player_id"]
             opponent_id = game["opponent_id"]
             color = game["color"]
             result = game["result"]
 
-            # Convert TRF result to standard format
+            # Skip if we've already processed this player pair
+            if (player_id, opponent_id) in processed_pairs or (
+                opponent_id,
+                player_id,
+            ) in processed_pairs:
+                continue
+            processed_pairs.add((player_id, opponent_id))
+
+            # Convert TRF result to standard format from this player's perspective
             standard_result = self._convert_trf_result_to_standard_format(result)
 
-            if color == "w":
-                # Team1 player is white
+            # Determine which team this player belongs to and ensure first_team players are first
+            if player_id in first_team_players:
+                # This player is from the first team - they should be in first position
+                # The result is from this player's perspective, keep it as-is
                 board_results.append((player_id, opponent_id, standard_result))
-            else:
-                # Team1 player is black, flip only the colors (not the result)
-                # The result is from team1 player's perspective, so it stays the same
-                board_results.append((opponent_id, player_id, standard_result))
+            elif player_id in second_team_players:
+                # This player is from the second team - first team player should be first
+                # The result is from second team player's perspective, need to flip it
+                flipped_result = self._flip_game_result(standard_result)
+                board_results.append((opponent_id, player_id, flipped_result))
 
-        # Handle forfeit wins
-        forfeit_games = [
+        # Handle forfeit wins from both teams, ensuring first_team players are first
+        forfeit_games_team1 = [
             p for p in team1_data["player_results"] if p["opponent_team"] == "FORFEIT"
         ]
-        for forfeit in forfeit_games:
+        forfeit_games_team2 = [
+            p for p in team2_data["player_results"] if p["opponent_team"] == "FORFEIT"
+        ]
+
+        # Process all forfeit games
+        for forfeit in forfeit_games_team1:
             player_id = forfeit["player_id"]
-            board_results.append((player_id, 0, "1X-0F"))  # Forfeit win
+            if player_id in first_team_players:
+                # First team forfeit win
+                board_results.append((player_id, 0, "1X-0F"))
+            else:
+                # This shouldn't happen but handle it
+                board_results.append((0, player_id, "0F-1X"))
+
+        for forfeit in forfeit_games_team2:
+            player_id = forfeit["player_id"]
+            if player_id in first_team_players:
+                # First team forfeit win
+                board_results.append((player_id, 0, "1X-0F"))
+            else:
+                # Second team forfeit win, but put it in second position
+                board_results.append((0, player_id, "0F-1X"))
 
         return board_results
 
@@ -444,7 +505,6 @@ class TRF16Converter:
 
             # Check if this team has a bye (all players have "0000 - -")
             if self._team_has_bye_in_round_from_data(team, player_round_data):
-                print(f"Round {round_number}: Adding bye for {team_name}")
                 builder.add_bye(team_id, boards_per_match)
                 continue
 
@@ -462,23 +522,14 @@ class TRF16Converter:
                     opponent_team_info = builder.metadata.teams[primary_opponent]
                     opponent_team_id = opponent_team_info["id"]
 
-                    print(
-                        f"Round {round_number}: Adding aggregated match {team_name} vs {primary_opponent} ({len(team_board_results)} games)"
-                    )
                     builder.add_team_match(
                         team_id, opponent_team_id, team_board_results
                     )
                 else:
                     # No valid opponent or playing against self - treat as team bye
-                    print(
-                        f"Round {round_number}: Converting {team_name} to bye (no valid opponent)"
-                    )
                     builder.add_bye(team_id, boards_per_match)
             else:
                 # No board results - treat as team bye
-                print(
-                    f"Round {round_number}: Converting {team_name} to bye (no board results)"
-                )
                 builder.add_bye(team_id, boards_per_match)
 
     def _team_has_bye_in_round_from_data(
@@ -555,9 +606,6 @@ class TRF16Converter:
 
             opponent_team = self._find_player_team(black_player)
             if opponent_team:
-                print(
-                    f"    Game: white={white_player} black={black_player} -> opponent_team={opponent_team}"
-                )
                 opponent_team_counts[opponent_team] = (
                     opponent_team_counts.get(opponent_team, 0) + 1
                 )
@@ -759,8 +807,6 @@ class TRF16Converter:
         Returns:
             Dict mapping (white_team, black_team) to list of (board_number, result)
         """
-        # Debug: Print round info
-        # print(f"Processing round {round_number} with {len(pairings)} pairings")
 
         # Collect team-to-team pairings for this round only
         team_to_team = {}  # (white_team, black_team) -> list of games
@@ -841,9 +887,6 @@ class TRF16Converter:
                 )
 
             team_matches[(team1, team2)] = board_results
-
-        # Debug: Print team matches found
-        # print(f"Round {round_number} team matches: {list(team_matches.keys())}")
 
         return team_matches
 

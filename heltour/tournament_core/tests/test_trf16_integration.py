@@ -78,7 +78,7 @@ class TestTRF16Integration(unittest.TestCase):
         builder = converter.create_tournament_builder()
 
         # Add only round 1
-        converter.add_rounds_to_builder(builder, rounds_to_add=[1])
+        converter.add_rounds_to_builder_v2(builder, rounds_to_add=[1])
 
         tournament = builder.build()
 
@@ -158,9 +158,13 @@ class TestTRF16Integration(unittest.TestCase):
         gamma_id = team_name_to_id["Team Gamma"]["id"]
         delta_id = team_name_to_id["Team Delta"]["id"]
 
-        self.assertEqual(results_r1[alpha_id].match_points, 2)  # Alpha beats Gamma 1.5-0.5
-        self.assertEqual(results_r1[beta_id].match_points, 1)   # Beta draws Delta 1-1
-        self.assertEqual(results_r1[gamma_id].match_points, 0)  # Gamma loses to Alpha 0.5-1.5
+        self.assertEqual(
+            results_r1[alpha_id].match_points, 2
+        )  # Alpha beats Gamma 1.5-0.5
+        self.assertEqual(results_r1[beta_id].match_points, 1)  # Beta draws Delta 1-1
+        self.assertEqual(
+            results_r1[gamma_id].match_points, 0
+        )  # Gamma loses to Alpha 0.5-1.5
         self.assertEqual(results_r1[delta_id].match_points, 1)  # Delta draws Beta 1-1
 
 

@@ -75,7 +75,8 @@ def calculate_eggsb(
     EGGSB = Sum of (Total GP opponent × GP scored against that opponent)
 
     This is one of the four Extended Sonneborn-Berger variants defined by FIDE
-    for team tournaments.
+    for team tournaments. For bye rounds, per FIDE Article 16.4, the virtual
+    opponent has the same total game points as the participant themselves.
 
     Args:
         competitor_score: The competitor's score data
@@ -88,6 +89,9 @@ def calculate_eggsb(
 
     for result in competitor_score.match_results:
         if result.is_bye or result.opponent_id is None:
+            # Per FIDE Article 16.4: virtual opponent has same total GP as the participant
+            # EGGSB contribution = participant's total GP × GP scored in bye round
+            eggsb_score += competitor_score.game_points * result.game_points
             continue
 
         opponent_score = all_scores.get(result.opponent_id)
@@ -212,6 +216,8 @@ def calculate_buchholz(
 
     for result in competitor_score.match_results:
         if result.is_bye or result.opponent_id is None:
+            # Per FIDE Article 16.3: virtual opponent has same match points as the team with bye
+            buchholz += competitor_score.match_points
             continue
 
         opponent_score = all_scores.get(result.opponent_id)
