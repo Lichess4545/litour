@@ -65,11 +65,11 @@ class Command(BaseCommand):
                     league_name, 
                     "TEST", 
                     "team",
-                    # Set tiebreaks: match points, game points, EGGSB, buchholz
-                    team_tiebreak_1="match_points",
-                    team_tiebreak_2="game_points", 
-                    team_tiebreak_3="eggsb",
-                    team_tiebreak_4="buchholz"
+                    # Set tiebreaks: game points, EGGSB, buchholz (match points are primary, not a tiebreak)
+                    team_tiebreak_1="game_points", 
+                    team_tiebreak_2="eggsb",
+                    team_tiebreak_3="buchholz",
+                    team_tiebreak_4=""
                 )
                 builder.season(
                     "TEST",
