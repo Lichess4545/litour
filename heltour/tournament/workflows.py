@@ -218,7 +218,8 @@ class UpdateBoardOrderWorkflow():
                 'season_player__player').nocache()
 
             boundaries = self.calc_alternate_boundaries(ratings_by_board)
-            flex = self.season.alternates_manager_setting().rating_flex
+            alternates_setting = self.season.alternates_manager_setting()
+            flex = alternates_setting.rating_flex if alternates_setting else 0
             self.smooth_alternate_boundaries(boundaries, alternates, ratings_by_board, flex)
             self.update_alternate_buckets(boundaries)
             self.assign_alternates_to_buckets()
