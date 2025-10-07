@@ -862,10 +862,13 @@ class BoardOrderForm(forms.Form):
             "board_number"
         )
 
+        # Allow assigning up to the total number of team members, with some buffer for flexibility
+        max_board = max(self.team.season.boards, team_members.count() + 2)
+
         for member in team_members:
             self.fields[f"player_{member.player.id}"] = forms.IntegerField(
                 min_value=1,
-                max_value=self.team.season.boards,
+                max_value=max_board,
                 initial=member.board_number,
                 label=member.player.lichess_username,
                 widget=forms.NumberInput(
@@ -896,12 +899,14 @@ class BoardOrderForm(forms.Form):
             if len(board_numbers) != len(set(board_numbers)):
                 raise forms.ValidationError("Each board number must be unique.")
 
-            # Check for gaps in board numbers
-            board_numbers.sort()
-            expected = list(range(1, len(board_numbers) + 1))
-            if board_numbers != expected:
+            # Check that boards 1 through season.boards are covered
+            required_boards = set(range(1, self.team.season.boards + 1))
+            assigned_boards = set(board_numbers)
+            missing_boards = required_boards - assigned_boards
+            if missing_boards:
+                missing_list = sorted(list(missing_boards))
                 raise forms.ValidationError(
-                    f"Board numbers must be continuous from 1 to {len(board_numbers)} with no gaps."
+                    f"Boards {missing_list} must be assigned. The first {self.team.season.boards} board positions are required."
                 )
 
         return cleaned_data
