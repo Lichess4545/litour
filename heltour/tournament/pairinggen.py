@@ -669,3 +669,90 @@ class JavafoInstance:
                         ]
                     )
             return pairs
+
+
+def assign_automatic_forfeits(round_):
+    """
+    Assign forfeit wins for pairings with missing players.
+    
+    This function looks for TeamPlayerPairing objects where either white or black
+    is None and automatically assigns appropriate forfeit results:
+    - 1X-0F: White wins by forfeit (black is missing)
+    - 0F-1X: Black wins by forfeit (white is missing)  
+    - 0F-0F: Double forfeit (both missing)
+    
+    Args:
+        round_: Round object to process
+        
+    Returns:
+        int: Number of forfeit results assigned
+    """
+    forfeit_count = 0
+    
+    if round_.season.league.competitor_type == "team":
+        # Process team tournament board pairings
+        team_pairings = TeamPairing.objects.filter(round=round_).prefetch_related(
+            'teamplayerpairing_set'
+        )
+        
+        for team_pairing in team_pairings:
+            board_pairings = team_pairing.teamplayerpairing_set.all()
+            
+            for board_pairing in board_pairings:
+                # Only assign forfeits if result is empty
+                if board_pairing.result:
+                    continue
+                    
+                white_missing = board_pairing.white is None
+                black_missing = board_pairing.black is None
+                
+                if white_missing and black_missing:
+                    # Both players missing - double forfeit
+                    board_pairing.result = "0F-0F"
+                    board_pairing.save()
+                    forfeit_count += 1
+                elif white_missing and not black_missing:
+                    # White missing - black wins by forfeit
+                    board_pairing.result = "0F-1X"
+                    board_pairing.save()
+                    forfeit_count += 1
+                elif not white_missing and black_missing:
+                    # Black missing - white wins by forfeit
+                    board_pairing.result = "1X-0F"
+                    board_pairing.save()
+                    forfeit_count += 1
+            
+            # Update team pairing points after assigning forfeit results
+            if forfeit_count > 0:
+                team_pairing.refresh_points()
+                team_pairing.save()
+    
+    else:
+        # Process individual tournament pairings
+        lone_pairings = LonePlayerPairing.objects.filter(round=round_)
+        
+        for pairing in lone_pairings:
+            # Only assign forfeits if result is empty
+            if pairing.result:
+                continue
+                
+            white_missing = pairing.white is None
+            black_missing = pairing.black is None
+            
+            if white_missing and black_missing:
+                # Both players missing - double forfeit
+                pairing.result = "0F-0F"
+                pairing.save()
+                forfeit_count += 1
+            elif white_missing and not black_missing:
+                # White missing - black wins by forfeit
+                pairing.result = "0F-1X"
+                pairing.save()
+                forfeit_count += 1
+            elif not white_missing and black_missing:
+                # Black missing - white wins by forfeit
+                pairing.result = "1X-0F"
+                pairing.save()
+                forfeit_count += 1
+    
+    return forfeit_count

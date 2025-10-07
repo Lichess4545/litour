@@ -469,6 +469,16 @@ class ImportSeasonForm(forms.Form):
 class GeneratePairingsForm(forms.Form):
     overwrite_existing = forms.BooleanField(required=False, label='Overwrite existing pairings')
     run_in_background = forms.BooleanField(required=False, label='Run in background')
+    auto_assign_forfeits = forms.BooleanField(
+        required=False, 
+        label='Auto-assign forfeit wins for missing players',
+        help_text='Automatically assign forfeit results for board pairings with missing players'
+    )
+    publish_immediately = forms.BooleanField(
+        required=False,
+        label='Publish pairings immediately',
+        help_text='Make pairings visible to players immediately after generation'
+    )
 
 
 class ReviewPairingsForm(forms.Form):
@@ -504,6 +514,18 @@ class RoundTransitionForm(forms.Form):
             self.fields['generate_pairings'] = forms.BooleanField(initial=True,
                                                                   required=False,
                                                                   label='Generate pairings for round %d' % round_to_open.number)
+            self.fields['auto_assign_forfeits'] = forms.BooleanField(
+                initial=False,
+                required=False,
+                label='Auto-assign forfeit wins for missing players',
+                help_text='Automatically assign forfeit results for board pairings with missing players'
+            )
+            self.fields['publish_immediately'] = forms.BooleanField(
+                initial=False,
+                required=False,
+                label='Publish pairings immediately',
+                help_text='Make pairings visible to players immediately after generation'
+            )
             self.fields['round_to_open'] = forms.IntegerField(initial=round_to_open.number,
                                                               widget=forms.HiddenInput)
 

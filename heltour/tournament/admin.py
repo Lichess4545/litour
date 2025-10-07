@@ -975,12 +975,24 @@ class SeasonAdmin(_BaseAdmin):
                     and form.cleaned_data["round_to_open"] == round_to_open.number
                     and form.cleaned_data["generate_pairings"]
                 )
+                auto_assign_forfeits = (
+                    "round_to_open" in form.cleaned_data
+                    and form.cleaned_data["round_to_open"] == round_to_open.number
+                    and form.cleaned_data.get("auto_assign_forfeits", False)
+                )
+                publish_immediately = (
+                    "round_to_open" in form.cleaned_data
+                    and form.cleaned_data["round_to_open"] == round_to_open.number
+                    and form.cleaned_data.get("publish_immediately", False)
+                )
 
                 msg_list = workflow.run(
                     complete_round=complete_round,
                     complete_season=complete_season,
                     update_board_order=update_board_order,
                     generate_pairings=generate_pairings,
+                    auto_assign_forfeits=auto_assign_forfeits,
+                    publish_immediately=publish_immediately,
                 )
 
                 for text, level in msg_list:
@@ -2095,6 +2107,8 @@ class RoundAdmin(_BaseAdmin):
                             sender=self.__class__,
                             round_id=round_.pk,
                             overwrite=form.cleaned_data["overwrite_existing"],
+                            auto_assign_forfeits=form.cleaned_data.get("auto_assign_forfeits", False),
+                            publish_immediately=form.cleaned_data.get("publish_immediately", False),
                         )
                         self.message_user(
                             request, "Generating pairings in background.", messages.INFO
@@ -2104,13 +2118,31 @@ class RoundAdmin(_BaseAdmin):
                         pairinggen.generate_pairings(
                             round_, overwrite=form.cleaned_data["overwrite_existing"]
                         )
+                        
+                        # Handle automatic forfeit assignment
+                        forfeit_count = 0
+                        if form.cleaned_data.get("auto_assign_forfeits", False):
+                            forfeit_count = pairinggen.assign_automatic_forfeits(round_)
+                            if forfeit_count > 0:
+                                self.message_user(
+                                    request, 
+                                    f"Assigned {forfeit_count} automatic forfeit results.", 
+                                    messages.INFO
+                                )
+                        
+                        # Handle immediate publishing
+                        publish_immediately = form.cleaned_data.get("publish_immediately", False)
+                        
                         with reversion.create_revision():
                             reversion.set_user(request.user)
                             reversion.set_comment("Generated pairings.")
-                            round_.publish_pairings = False
+                            round_.publish_pairings = publish_immediately
                             round_.save()
 
-                        self.message_user(request, "Pairings generated.", messages.INFO)
+                        if publish_immediately:
+                            self.message_user(request, "Pairings generated and published.", messages.INFO)
+                        else:
+                            self.message_user(request, "Pairings generated.", messages.INFO)
                         return redirect("admin:review_pairings", object_id)
                 except pairinggen.PairingsExistException:
                     if not round_.publish_pairings:
