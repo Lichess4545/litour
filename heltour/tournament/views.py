@@ -66,6 +66,7 @@ from heltour.tournament.models import (
     SeasonPrize,
     SeasonPrizeWinner,
     Team,
+    TeamBye,
     TeamMember,
     TeamPairing,
     TeamPlayerPairing,
@@ -539,10 +540,18 @@ class PairingsView(SeasonView):
             .order_by('pairing_order') \
             .select_related('white_team', 'black_team') \
             .nocache()
+
+        # Get team byes for this round
+        team_byes = list(TeamBye.objects.filter(round__number=round_number,
+                                               round__season=self.season) \
+                         .select_related('team') \
+                         .nocache())
+
         if team_number is not None:
             current_team = get_object_or_404(team_list, number=team_number)
             team_pairings = team_pairings.filter(white_team=current_team) | team_pairings.filter(
                 black_team=current_team)
+            team_byes = [bye for bye in team_byes if bye.team == current_team]
         else:
             current_team = None
 
@@ -594,6 +603,7 @@ class PairingsView(SeasonView):
             'current_team': current_team,
             'team_list': team_list,
             'pairing_lists': pairing_lists,
+            'team_byes': team_byes,
             'captains': captains,
             'unavailable_players': unavailable_players,
             'show_legend': show_legend,
@@ -603,7 +613,7 @@ class PairingsView(SeasonView):
         }
 
     def team_view(self, round_number=None, team_number=None):
-        @cached_as(TeamScore, TeamPairing, TeamMember, SeasonPlayer, AlternateAssignment, Player,
+        @cached_as(TeamScore, TeamPairing, TeamBye, TeamMember, SeasonPlayer, AlternateAssignment, Player,
                    PlayerAvailability, TeamPlayerPairing,
                    PlayerPairing, *common_team_models)
         def _view(league_tag, season_tag, round_number, team_number, user_data, can_change_pairing):
@@ -998,15 +1008,36 @@ class StandingsView(SeasonView):
             return self.lone_view(section)
 
     def team_view(self):
-        @cached_as(TeamScore, TeamPairing, *common_team_models)
+        @cached_as(TeamScore, TeamPairing, TeamBye, *common_team_models)
         def _view(league_tag, season_tag, user_data):
             round_numbers = list(range(1, self.season.rounds + 1))
-            team_scores = list(enumerate(sorted(
-                TeamScore.objects.filter(team__season=self.season).select_related('team').nocache(),
-                reverse=True), 1))
+            
+            # Use proper sort key based on season status
+            if self.season.is_completed:
+                def sort_key(s): return s.final_standings_sort_key()
+            else:
+                def sort_key(s): return s.intermediate_standings_sort_key()
+                
+            raw_team_scores = TeamScore.objects.filter(team__season=self.season).select_related('team').nocache()
+            team_scores = list(enumerate(sorted(raw_team_scores, key=sort_key, reverse=True), 1))
+            # Get configured tiebreaks for display
+            # Get tiebreak names from the model choices
+            from heltour.tournament.models import TEAM_TIEBREAK_OPTIONS
+            tiebreak_names = dict(TEAM_TIEBREAK_OPTIONS)
+            
+            tiebreaks = []
+            for tb in self.league.get_team_tiebreaks():
+                if tb in tiebreak_names:
+                    # Use short display name for Extended SB variants
+                    display_name = tiebreak_names[tb]
+                    if ' - ' in display_name:
+                        display_name = display_name.split(' - ')[0]
+                    tiebreaks.append((tb, display_name))
+            
             context = {
                 'round_numbers': round_numbers,
                 'team_scores': team_scores,
+                'tiebreaks': tiebreaks,
             }
             return self.render('tournament/team_standings.html', context)
 

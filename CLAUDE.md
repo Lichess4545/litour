@@ -88,6 +88,7 @@ invoke status           # Check git status (alias: st)
 
 - `heltour/` - Main Django application
   - `tournament/` - Core tournament management app containing models, views, admin customizations
+  - `tournament_core/` - Pure Python tournament calculation library (no database dependencies)
   - `api_worker/` - Background API worker application
   - `settings.py` - Single settings file using environment variables
   - `comments/` - Custom comments app
@@ -98,6 +99,33 @@ invoke status           # Check git status (alias: st)
 - `Player`, `Team`, `TeamMember` - Participant management
 - `TeamPairing`, `PlayerPairing` - Game pairings
 - `Registration`, `AlternateAssignment` - Registration system
+
+### Tournament Core Module (`tournament_core/`)
+
+A clean, database-independent module for tournament calculations:
+
+- **Structure** (`structure.py`):
+  - `Game`, `Match`, `Round`, `Tournament` - Pure data classes using frozen dataclasses
+  - Helper functions for creating matches (single game, team, bye)
+  - Tournament calculation methods that return results
+
+- **Tiebreaks** (`tiebreaks.py`):
+  - `MatchResult`, `CompetitorScore` - Data classes for results
+  - Tiebreak calculation functions: Sonneborn-Berger, Buchholz, Head-to-Head, Games Won
+  - Functions work with both team and individual tournaments
+
+- **Scoring** (`scoring.py`):
+  - `ScoringSystem` - Configurable scoring (standard 2-1-0, alternative 3-1-0, etc.)
+  - Handles game points, match points, and bye scoring
+
+### Database to Structure Transformation (`tournament/db_to_structure.py`)
+
+Functions to convert Django ORM models to tournament_core structures:
+
+- `season_to_tournament_structure()` - Main entry point
+- `team_tournament_to_structure()` - Handles team tournaments with board pairings
+- `lone_tournament_to_structure()` - Handles individual tournaments
+- Properly handles color alternation in team matches
 
 ### Environment Configuration
 
@@ -134,6 +162,9 @@ Tests are located in `heltour/tournament/tests/`. The project uses Django's unit
 - API: `test_api.py`
 - Views: `test_views.py`
 - Background tasks: `test_tasks.py`
+- DB to Structure transformations: `test_db_to_structure.py`
+
+Pure Python tests for tournament calculations are in `heltour/tournament_core/tests/`.
 
 ## Important Notes
 
@@ -178,3 +209,112 @@ This project was originally called heltour and served lichess4545. It has been r
 - Ask for clarification if needed before making assumptions
 - Respect the existing code structure and patterns
 - Do not create new files unless absolutely necessary
+
+### Migration Policy
+- **NEVER** create Django migration files manually
+- **DO NOT** run makemigrations or migrate commands
+- **DO NOT** create any files in migration directories
+- When model changes are made, inform the user that they need to run makemigrations
+- The user will handle all migration creation and execution
+
+## Tournament Core Module and Testing
+
+### Tournament Core Architecture
+The `tournament_core` module provides a clean, database-independent representation of tournaments:
+
+- **Pure Python Implementation**: No Django dependencies, just dataclasses and calculation logic
+- **Key Components**:
+  - `structure.py`: Defines `Game`, `Match`, `Round`, and `Tournament` dataclasses
+  - `tiebreaks.py`: Implements tiebreak calculations (Sonneborn-Berger, Buchholz, Head-to-Head, Games Won)
+  - `scoring.py`: Configurable scoring systems (standard 2-1-0, alternative 3-1-0, etc.)
+  - `db_to_structure.py`: Transforms Django ORM models to tournament_core structures
+  - `builder.py`: Fluent API for building tournament structures
+  - `assertions.py`: Fluent assertion interface for testing tournament standings
+
+### Testing Best Practices
+
+#### Use Tournament Builder for Tests
+The `tournament_core/builder.py` provides a fluent `TournamentBuilder` class for creating tournament structures easily:
+
+```python
+# Team tournament example
+builder = TournamentBuilder()
+builder.league("Test League", "TL", "team")
+builder.season("TL", "Spring 2024", rounds=3, boards=2)
+builder.team("Dragons", ("Alice", 2000), ("Bob", 1900))
+builder.team("Knights", ("Charlie", 1950), ("David", 1850))
+builder.round(1)
+builder.match("Dragons", "Knights", "1-0", "1/2-1/2")  # Dragons win 1.5-0.5
+builder.complete()
+tournament = builder.build()
+
+# Individual tournament example
+builder = TournamentBuilder()
+builder.league("Chess Club", "CC", "lone")
+builder.season("CC", "Winter 2024", rounds=3)
+builder.player("Alice", 2100)
+builder.player("Bob", 2000)
+builder.round(1)
+builder.game("Alice", "Bob", "1-0")
+builder.complete()
+tournament = builder.build()
+```
+
+#### Fluent Assertion Interface
+The `tournament_core/assertions.py` provides a fluent interface for testing tournament standings:
+
+```python
+from heltour.tournament_core.assertions import assert_tournament
+
+# Assert team tournament standings
+assert_tournament(tournament).team("Dragons").assert_()
+    .wins(2).losses(0).draws(1)
+    .match_points(5).game_points(4.5)
+    .games_won(3)  # For team tournaments
+    .position(1)
+
+# Assert individual tournament standings  
+assert_tournament(tournament).player("Alice").assert_()
+    .wins(2).losses(1).draws(0)
+    .match_points(4).game_points(2.0)
+    .byes(1)
+    .position(2)
+
+# Assert tiebreak scores
+assert_tournament(tournament).player("Alice").assert_()
+    .tiebreak("sonneborn_berger", 3.5)
+    .tiebreak("buchholz", 6.0)
+```
+
+**Important Notes for Team Tournament Assertions**:
+- Match results are provided from the first team's perspective
+- `"1-0"` means the first team's player wins on that board
+- On alternating boards (odd-numbered), colors are swapped automatically
+- Example: `.match("Dragons", "Knights", "1-0", "1-0")` means Dragons win both boards
+
+#### Database Test Requirements
+- **Team Tournaments MUST Have Board Pairings**: The system will error if TeamPairing objects lack TeamPlayerPairing children
+- **Avoid Circular Dependencies**: Create rounds as `is_completed=False`, add all pairings and board results, then mark as completed
+- **No Synthetic Data**: The system does not support aggregate-only scores; all results must come from actual games
+
+#### Testing Workflow
+1. For pure logic tests, use `tournament_core` structures directly
+2. For integration tests, create complete database structures with board pairings
+3. Use `season_to_tournament_structure()` to convert database models to tournament_core
+4. All calculations flow through the tournament_core module for consistency
+
+### Important Design Decisions
+
+1. **No Legacy Support**: We don't support "legacy matches" - all team matches must have board results
+2. **Clean Error Handling**: The system raises clear errors when data is incomplete rather than guessing
+3. **Immutable Structures**: Tournament_core uses frozen dataclasses for thread safety and clarity
+4. **Separation of Concerns**: Database models handle persistence; tournament_core handles calculations
+5. **Name Mappings**: The builder adds `name_to_id` mappings to tournaments for assertion convenience
+
+### Future Testing Improvements
+
+The goal is to make tournament testing simple and reliable:
+- Expand `TournamentBuilder` with more convenience methods
+- Create fixture generators for common tournament scenarios  
+- Add property-based testing for tiebreak calculations
+- Ensure all edge cases (byes, forfeits, odd player counts) are well-tested

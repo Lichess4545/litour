@@ -74,7 +74,8 @@ class RoundTransitionWorkflow():
             round_to_close is None or round_to_close.number == self.season.rounds) else None
 
     def run(self, complete_round=False, complete_season=False, update_board_order=False,
-            generate_pairings=False, background=False, user=None):
+            generate_pairings=False, auto_assign_forfeits=False, publish_immediately=False, 
+            background=False, user=None):
         msg_list = []
         round_to_close = self.round_to_close
         round_to_open = self.round_to_open
@@ -106,18 +107,41 @@ class RoundTransitionWorkflow():
                     return msg_list
             if generate_pairings and round_to_open is not None:
                 if background:
-                    signals.do_generate_pairings.send(sender=self.__class__,
-                                                      round_id=round_to_open.pk)
+                    signals.do_generate_pairings.send(
+                        sender=self.__class__,
+                        round_id=round_to_open.pk,
+                        auto_assign_forfeits=auto_assign_forfeits,
+                        publish_immediately=publish_immediately
+                    )
                     msg_list.append(('Generating pairings in background.', messages.INFO))
                 else:
                     try:
                         pairinggen.generate_pairings(round_to_open, overwrite=False)
+                        
+                        # Handle automatic forfeit assignment
+                        forfeit_count = 0
+                        if auto_assign_forfeits:
+                            forfeit_count = pairinggen.assign_automatic_forfeits(round_to_open)
+                            if forfeit_count > 0:
+                                msg_list.append(
+                                    (f'Assigned {forfeit_count} automatic forfeit results.', messages.INFO)
+                                )
+                        
                         with reversion.create_revision():
                             reversion.set_user(user)
-                            reversion.set_comment('Generated pairings.')
-                            round_to_open.publish_pairings = False
+                            comment = 'Generated pairings.'
+                            if forfeit_count > 0:
+                                comment += f' Assigned {forfeit_count} automatic forfeits.'
+                            if publish_immediately:
+                                comment += ' Published immediately.'
+                            reversion.set_comment(comment)
+                            round_to_open.publish_pairings = publish_immediately
                             round_to_open.save()
-                        msg_list.append(('Pairings generated.', messages.INFO))
+                        
+                        if publish_immediately:
+                            msg_list.append(('Pairings generated and published.', messages.INFO))
+                        else:
+                            msg_list.append(('Pairings generated.', messages.INFO))
                     except pairinggen.PairingsExistException:
                         msg_list.append(('Unpublished pairings already exist.', messages.WARNING))
                     except pairinggen.PairingHasResultException:
@@ -194,7 +218,8 @@ class UpdateBoardOrderWorkflow():
                 'season_player__player').nocache()
 
             boundaries = self.calc_alternate_boundaries(ratings_by_board)
-            flex = self.season.alternates_manager_setting().rating_flex
+            alternates_setting = self.season.alternates_manager_setting()
+            flex = alternates_setting.rating_flex if alternates_setting else 0
             self.smooth_alternate_boundaries(boundaries, alternates, ratings_by_board, flex)
             self.update_alternate_buckets(boundaries)
             self.assign_alternates_to_buckets()

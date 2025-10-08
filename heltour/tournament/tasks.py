@@ -663,7 +663,7 @@ def start_games():
 def _create_team_string(season: Season) -> str:
     if not season.league.is_team_league():
         return ""
-    teams = Team.objects.filter(season=season)
+    teams = Team.objects.filter(season=season).order_by('number')
     lines = []
     for team in teams:
         for teamplayer in TeamMember.objects.filter(team=team).order_by(
@@ -1156,19 +1156,35 @@ def do_round_transition(sender, round_id, **kwargs):
 
 
 @app.task()
-def generate_pairings(round_id, overwrite=False):
+def generate_pairings(round_id, overwrite=False, auto_assign_forfeits=False, publish_immediately=False):
     round_ = Round.objects.get(pk=round_id)
     pairinggen.generate_pairings(round_, overwrite)
-    round_.publish_pairings = False
+    
+    # Handle automatic forfeit assignment
+    forfeit_count = 0
+    if auto_assign_forfeits:
+        forfeit_count = pairinggen.assign_automatic_forfeits(round_)
+    
+    # Set publish status based on option
+    round_.publish_pairings = publish_immediately
+    
     with reversion.create_revision():
-        reversion.set_comment("Generated pairings.")
+        comment = "Generated pairings."
+        if forfeit_count > 0:
+            comment += f" Assigned {forfeit_count} automatic forfeits."
+        if publish_immediately:
+            comment += " Published immediately."
+        reversion.set_comment(comment)
         round_.save()
     signals.pairings_generated.send(sender=generate_pairings, round_=round_)
 
 
 @receiver(signals.do_generate_pairings, dispatch_uid="heltour.tournament.tasks")
-def do_generate_pairings(sender, round_id, overwrite=False, **kwargs):
-    generate_pairings.apply_async(args=[round_id, overwrite], countdown=1)
+def do_generate_pairings(sender, round_id, overwrite=False, auto_assign_forfeits=False, publish_immediately=False, **kwargs):
+    generate_pairings.apply_async(
+        args=[round_id, overwrite, auto_assign_forfeits, publish_immediately], 
+        countdown=1
+    )
 
 
 @receiver(signals.do_validate_registration, dispatch_uid="heltour.tournament.tasks")
