@@ -899,14 +899,12 @@ class BoardOrderForm(forms.Form):
             if len(board_numbers) != len(set(board_numbers)):
                 raise forms.ValidationError("Each board number must be unique.")
 
-            # Check that boards 1 through season.boards are covered
-            required_boards = set(range(1, self.team.season.boards + 1))
-            assigned_boards = set(board_numbers)
-            missing_boards = required_boards - assigned_boards
-            if missing_boards:
-                missing_list = sorted(list(missing_boards))
+            # Check that all assigned boards are within valid range
+            invalid_boards = [b for b in board_numbers if b > self.team.season.boards + 2]
+            if invalid_boards:
+                invalid_list = sorted(list(set(invalid_boards)))
                 raise forms.ValidationError(
-                    f"Boards {missing_list} must be assigned. The first {self.team.season.boards} board positions are required."
+                    f"Board numbers {invalid_list} are too high. Maximum allowed is {self.team.season.boards + 2}."
                 )
 
         return cleaned_data
