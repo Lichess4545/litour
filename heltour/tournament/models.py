@@ -1833,6 +1833,14 @@ class TeamScore(_BaseModel):
 
         return tuple(sort_key)
 
+    def intermediate_standings_sort_key(self):
+        """Sort key for intermediate standings (same as pairing sort key for teams)."""
+        return self.pairing_sort_key()
+
+    def final_standings_sort_key(self):
+        """Sort key for final standings (same as pairing sort key for teams)."""
+        return self.pairing_sort_key()
+
     def round_scores(self):
         white_pairings = self.team.pairings_as_white.all()
         black_pairings = self.team.pairings_as_black.all()
@@ -1940,25 +1948,13 @@ class TeamPairing(_BaseModel):
             raise ValidationError("Round and team seasons must match")
 
     def refresh_points(self):
-        self.white_points = 0
-        self.black_points = 0
-        self.white_wins = 0
-        self.black_wins = 0
-        for pairing in self.teamplayerpairing_set.all().nocache():
-            if pairing.board_number % 2 == 1:
-                self.white_points += pairing.white_score() or 0
-                self.black_points += pairing.black_score() or 0
-                if pairing.white_score() == 1:
-                    self.white_wins += 1
-                if pairing.black_score() == 1:
-                    self.black_wins += 1
-            else:
-                self.white_points += pairing.black_score() or 0
-                self.black_points += pairing.white_score() or 0
-                if pairing.black_score() == 1:
-                    self.white_wins += 1
-                if pairing.white_score() == 1:
-                    self.black_wins += 1
+        """Refresh team points using the same logic as tournament_core calculations.
+        
+        Uses the single source of truth for team pairing score calculation.
+        """
+        from heltour.tournament.db_to_structure import calculate_team_pairing_scores
+        
+        self.white_points, self.black_points, self.white_wins, self.black_wins = calculate_team_pairing_scores(self)
 
     def white_points_display(self):
         return "%g" % self.white_points

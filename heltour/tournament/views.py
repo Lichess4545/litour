@@ -1011,9 +1011,15 @@ class StandingsView(SeasonView):
         @cached_as(TeamScore, TeamPairing, TeamBye, *common_team_models)
         def _view(league_tag, season_tag, user_data):
             round_numbers = list(range(1, self.season.rounds + 1))
-            team_scores = list(enumerate(sorted(
-                TeamScore.objects.filter(team__season=self.season).select_related('team').nocache(),
-                reverse=True), 1))
+            
+            # Use proper sort key based on season status
+            if self.season.is_completed:
+                def sort_key(s): return s.final_standings_sort_key()
+            else:
+                def sort_key(s): return s.intermediate_standings_sort_key()
+                
+            raw_team_scores = TeamScore.objects.filter(team__season=self.season).select_related('team').nocache()
+            team_scores = list(enumerate(sorted(raw_team_scores, key=sort_key, reverse=True), 1))
             # Get configured tiebreaks for display
             # Get tiebreak names from the model choices
             from heltour.tournament.models import TEAM_TIEBREAK_OPTIONS

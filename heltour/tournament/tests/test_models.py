@@ -560,7 +560,7 @@ class TeamScoreTestCase(TestCase):
 
     def test_teamscore_round_scores(self):
         self.assertEqual(
-            [(1.5, 0.5, 1), (1.0, 1.0, 2), (None, None, None)],
+            [(1.5, 0.5, 1, False), (1.0, 1.0, 2, False), (None, None, None)],
             list(self.teamscore.round_scores()),
         )
 
