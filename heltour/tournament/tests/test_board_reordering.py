@@ -11,7 +11,6 @@ from heltour.tournament.models import (
     League,
     LeagueSetting,
     Player,
-    RegistrationMode,
     Round,
     Season,
     Team,
@@ -160,22 +159,133 @@ class BoardReorderingTestCase(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Each board number must be unique", str(form.errors))
 
-    def test_board_order_form_gap_validation(self):
-        """Test that gaps in board numbers are rejected"""
+    def test_board_order_form_allows_incomplete_teams(self):
+        """Test that teams with fewer members than max boards are allowed"""
+        # Create a team with only 2 members for a 4-board season
+        small_team = Team.objects.create(
+            season=self.season, number=99, name="Small Team", is_active=True
+        )
+
+        # Add only 2 members
+        player1 = Player.objects.create(lichess_username="smallteam1", rating=1600)
+        player2 = Player.objects.create(lichess_username="smallteam2", rating=1550)
+
+        member1 = TeamMember.objects.create(
+            team=small_team, player=player1, board_number=1, is_captain=True
+        )
+        member2 = TeamMember.objects.create(
+            team=small_team, player=player2, board_number=2
+        )
+
+        # Form data for only 2 members (boards 3 and 4 will be unassigned)
+        form_data = {
+            f"player_{player1.id}": 1,
+            f"player_{player2.id}": 2,
+        }
+
+        form = BoardOrderForm(
+            data=form_data, team=small_team, user=self.captain_user, upcoming_round=None
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            f"Form should be valid for incomplete teams, but got errors: {form.errors}",
+        )
+
+        # Verify the team's open_board_numbers property works correctly
+        self.assertEqual(small_team.open_board_numbers, [3, 4])
+
+    def test_board_order_form_rejects_excessive_board_numbers(self):
+        """Test that board numbers beyond reasonable limits are rejected"""
+        # Create form data with board numbers that are too high
         form_data = {}
         for i, member in enumerate(self.members):
-            # Create a gap by skipping board 3
-            if i < 2:
-                form_data[f"player_{member.player.id}"] = i + 1
+            if i == 0:
+                # Try to assign board number way beyond limits (season.boards=4, max allowed should be 6)
+                form_data[f"player_{member.player.id}"] = 10  # This should be rejected
             else:
-                form_data[f"player_{member.player.id}"] = i + 2  # Skip board 3
+                form_data[f"player_{member.player.id}"] = member.board_number
 
         form = BoardOrderForm(
             data=form_data, team=self.team, user=self.captain_user, upcoming_round=None
         )
 
         self.assertFalse(form.is_valid())
-        self.assertIn("Board numbers must be continuous", str(form.errors))
+        self.assertIn("less than or equal to 6", str(form.errors))
+        # The field validation catches this before our custom validation
+
+    def test_board_order_form_custom_range_validation(self):
+        """Test that our custom validation catches board numbers that are too high"""
+        # Create a season with only 1 board to test the custom validation
+        tiny_season = Season.objects.create(
+            league=self.league, name="Tiny Season", tag="tinyseason", rounds=4, boards=1
+        )
+
+        # Create team for the tiny season
+        tiny_team = Team.objects.create(
+            season=tiny_season, number=96, name="Tiny Season Team", is_active=True
+        )
+
+        # Add 5 members (way more than boards=1, max_board will be max(1, 5+2) = 7)
+        members = []
+        for i in range(5):
+            player = Player.objects.create(
+                lichess_username=f"tinyseason{i+1}", rating=1600 - i * 10
+            )
+            member = TeamMember.objects.create(
+                team=tiny_team, player=player, board_number=i + 1, is_captain=(i == 0)
+            )
+            members.append(member)
+
+        # Try to assign board 5 (field allows up to 7, but custom validation should allow only up to season.boards + 2 = 1 + 2 = 3)
+        form_data = {
+            f"player_{members[0].player.id}": 5,  # This should be rejected by custom validation
+            f"player_{members[1].player.id}": 2,
+            f"player_{members[2].player.id}": 3,
+            f"player_{members[3].player.id}": 1,
+            f"player_{members[4].player.id}": 4,  # This should also be rejected
+        }
+
+        form = BoardOrderForm(
+            data=form_data, team=tiny_team, user=self.captain_user, upcoming_round=None
+        )
+
+        # This should be invalid because boards 5 and 4 are > season.boards + 2 = 1 + 2 = 3
+        self.assertFalse(form.is_valid())
+        self.assertIn("too high", str(form.errors))
+        self.assertIn("3", str(form.errors))  # Maximum allowed should be 1 + 2 = 3
+
+    def test_board_order_form_allows_reserve_positions(self):
+        """Test that reasonable reserve positions (beyond active boards) are allowed"""
+        # Create a team with 6 members for a 4-board season (2 reserves)
+        large_team = Team.objects.create(
+            season=self.season, number=98, name="Large Team", is_active=True
+        )
+
+        # Add 6 members
+        members = []
+        for i in range(6):
+            player = Player.objects.create(
+                lichess_username=f"largeteam{i+1}", rating=1600 - i * 10
+            )
+            member = TeamMember.objects.create(
+                team=large_team, player=player, board_number=i + 1, is_captain=(i == 0)
+            )
+            members.append(member)
+
+        # Form data assigning boards 1-6 (boards 5-6 are reserves)
+        form_data = {}
+        for i, member in enumerate(members):
+            form_data[f"player_{member.player.id}"] = i + 1
+
+        form = BoardOrderForm(
+            data=form_data, team=large_team, user=self.captain_user, upcoming_round=None
+        )
+
+        self.assertTrue(
+            form.is_valid(),
+            f"Form should allow reserve positions, but got errors: {form.errors}",
+        )
 
     def test_board_order_form_deadline_enforcement(self):
         """Test that form enforces deadline for non-admin users"""
