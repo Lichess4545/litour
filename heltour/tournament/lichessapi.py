@@ -98,29 +98,6 @@ def enumerate_user_statuses(lichess_usernames, priority=0, max_retries=5, timeou
         lichess_usernames = lichess_usernames[40:]
 
 
-def enumerate_user_classical_rating_and_games_played(
-    lichess_team_name, priority=0, max_retries=5, timeout=1800
-):
-    page = 1
-    while True:
-        url = (
-            "%s/lichessapi/api/user?team=%s&nb=100&page=%s&priority=%s&max_retries=%s"
-            % (settings.API_WORKER_HOST, lichess_team_name, page, priority, max_retries)
-        )
-        result = _apicall(url, timeout)
-        if result == "":
-            break
-        paginator = json.loads(result)["paginator"]
-
-        for user_info in paginator["currentPageResults"]:
-            classical = user_info["perfs"]["classical"]
-            yield (user_info["username"], classical["rating"], classical["games"])
-
-        page += 1
-        if page > paginator["nbPages"]:
-            break
-
-
 def get_pgn_with_cache(gameid, priority=0, max_retries=5, timeout=1800):
     result = cache.get("pgn_%s" % gameid)
     if result is not None:
