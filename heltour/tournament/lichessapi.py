@@ -364,7 +364,7 @@ def update_or_create_broadcast_round(
         broadcast_id and broadcast_round_id
     ):
         raise ValueError(
-            "Need exactly one of either broadcast_id or boradcast_round_id"
+            "Need exactly one of either broadcast_id or broadcast_round_id"
         )
     if status not in ["new", "started", "finished"]:
         raise ValueError("status can only be new, started or finished")
