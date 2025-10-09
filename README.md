@@ -93,3 +93,5 @@ docker compose down -v
 ## Historical Note
 
 This project was previously known as heltour and served lichess4545. It has been rebranded to support lots.lichess.ca (Lichess Online Tournament System).
+
+.
