@@ -69,7 +69,7 @@ def get_user_meta(lichess_username, priority=0, max_retries=5, timeout=1800):
 
 
 def enumerate_user_metas(lichess_usernames, priority=0, max_retries=5, timeout=1800):
-    url = "%s/lichessapi/api/users?with_moves=1&priority=%s&max_retries=%s" % (
+    url = "%s/lichessapi/api/users?&priority=%s&max_retries=%s" % (
         settings.API_WORKER_HOST,
         priority,
         max_retries,
