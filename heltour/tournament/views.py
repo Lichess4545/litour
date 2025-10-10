@@ -444,6 +444,17 @@ class SeasonLandingView(SeasonView):
 
         links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
 
+        # Get tiebreaks configuration for the league
+        from heltour.tournament.models import TEAM_TIEBREAK_OPTIONS
+        tiebreak_names = dict(TEAM_TIEBREAK_OPTIONS)
+        tiebreaks = []
+        for tb in self.league.get_team_tiebreaks():
+            if tb in tiebreak_names:
+                display_name = tiebreak_names[tb]
+                if ' - ' in display_name:
+                    display_name = display_name.split(' - ')[0]
+                tiebreaks.append((tb, display_name))
+
         context = {
             'has_more_seasons': has_more_seasons,
             'current_seasons': current_seasons,
@@ -454,6 +465,7 @@ class SeasonLandingView(SeasonView):
             'second_team': second_team,
             'third_team': third_team,
             'links_doc': links_doc,
+            'tiebreaks': tiebreaks,
             'can_edit_document': self.request.user.has_perm('tournament.change_document',
                                                             self.league),
         }
