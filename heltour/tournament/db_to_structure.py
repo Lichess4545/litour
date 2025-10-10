@@ -179,107 +179,23 @@ def team_tournament_to_structure(season) -> Tournament:
                 if game_result is None:
                     continue  # Skip games without results
 
-                # For team matches, ensure player1 is from white_team, player2 is from black_team
-                # Check actual team membership like the updated refresh_points() does
-
-                white_team_player_ids = set(
-                    team_pairing.white_team.teammember_set.values_list(
-                        "player_id", flat=True
-                    )
-                )
-                black_team_player_ids = set(
-                    team_pairing.black_team.teammember_set.values_list(
-                        "player_id", flat=True
-                    )
-                )
-
-                # Determine which team each player belongs to (handle None for forfeits)
-                white_piece_player_on_white_team = (
-                    board_pairing.white_id
-                    and board_pairing.white_id in white_team_player_ids
-                )
-                white_piece_player_on_black_team = (
-                    board_pairing.white_id
-                    and board_pairing.white_id in black_team_player_ids
-                )
-                black_piece_player_on_white_team = (
-                    board_pairing.black_id
-                    and board_pairing.black_id in white_team_player_ids
-                )
-                black_piece_player_on_black_team = (
-                    board_pairing.black_id
-                    and board_pairing.black_id in black_team_player_ids
-                )
-
-                if (
-                    white_piece_player_on_white_team
-                    and black_piece_player_on_black_team
-                ):
-                    # Normal case: white team player has white pieces
-                    player1_id = board_pairing.white_id  # white_team player
-                    player2_id = board_pairing.black_id  # black_team player
-                    # game_result is correct as-is
-                elif (
-                    white_piece_player_on_black_team
-                    and black_piece_player_on_white_team
-                ):
-                    # Swapped case: colors are reversed
-                    player1_id = (
-                        board_pairing.black_id
-                    )  # white_team player (playing black)
-                    player2_id = (
-                        board_pairing.white_id
-                    )  # black_team player (playing white)
-                    # Swap the result since we swapped the players
-                    if game_result == GameResult.P1_WIN:
-                        game_result = GameResult.P2_WIN
-                    elif game_result == GameResult.P2_WIN:
-                        game_result = GameResult.P1_WIN
-                    elif game_result == GameResult.P1_FORFEIT_WIN:
-                        game_result = GameResult.P2_FORFEIT_WIN
-                    elif game_result == GameResult.P2_FORFEIT_WIN:
-                        game_result = GameResult.P1_FORFEIT_WIN
-                elif (
-                    board_pairing.white_id is None and black_piece_player_on_white_team
-                ):
-                    # Forfeit: white team player (playing black) wins by forfeit
-                    player1_id = board_pairing.black_id  # white_team player
-                    player2_id = -1  # No opponent
-                    game_result = GameResult.P1_FORFEIT_WIN  # white team wins
-                elif (
-                    board_pairing.black_id is None and white_piece_player_on_white_team
-                ):
-                    # Forfeit: white team player (playing white) wins by forfeit
-                    player1_id = board_pairing.white_id  # white_team player
-                    player2_id = -1  # No opponent
-                    game_result = GameResult.P1_FORFEIT_WIN  # white team wins
-                elif (
-                    board_pairing.white_id is None and black_piece_player_on_black_team
-                ):
-                    # Forfeit: black team player (playing black) wins by forfeit
-                    player1_id = -1  # No opponent
-                    player2_id = board_pairing.black_id  # black_team player
-                    game_result = GameResult.P2_FORFEIT_WIN  # black team wins
-                elif (
-                    board_pairing.black_id is None and white_piece_player_on_black_team
-                ):
-                    # Forfeit: black team player (playing white) wins by forfeit
-                    player1_id = -1  # No opponent
-                    player2_id = board_pairing.white_id  # black_team player
-                    game_result = GameResult.P2_FORFEIT_WIN  # black team wins
-                else:
-                    # Skip if we can't determine team assignments
-                    continue
+                # Simply use the white/black player IDs as they are
+                # Player1 is whoever has white pieces, Player2 has black pieces
+                player1_id = board_pairing.white_id or -1  # -1 for forfeit
+                player2_id = board_pairing.black_id or -1  # -1 for forfeit
 
                 board_results.append((player1_id, player2_id, game_result))
 
             if board_results:
                 # Build player to team mapping
                 player_team_mapping = {}
-                for player_id in white_team_player_ids:
-                    player_team_mapping[player_id] = team_pairing.white_team_id
-                for player_id in black_team_player_ids:
-                    player_team_mapping[player_id] = team_pairing.black_team_id
+
+                # Get all team members
+                for tm in team_pairing.white_team.teammember_set.all():
+                    player_team_mapping[tm.player_id] = team_pairing.white_team_id
+
+                for tm in team_pairing.black_team.teammember_set.all():
+                    player_team_mapping[tm.player_id] = team_pairing.black_team_id
 
                 match = create_team_match(
                     team_pairing.white_team_id,
