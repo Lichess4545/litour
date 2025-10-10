@@ -3,6 +3,9 @@ from pathlib import Path
 import os
 import environ
 
+from heltour import settings
+from heltour.tournament.lichessapi import test_oauth_token
+
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.absolute()
 
@@ -16,6 +19,12 @@ environ.Env.read_env(os.path.join(PROJECT_ROOT, ".env"))
 def project_relative(path):
     """Convert a relative path to an absolute path relative to the project root."""
     return str(PROJECT_ROOT / path)
+
+
+@task
+def tokentest(c):
+    result = test_oauth_token(settings.LICHESS_API_TOKEN)
+    print("Token test result:", result)
 
 
 @task

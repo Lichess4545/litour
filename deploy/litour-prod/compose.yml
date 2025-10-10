@@ -18,6 +18,7 @@ services:
     image: ghcr.io/lichess4545/litour-web:latest
     env_file: "stack.env"
     environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_prod_lichess_api_token
       DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       SECRET_KEY_FILE: /run/secrets/litour_app_secret_key
       EMAIL_HOST_USER_FILE: /run/secrets/email_host_user
@@ -25,6 +26,7 @@ services:
     secrets:
       - litour_prod_db_url
       - litour_app_secret_key
+      - litour_prod_lichess_api_token
       - email_host_user
       - email_host_password
     networks:
@@ -37,6 +39,7 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_prod_lichess_api_token
       DATABASE_URL_FILE: /run/secrets/litour_prod_db_url
       HELTOUR_ENV: prod
       HELTOUR_APP: api_worker
@@ -45,6 +48,7 @@ services:
       EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
     secrets:
       - litour_prod_db_url
+      - litour_prod_lichess_api_token
       - litour_app_secret_key
       - email_host_user
       - email_host_password
@@ -57,6 +61,10 @@ services:
   celery:
     image: ghcr.io/lichess4545/litour-celery:latest
     env_file: "stack.env"
+    environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_prod_lichess_api_token
+    secrets:
+      - litour_prod_lichess_api_token
     networks:
       - litour
     deploy:
@@ -106,6 +114,8 @@ networks:
 
 secrets:
   litour_prod_db_url:
+    external: true
+  litour_prod_lichess_api_token:
     external: true
   litour_app_secret_key:
     external: true

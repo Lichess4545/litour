@@ -17,6 +17,10 @@ services:
   web:
     image: ghcr.io/lichess4545/litour-web:latest
     env_file: "stack.env"
+    environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_staging_lichess_api_token
+    secrets:
+      - litour_staging_lichess_api_token
     networks:
       - litour
     deploy:
@@ -27,8 +31,11 @@ services:
     image: ghcr.io/lichess4545/litour-api-worker:latest
     env_file: "stack.env"
     environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_staging_lichess_api_token
       HELTOUR_ENV: stage
       HELTOUR_APP: api_worker
+    secrets:
+      - litour_staging_lichess_api_token
     networks:
       - litour
     deploy:
@@ -38,6 +45,10 @@ services:
   celery:
     image: ghcr.io/lichess4545/litour-celery:latest
     env_file: "stack.env"
+    environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_staging_lichess_api_token
+    secrets:
+      - litour_staging_lichess_api_token
     networks:
       - litour
     deploy:
@@ -110,3 +121,7 @@ networks:
   litour:
     driver: overlay
     # driver: bridge
+
+secrets:
+  litour_staging_lichess_api_token:
+    external: true
