@@ -1853,7 +1853,7 @@ class TeamScore(_BaseModel):
             "number"
         ):
             if round_ is None or not round_.is_completed:
-                yield None, None, None
+                yield None, None, None, False
                 continue
             points = None
             opp_points = None
