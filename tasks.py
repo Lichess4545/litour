@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import environ
 
-from heltour import settings
+from django.conf import settings
 from heltour.tournament.lichessapi import test_oauth_token
 
 # Get project root directory
