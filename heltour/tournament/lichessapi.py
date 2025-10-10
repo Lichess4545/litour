@@ -57,6 +57,12 @@ def _apicall_with_error_parsing(*args, **kwargs) -> str:
     return result
 
 
+def test_oauth_token(token):
+    url = "%s/lichessapi/api/token/test" % (settings.API_WORKER_HOST)
+    r = requests.post(url, data=token)
+    return r.json()
+
+
 def get_user_meta(lichess_username, priority=0, max_retries=5, timeout=1800):
     url = "%s/lichessapi/api/user/%s?priority=%s&max_retries=%s" % (
         settings.API_WORKER_HOST,
