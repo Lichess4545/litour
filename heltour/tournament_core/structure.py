@@ -17,6 +17,14 @@ from heltour.tournament_core.tiebreaks import MatchResult, CompetitorScore
 from heltour.tournament_core.scoring import ScoringSystem, STANDARD_SCORING
 
 
+@dataclass(frozen=True)
+class Player:
+    """Represents a player with their ID and the competitor (team) they belong to."""
+
+    player_id: int
+    competitor_id: int
+
+
 class GameResult(Enum):
     """Result of a single game."""
 
@@ -30,10 +38,10 @@ class GameResult(Enum):
 
 @dataclass(frozen=True)
 class Game:
-    """A single game between two competitors."""
+    """A single game between two players."""
 
-    player1_id: int
-    player2_id: int
+    player1: Player
+    player2: Player
     result: GameResult
 
     def points(self, scoring: ScoringSystem = STANDARD_SCORING) -> Tuple[float, float]:
@@ -54,9 +62,9 @@ class Game:
     def winner_id(self) -> Optional[int]:
         """Return the ID of the winner, or None if draw/double forfeit."""
         if self.result in (GameResult.P1_WIN, GameResult.P1_FORFEIT_WIN):
-            return self.player1_id
+            return self.player1.player_id
         elif self.result in (GameResult.P2_WIN, GameResult.P2_FORFEIT_WIN):
-            return self.player2_id
+            return self.player2.player_id
         return None
 
 
@@ -75,6 +83,45 @@ class Match:
     games: List[Game] = field(default_factory=list)
     is_bye: bool = False
 
+    def _calculate_game_results(
+        self, scoring: ScoringSystem = STANDARD_SCORING
+    ) -> Tuple[float, float, int, int]:
+        """Calculate game points and wins for both competitors.
+
+        Returns: (c1_points, c2_points, c1_wins, c2_wins)
+        """
+        c1_points = 0.0
+        c2_points = 0.0
+        c1_wins = 0
+        c2_wins = 0
+
+        for game in self.games:
+            p1_pts, p2_pts = game.points(scoring)
+
+            # Determine which competitor each player belongs to
+            if game.player1.competitor_id == self.competitor1_id:
+                # Player1 is on team1, player2 is on team2
+                c1_points += p1_pts
+                c2_points += p2_pts
+
+                # Count wins
+                if game.result in (GameResult.P1_WIN, GameResult.P1_FORFEIT_WIN):
+                    c1_wins += 1
+                elif game.result in (GameResult.P2_WIN, GameResult.P2_FORFEIT_WIN):
+                    c2_wins += 1
+            else:
+                # Player1 is on team2, player2 is on team1
+                c1_points += p2_pts
+                c2_points += p1_pts
+
+                # Count wins
+                if game.result in (GameResult.P1_WIN, GameResult.P1_FORFEIT_WIN):
+                    c2_wins += 1
+                elif game.result in (GameResult.P2_WIN, GameResult.P2_FORFEIT_WIN):
+                    c1_wins += 1
+
+        return (c1_points, c2_points, c1_wins, c2_wins)
+
     def game_points(
         self, scoring: ScoringSystem = STANDARD_SCORING
     ) -> Tuple[float, float]:
@@ -88,16 +135,7 @@ class Match:
             )
             return (max_points * scoring.bye_game_points_factor, 0.0)
 
-        c1_points = 0.0
-        c2_points = 0.0
-        for game in self.games:
-            p1_pts, p2_pts = game.points(scoring)
-            # The convention is that games are ordered such that:
-            # - For individual tournaments: player1 in game matches competitor1 in match
-            # - For team tournaments: player1 in game belongs to competitor1's team
-            # This is enforced by the match creation functions
-            c1_points += p1_pts
-            c2_points += p2_pts
+        c1_points, c2_points, _, _ = self._calculate_game_results(scoring)
         return (c1_points, c2_points)
 
     def games_won(self) -> Tuple[int, int]:
@@ -105,14 +143,7 @@ class Match:
         if self.is_bye:
             return (0, 0)
 
-        c1_wins = 0
-        c2_wins = 0
-        for game in self.games:
-            if game.result in (GameResult.P1_WIN, GameResult.P1_FORFEIT_WIN):
-                c1_wins += 1
-            elif game.result in (GameResult.P2_WIN, GameResult.P2_FORFEIT_WIN):
-                c2_wins += 1
-            # Draws don't count as wins
+        _, _, c1_wins, c2_wins = self._calculate_game_results()
         return (c1_wins, c2_wins)
 
 
@@ -238,10 +269,12 @@ def three_one_zero_match_points(
 def create_single_game_match(p1_id: int, p2_id: int, result: GameResult) -> Match:
     """Create a match with a single game (common for individual tournaments).
 
-    The player IDs in the game should match the competitor IDs in the match.
-    If they don't match (e.g., colors are swapped), you need to swap the result too.
+    In individual tournaments, the player ID is the competitor ID.
     """
-    game = Game(p1_id, p2_id, result)
+    # For individual tournaments, player ID equals competitor ID
+    player1 = Player(p1_id, p1_id)
+    player2 = Player(p2_id, p2_id)
+    game = Game(player1, player2, result)
     return Match(p1_id, p2_id, [game])
 
 
@@ -257,14 +290,19 @@ def create_bye_match(competitor_id: int, games_per_match: int = 1) -> Match:
         # Create half wins, half draws to achieve 50% scoring
         games = []
         for i in range(games_per_match):
+            # For bye games, create dummy players
+            player = Player(i, competitor_id)  # Use board number as player ID
+            bye_player = Player(-1, -1)  # Bye opponent
             if i < games_per_match // 2:
-                games.append(Game(competitor_id, -1, GameResult.P1_WIN))
+                games.append(Game(player, bye_player, GameResult.P1_WIN))
             else:
-                games.append(Game(competitor_id, -1, GameResult.DRAW))
+                games.append(Game(player, bye_player, GameResult.DRAW))
     else:
         # Individual tournament: bye = full win
+        player = Player(competitor_id, competitor_id)
+        bye_player = Player(-1, -1)
         games = [
-            Game(competitor_id, -1, GameResult.P1_WIN) for _ in range(games_per_match)
+            Game(player, bye_player, GameResult.P1_WIN) for _ in range(games_per_match)
         ]
 
     return Match(competitor_id, -1, games, is_bye=True)
@@ -274,6 +312,7 @@ def create_team_match(
     team1_id: int,
     team2_id: int,
     board_results: List[Tuple[int, int, GameResult]],
+    player_team_mapping: Optional[Dict[int, int]] = None,
 ) -> Match:
     """
     Create a team match with multiple boards.
@@ -282,9 +321,24 @@ def create_team_match(
         team1_id: First team's ID
         team2_id: Second team's ID
         board_results: List of (player1_id, player2_id, result) for each board
-                      IMPORTANT: player1 should belong to team1, player2 to team2
+                      If player_team_mapping is provided, players can be in any order
+                      If not provided, assumes player1 belongs to team1, player2 to team2
+        player_team_mapping: Optional dict mapping player_id to team_id
     """
-    games = [Game(p1_id, p2_id, result) for p1_id, p2_id, result in board_results]
+    games = []
+    for p1_id, p2_id, result in board_results:
+        if player_team_mapping:
+            # Use the mapping to determine which team each player belongs to
+            # Special case: -1 means no player (forfeit)
+            p1_team = -1 if p1_id == -1 else player_team_mapping.get(p1_id, team1_id)
+            p2_team = -1 if p2_id == -1 else player_team_mapping.get(p2_id, team2_id)
+            player1 = Player(p1_id, p1_team)
+            player2 = Player(p2_id, p2_team)
+        else:
+            # Legacy behavior: assume player1 is from team1, player2 from team2
+            player1 = Player(p1_id, team1_id)
+            player2 = Player(p2_id, team2_id)
+        games.append(Game(player1, player2, result))
     return Match(team1_id, team2_id, games)
 
 

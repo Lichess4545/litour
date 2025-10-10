@@ -1820,6 +1820,10 @@ class TeamScore(_BaseModel):
             "head_to_head": self.head_to_head,
             "games_won": self.games_won,
             "sonneborn_berger": self.sb_score,
+            "eggsb": self.sb_score,  # All SB variants use the same field
+            "emmsb": self.sb_score,
+            "emgsb": self.sb_score,
+            "egmsb": self.sb_score,
             "buchholz": self.buchholz,
         }
 
@@ -1849,7 +1853,7 @@ class TeamScore(_BaseModel):
             "number"
         ):
             if round_ is None or not round_.is_completed:
-                yield None, None, None
+                yield None, None, None, False
                 continue
             points = None
             opp_points = None

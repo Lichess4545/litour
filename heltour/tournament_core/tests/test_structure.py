@@ -7,6 +7,7 @@ import unittest
 from heltour.tournament_core.structure import (
     Game,
     GameResult,
+    Player,
     Round,
     Tournament,
     create_single_game_match,
@@ -27,10 +28,12 @@ class TournamentUtilsTests(unittest.TestCase):
 
     def test_game_creation_without_round_number(self):
         """Test that Game no longer requires round_number."""
-        # Game now only needs player IDs and result
-        game = Game(1, 2, GameResult.P1_WIN)
-        self.assertEqual(game.player1_id, 1)
-        self.assertEqual(game.player2_id, 2)
+        # Game now uses Player objects
+        player1 = Player(1, 1)  # player_id=1, competitor_id=1
+        player2 = Player(2, 2)  # player_id=2, competitor_id=2
+        game = Game(player1, player2, GameResult.P1_WIN)
+        self.assertEqual(game.player1.player_id, 1)
+        self.assertEqual(game.player2.player_id, 2)
         self.assertEqual(game.result, GameResult.P1_WIN)
 
         # Test points calculation

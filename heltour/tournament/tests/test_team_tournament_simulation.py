@@ -9,11 +9,8 @@ The tests are organized to read from top to bottom like following a real tournam
 from unittest import TestCase
 from heltour.tournament_core.builder import TournamentBuilder
 from heltour.tournament_core.tiebreaks import (
-    CompetitorScore,
     calculate_sonneborn_berger,
-    calculate_buchholz,
 )
-from heltour.tournament_core.scoring import ScoringSystem, STANDARD_SCORING
 
 
 class TeamTournamentSimulationTest(TestCase):
@@ -61,37 +58,41 @@ class TeamTournamentSimulationTest(TestCase):
     def _get_standings(self):
         """Get current standings with scores and tiebreaks."""
         tournament = self.builder.build()
-        
+
         # Calculate base results
         results = tournament.calculate_results()
-        
+
         # Calculate tiebreaks and create standings
         standings = []
         for comp_id, comp_score in results.items():
             sb_score = calculate_sonneborn_berger(comp_score, results)
-            
+
             # Create a result object with tiebreak scores
-            standing = type('Standing', (), {
-                'competitor': comp_id,
-                'tiebreak_scores': {
-                    "Match Points": comp_score.match_points,
-                    "Game Points": comp_score.game_points,
-                    "Sonneborn-Berger": sb_score,
-                }
-            })()
+            standing = type(
+                "Standing",
+                (),
+                {
+                    "competitor": comp_id,
+                    "tiebreak_scores": {
+                        "Match Points": comp_score.match_points,
+                        "Game Points": comp_score.game_points,
+                        "Sonneborn-Berger": sb_score,
+                    },
+                },
+            )()
             standings.append(standing)
-        
+
         # Sort by tiebreaks
         sorted_standings = sorted(
             standings,
             key=lambda x: (
                 x.tiebreak_scores["Match Points"],
                 x.tiebreak_scores["Game Points"],
-                x.tiebreak_scores["Sonneborn-Berger"]
+                x.tiebreak_scores["Sonneborn-Berger"],
             ),
-            reverse=True
+            reverse=True,
         )
-        
+
         return sorted_standings
 
     def _get_team_name(self, team_id):
@@ -148,53 +149,62 @@ class TeamTournamentSimulationTest(TestCase):
         self.builder.round(1)
 
         # Play matches (top half vs bottom half)
-        # Note: On even boards (1,3), white team has white pieces
-        # On odd boards (2,4), colors are swapped so black team has white pieces
-        # Results are from white's perspective, so they get flipped on odd boards
+        # Note: On odd boards (1,3), first team has white pieces
+        # On even boards (2,4), second team has white pieces
+        # Results are always from white's perspective
+        # Alpha wins 3-1
         self.builder.match(
             "Alpha Knights",
             "Delta Queens",
-            "1-0",      # Board 1: Alpha (white) beats Delta (black)
-            "1-0",      # Board 2: Delta (white) loses to Alpha (black) 
-            "1-0",      # Board 3: Alpha (white) beats Delta (black)
-            "0-1",      # Board 4: Delta (white) beats Alpha (black)
-        )  # Final: Alpha wins 3-1
+            "1-0",  # Board 1: Alpha (white) beats Delta (black)
+            "1-0",  # Board 2: Delta (white) beats Alpha (black)
+            "1-0",  # Board 3: Alpha (white) beats Delta (black)
+            "0-1",  # Board 4: Delta (white) loses to Alpha (black)
+        )
+        # Beta wins 5-1
         self.builder.match(
             "Beta Bishops",
             "Epsilon Pawns",
-            "1-0",      # Board 1: Beta (white) beats Epsilon (black) = Beta 1-0
-            "0-1",      # Board 2: Epsilon (white) beats Beta (black) = Beta 0-1
-            "1-0",      # Board 3: Beta (white) beats Epsilon (black) = Beta 1-0
-            "1-0",      # Board 4: Epsilon (white) loses to Beta (black) = Beta 1-0
-        )  # Final: Beta wins 3-1
+            "1-0",  # Board 1: Beta (white) beats Epsilon (black)
+            "0-1",  # Board 2: Epsilon (white) loses to Beta (black)
+            "1-0",  # Board 3: Beta (white) beats Epsilon (black)
+            "0-1",  # Board 4: Epsilon (white) loses to Beta (black)
+        )
+        # Gamma wins 4-0
         self.builder.match(
-            "Gamma Rooks", 
-            "Zeta Kings", 
-            "1-0",      # Board 1: Gamma (white) beats Zeta (black)
-            "0-1",      # Board 2: Zeta (white) loses to Gamma (black)  
-            "1-0",      # Board 3: Gamma (white) beats Zeta (black)
-            "0-1"       # Board 4: Zeta (white) loses to Gamma (black)
-        )  # Final: Gamma wins 4-0
+            "Gamma Rooks",
+            "Zeta Kings",
+            "1-0",  # Board 1: Gamma (white) beats Zeta (black)
+            "0-1",  # Board 2: Zeta (white) loses to Gamma (black)
+            "1-0",  # Board 3: Gamma (white) beats Zeta (black)
+            "0-1",  # Board 4: Zeta (white) loses to Gamma (black)
+        )
+
+        # Complete the round
+        self.builder.complete()
 
         # Verify standings after round 1
         standings = self._get_standings()
-        
+
         # Check match points by team
         expected_results = {
             "Alpha Knights": 2,  # Won 3-1
-            "Gamma Rooks": 2,    # Won 4-0  
-            "Beta Bishops": 2,   # Won 3-1
-            "Delta Queens": 0,   # Lost
+            "Gamma Rooks": 2,  # Won 4-0
+            "Beta Bishops": 2,  # Won 3-1
+            "Delta Queens": 0,  # Lost
             "Epsilon Pawns": 0,  # Lost
-            "Zeta Kings": 0,     # Lost
+            "Zeta Kings": 0,  # Lost
         }
-        
+
         for standing in standings:
             team_name = self._get_team_name(standing.competitor)
             mp = standing.tiebreak_scores.get("Match Points", 0)
             expected_mp = expected_results.get(team_name, -1)
-            self.assertEqual(mp, expected_mp, 
-                           f"{team_name} should have {expected_mp} match points, got {mp}")
+            self.assertEqual(
+                mp,
+                expected_mp,
+                f"{team_name} should have {expected_mp} match points, got {mp}",
+            )
 
     def test_03_round_2_swiss_pairings(self):
         """Test 03: Round 2 - Swiss pairings based on round 1 results."""
@@ -208,9 +218,9 @@ class TeamTournamentSimulationTest(TestCase):
         self.builder.match(
             "Alpha Knights",
             "Beta Bishops",
-            "1-0",      # Board 1: Alpha (white) beats Beta (black) = 1-0
-            "0-1",      # Board 2: Beta (white) loses to Alpha (black) = 0-1  
-            "1-0",      # Board 3: Alpha (white) beats Beta (black) = 1-0
+            "1-0",  # Board 1: Alpha (white) beats Beta (black) = 1-0
+            "0-1",  # Board 2: Beta (white) loses to Alpha (black) = 0-1
+            "1-0",  # Board 3: Alpha (white) beats Beta (black) = 1-0
             "1/2-1/2",  # Board 4: Draw = 0.5-0.5
         )  # Final: Alpha 2.5-1.5 Beta
         self.builder.match(
@@ -225,9 +235,9 @@ class TeamTournamentSimulationTest(TestCase):
             "Epsilon Pawns",
             "Zeta Kings",
             "1/2-1/2",  # Board 1: Draw
-            "0-1",      # Board 2: Zeta (white) beats Epsilon (black) → flipped to 1-0 = Zeta wins
+            "0-1",  # Board 2: Zeta (white) beats Epsilon (black) → flipped to 1-0 = Zeta wins
             "1/2-1/2",  # Board 3: Draw
-            "1-0",      # Board 4: Epsilon (white) beats Zeta (black) → flipped to 0-1 = Epsilon wins
+            "1-0",  # Board 4: Epsilon (white) beats Zeta (black) → flipped to 0-1 = Epsilon wins
         )  # Final: 2-2 draw
 
         # Verify standings
@@ -240,8 +250,10 @@ class TeamTournamentSimulationTest(TestCase):
             mp = standing.tiebreak_scores.get("Match Points", 0)
             if mp == 4.0:
                 teams_with_4mp.append(name)
-        
-        self.assertEqual(len(teams_with_4mp), 2, "Should have 2 teams with 4 match points")
+
+        self.assertEqual(
+            len(teams_with_4mp), 2, "Should have 2 teams with 4 match points"
+        )
         self.assertIn("Alpha Knights", teams_with_4mp)
         self.assertIn("Gamma Rooks", teams_with_4mp)
 
@@ -273,10 +285,10 @@ class TeamTournamentSimulationTest(TestCase):
         self.builder.match(
             "Epsilon Pawns",
             "Zeta Kings",
-            "1-0",      # Board 1: Epsilon wins
-            "1-0",      # Board 2: Zeta (white) loses → flipped to 0-1 = Epsilon wins
-            "0-1",      # Board 3: Zeta wins
-            "0-1",      # Board 4: Epsilon (white) loses → flipped to 1-0 = Zeta wins
+            "1-0",  # Board 1: Epsilon wins
+            "1-0",  # Board 2: Zeta (white) loses → flipped to 0-1 = Epsilon wins
+            "0-1",  # Board 3: Zeta wins
+            "0-1",  # Board 4: Epsilon (white) loses → flipped to 1-0 = Zeta wins
         )  # Final: 2-2 draw
 
         # Verify standings
@@ -344,12 +356,17 @@ class TeamTournamentSimulationTest(TestCase):
 
         # Count how many teams have 6 match points
         teams_with_6mp = [pos for pos in final_positions if pos["match_points"] == 6.0]
-        self.assertGreaterEqual(len(teams_with_6mp), 2, "Should have at least 2 teams with 6 match points")
+        self.assertGreaterEqual(
+            len(teams_with_6mp), 2, "Should have at least 2 teams with 6 match points"
+        )
 
         # The winner should have the best tiebreaks among teams with 6 match points
         if len(teams_with_6mp) > 1:
-            self.assertEqual(teams_with_6mp[0], final_positions[0], 
-                           "Team with 6 MP and best tiebreaks should be first")
+            self.assertEqual(
+                teams_with_6mp[0],
+                final_positions[0],
+                "Team with 6 MP and best tiebreaks should be first",
+            )
 
     def test_06_complete_tournament_verification(self):
         """Test 06: Verify complete tournament data integrity."""

@@ -87,15 +87,15 @@ class TournamentSimulationTests(TestCase):
             )
             # Round 1
             .round(1)
-            .match(
-                "Dragons", "Knights", "1-0", "0-1", "1/2-1/2", "1-0"
-            )  # Dragons win 2.5-1.5
+            # Dragons win 2.5-1.5
+            # Board 1: Dragons(W) win, Board 2: Knights(W) lose, Board 3: draw, Board 4: Knights(W) lose
+            .match("Dragons", "Knights", "1-0", "0-1", "1/2-1/2", "0-1")
             .complete()
             # Round 2
             .round(2)
-            .match(
-                "Knights", "Wizards", "1-0", "1-0", "0-1", "1/2-1/2"
-            )  # Knights win 2.5-1.5
+            # Knights win 2.5-1.5
+            # Board 1: Knights(W) win, Board 2: Wizards(W) lose, Board 3: Knights(W) lose, Board 4: draw
+            .match("Knights", "Wizards", "1-0", "0-1", "0-1", "1/2-1/2")
             .complete()
             .calculate()
             .build()
@@ -111,11 +111,11 @@ class TournamentSimulationTests(TestCase):
 
         # Dragons: Win vs Knights (2), Bye (1) = 3 match points
         self.assertEqual(scores["Dragons"].match_points, 3)
-        self.assertEqual(scores["Dragons"].game_points, 4.5)  # 2.5 + 2.0 (bye)
+        self.assertEqual(scores["Dragons"].game_points, 5.5)  # 3.5 + 2.0 (bye)
 
         # Knights: Loss vs Dragons (0), Win vs Wizards (2) = 2 match points
         self.assertEqual(scores["Knights"].match_points, 2)
-        self.assertEqual(scores["Knights"].game_points, 4.0)  # 1.5 + 2.5
+        self.assertEqual(scores["Knights"].game_points, 3.0)  # 0.5 + 2.5
 
         # Wizards: Bye round 1 (1), Loss vs Knights (0) = 1 match points
         self.assertEqual(scores["Wizards"].match_points, 1)
@@ -185,18 +185,24 @@ class TournamentSimulationTests(TestCase):
             .team("Delta", "DeltaBoard1", "DeltaBoard2")
             # Round 1: Alpha vs Beta, Gamma vs Delta
             .round(1)
-            .match("Alpha", "Beta", "1-0", "1-0")  # Alpha wins 2-0
-            .match("Gamma", "Delta", "1/2-1/2", "1/2-1/2")  # Draw 1-1
+            # Alpha wins 2-0: Board 1: Alpha(W) wins, Board 2: Beta(W) loses
+            .match("Alpha", "Beta", "1-0", "0-1")
+            # Draw 1-1
+            .match("Gamma", "Delta", "1/2-1/2", "1/2-1/2")
             .complete()
             # Round 2: Alpha vs Gamma, Beta vs Delta
             .round(2)
-            .match("Alpha", "Gamma", "1-0", "1/2-1/2")  # Alpha wins 1.5-0.5
-            .match("Beta", "Delta", "0-1", "0-1")  # Delta wins 2-0
+            # Alpha wins 1.5-0.5: Board 1: Alpha(W) wins, Board 2: draw
+            .match("Alpha", "Gamma", "1-0", "1/2-1/2")
+            # Delta wins 2-0: Board 1: Beta(W) loses, Board 2: Delta(W) wins
+            .match("Beta", "Delta", "0-1", "1-0")
             .complete()
             # Round 3: Alpha vs Delta, Beta vs Gamma
             .round(3)
-            .match("Alpha", "Delta", "1/2-1/2", "1/2-1/2")  # Draw 1-1
-            .match("Beta", "Gamma", "1-0", "1-0")  # Beta wins 2-0
+            # Draw 1-1
+            .match("Alpha", "Delta", "1/2-1/2", "1/2-1/2")
+            # Beta wins 2-0: Board 1: Beta(W) wins, Board 2: Gamma(W) loses
+            .match("Beta", "Gamma", "1-0", "0-1")
             .complete()
             .calculate()
             .build()
