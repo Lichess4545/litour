@@ -40,12 +40,14 @@ class DbToStructureIntegrationTests(TestCase):
             .complete()
             # Round 2: Team 1 vs Team 3 (1-1), Team 2 gets bye
             .round(2)
-            .match("Team 1", "Team 3", "1-0", "0-1")  # 1-1 draw
+            # 1-1 draw: Board 1: Team 1(white) wins, Board 2: Team 3(white) wins
+            .match("Team 1", "Team 3", "1-0", "1-0")
             # Team 2 gets automatic bye
             .complete()
             # Round 3: Team 2 vs Team 3 (1-1), Team 1 gets bye
             .round(3)
-            .match("Team 2", "Team 3", "1-0", "0-1")  # 1-1 draw
+            # 1-1 draw: Board 1: Team 2(white) wins, Board 2: Team 3(white) wins
+            .match("Team 2", "Team 3", "1-0", "1-0")
             # Team 1 gets automatic bye
             .complete()
             .calculate()
@@ -118,15 +120,18 @@ class DbToStructureIntegrationTests(TestCase):
             .team("Team 3", "team3_player1", "team3_player2")
             # Round 1
             .round(1)
+            # Team 1 wins 1.5-0.5: Board 1: T1(white) wins, Board 2: T2(white) draws with T1(black)
             .match("Team 1", "Team 2", "1-0", "1/2-1/2")
             .complete()
             # Round 2
             .round(2)
-            .match("Team 1", "Team 3", "1-0", "1/2-1/2")  # Team 1 wins 1.5-0.5
+            # Team 1 wins 1.5-0.5: Board 1: T1(white) wins, Board 2: T3(white) draws with T1(black)
+            .match("Team 1", "Team 3", "1-0", "1/2-1/2")
             .complete()
             # Round 3
             .round(3)
-            .match("Team 2", "Team 3", "1-0", "1-0")  # Team 2 wins 2-0
+            # Team 2 wins 2-0: Board 1: T2(white) wins, Board 2: T3(white) loses to T2(black)
+            .match("Team 2", "Team 3", "1-0", "0-1")
             .complete()
             .calculate()
             .build()
@@ -253,18 +258,24 @@ class DbToStructureIntegrationTests(TestCase):
             .team("Purple", "P1", "P2")
             # Round 1: Purple gets bye
             .round(1)
-            .match("Red", "Blue", "1-0", "1-0")  # Red wins 2-0
-            .match("Green", "Yellow", "1/2-1/2", "1/2-1/2")  # Draw 1-1
+            # Red wins 2-0: Board 1: Red(white) beats Blue(black), Board 2: Blue(white) loses to Red(black)
+            .match("Red", "Blue", "1-0", "0-1")
+            # Draw 1-1: Both boards drawn
+            .match("Green", "Yellow", "1/2-1/2", "1/2-1/2")
             .complete()
             # Round 2: Yellow gets bye
             .round(2)
-            .match("Red", "Green", "1-0", "0-1")  # Draw 1-1
-            .match("Blue", "Purple", "0-1", "0-1")  # Purple wins 2-0
+            # Draw 1-1: Board 1: Red(white) beats Green(black), Board 2: Green(white) beats Red(black)
+            .match("Red", "Green", "1-0", "1-0")
+            # Purple wins 2-0: Board 1: Blue(white) loses to Purple(black), Board 2: Purple(white) beats Blue(black)
+            .match("Blue", "Purple", "0-1", "1-0")
             .complete()
             # Round 3: Red gets bye
             .round(3)
-            .match("Blue", "Green", "1-0", "1/2-1/2")  # Blue wins 1.5-0.5
-            .match("Yellow", "Purple", "1/2-1/2", "1/2-1/2")  # Draw 1-1
+            # Blue wins 1.5-0.5: Board 1: Blue(white) wins, Board 2: Green(white) draws Blue(black)
+            .match("Blue", "Green", "1-0", "1/2-1/2")
+            # Draw 1-1: Both boards drawn
+            .match("Yellow", "Purple", "1/2-1/2", "1/2-1/2")
             .complete()
             .calculate()
             .build()
@@ -312,9 +323,8 @@ class DbToStructureIntegrationTests(TestCase):
             .team("Team 1", "T1P1", "T1P2")
             .team("Team 2", "T2P1", "T2P2")
             .round(1)
-            .match(
-                "Team 1", "Team 2", "1X-0F", "0-1"
-            )  # Team 1 wins board 1 by forfeit, Team 2 wins board 2 = 1-1
+            # Team 1 wins 2-0: Board 1: T1(white) wins by forfeit, Board 2: T1(black) wins
+            .match("Team 1", "Team 2", "1X-0F", "0-1")
             .complete()
             .calculate()
             .build()
@@ -327,9 +337,100 @@ class DbToStructureIntegrationTests(TestCase):
             ts.team.number: ts for ts in TeamScore.objects.filter(team__season=season)
         }
 
-        # With forfeits on both boards, match should be 1-1
-        # Team 1 wins board 1 by forfeit, Team 2 wins board 2 by forfeit
-        self.assertEqual(scores[1].match_points, 1)  # Draw
-        self.assertEqual(scores[2].match_points, 1)  # Draw
-        self.assertEqual(scores[1].game_points, 1.0)
-        self.assertEqual(scores[2].game_points, 1.0)
+        # Match should be 2-0 win for Team 1
+        # Team 1 wins board 1 by forfeit, Team 1 wins board 2
+        self.assertEqual(scores[1].match_points, 2)  # Win
+        self.assertEqual(scores[2].match_points, 0)  # Loss
+        self.assertEqual(scores[1].game_points, 2.0)
+        self.assertEqual(scores[2].game_points, 0.0)
+
+    def test_forfeit_win_database_roundtrip(self):
+        """Test that forfeit wins are properly saved to DB and converted back."""
+        # Create tournament with TournamentBuilder
+        tournament = (
+            TournamentBuilder()
+            .league(
+                "Test League",
+                "TL",
+                "team",
+                rating_type="standard",
+                team_tiebreak_1="game_points",
+                team_tiebreak_2="games_won",
+            )
+            .season("TL", "Test Season", rounds=1, boards=4)
+            # Team A has 4 players
+            .team(
+                "Team A",
+                ("Alice", 2000),
+                ("Bob", 1900),
+                ("Charlie", 1800),
+                ("David", 1700),
+            )
+            # Team B has only 3 players
+            .team("Team B", ("Eve", 1950), ("Frank", 1850), ("Grace", 1750))
+            .round(1)
+            # Team A wins all 4 boards - provide results from white's perspective
+            # Board 1: Alice (Team A, white) beats Eve (Team B, black) = "1-0"
+            # Board 2: Frank (Team B, white) loses to Bob (Team A, black) = "0-1"
+            # Board 3: Charlie (Team A, white) beats Grace (Team B, black) = "1-0"
+            # Board 4: None (Team B, white) forfeits to David (Team A, black) = "0F-1X"
+            .match("Team A", "Team B", "1-0", "0-1", "1-0", "0F-1X")
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Test Season"]
+
+        # Get the teams
+        team_a = Team.objects.get(season=season, name="Team A")
+        team_b = Team.objects.get(season=season, name="Team B")
+
+        # Verify board pairings were created correctly
+        from heltour.tournament.models import TeamPairing, TeamPlayerPairing
+
+        team_pairing = TeamPairing.objects.get(
+            round__season=season, white_team=team_a, black_team=team_b
+        )
+
+        # Check that 4 board pairings exist
+        board_pairings = TeamPlayerPairing.objects.filter(
+            team_pairing=team_pairing
+        ).order_by("board_number")
+        self.assertEqual(board_pairings.count(), 4)
+
+        # Verify board 4 is a forfeit win
+        board4 = board_pairings[3]
+        self.assertEqual(board4.board_number, 4)
+
+        # Check which side has the player
+        self.assertTrue(
+            board4.white or board4.black, "Board 4 should have at least one player"
+        )
+        self.assertEqual(board4.result, "0F-1X")  # Black (Team A) wins by forfeit
+
+        # Convert to tournament structure and back
+        tournament_structure = season_to_tournament_structure(season)
+
+        results = tournament_structure.calculate_results()
+
+        # Verify Team A has correct scores
+        team_a_result = results[team_a.id]
+        self.assertEqual(team_a_result.match_points, 2)  # Won the match
+        self.assertEqual(team_a_result.game_points, 4.0)  # Won all 4 boards
+
+        # Calculate tiebreaks
+        from heltour.tournament_core.tiebreaks import (
+            calculate_games_won,
+            calculate_all_tiebreaks,
+        )
+
+        # Verify games won tiebreaker
+        games_won = calculate_games_won(team_a_result)
+        self.assertEqual(games_won, 4)
+
+        # Calculate all tiebreaks to verify game_points tiebreaker
+        tiebreak_scores = calculate_all_tiebreaks(results, ["game_points", "games_won"])
+
+        self.assertEqual(tiebreak_scores[team_a.id]["game_points"], 4.0)
+        self.assertEqual(tiebreak_scores[team_a.id]["games_won"], 4)

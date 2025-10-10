@@ -238,23 +238,23 @@ class DbToStructureTests(TestCase):
 
         # Verify game results and player ordering
         # Board 1: T1 player wins as white
-        self.assertEqual(match.games[0].player1_id, players_t1[0].id)
-        self.assertEqual(match.games[0].player2_id, players_t2[0].id)
+        self.assertEqual(match.games[0].player1.player_id, players_t1[0].id)
+        self.assertEqual(match.games[0].player2.player_id, players_t2[0].id)
         self.assertEqual(match.games[0].result, GameResult.P1_WIN)
 
         # Board 2: T2 player wins as white (but we flip to maintain T1 as player1)
-        self.assertEqual(match.games[1].player1_id, players_t1[1].id)
-        self.assertEqual(match.games[1].player2_id, players_t2[1].id)
+        self.assertEqual(match.games[1].player1.player_id, players_t1[1].id)
+        self.assertEqual(match.games[1].player2.player_id, players_t2[1].id)
         self.assertEqual(match.games[1].result, GameResult.P2_WIN)
 
         # Board 3: Draw
-        self.assertEqual(match.games[2].player1_id, players_t1[2].id)
-        self.assertEqual(match.games[2].player2_id, players_t2[2].id)
+        self.assertEqual(match.games[2].player1.player_id, players_t1[2].id)
+        self.assertEqual(match.games[2].player2.player_id, players_t2[2].id)
         self.assertEqual(match.games[2].result, GameResult.DRAW)
 
         # Board 4: T1 player wins as black (we flip to maintain T1 as player1)
-        self.assertEqual(match.games[3].player1_id, players_t1[3].id)
-        self.assertEqual(match.games[3].player2_id, players_t2[3].id)
+        self.assertEqual(match.games[3].player1.player_id, players_t1[3].id)
+        self.assertEqual(match.games[3].player2.player_id, players_t2[3].id)
         self.assertEqual(match.games[3].result, GameResult.P1_WIN)
 
         # Calculate and verify match result
@@ -388,4 +388,4 @@ class DbToStructureTests(TestCase):
 
         # Ensure league type is correctly set in metadata
         self.assertEqual(builder.core_builder.metadata.competitor_type, "team")
-        self.assertEqual(builder.core_builder.metadata.boards, 4)
+

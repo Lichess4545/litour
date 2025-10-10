@@ -158,32 +158,87 @@ class TournamentBuilder:
         # Build board results
         board_results = []
         for i, result in enumerate(results):
-            if i >= len(white_team_info["players"]) or i >= len(
-                black_team_info["players"]
-            ):
+            white_has_player = i < len(white_team_info["players"])
+            black_has_player = i < len(black_team_info["players"])
+
+            # Handle forfeits when one team doesn't have a player
+            if result in ["1X-0F", "0F-1X"]:
+                # Skip special forfeit handling if both teams have players
+                if not (white_has_player and black_has_player):
+                    # Determine who should have white/black on this board
+                    if i % 2 == 0:  # Even boards: Team A (white_team) has white
+                        if white_has_player and not black_has_player:
+                            # Team A has player, Team B forfeits
+                            board_results.append(
+                                (
+                                    white_team_info["players"][i]["id"],
+                                    -1,  # No opponent
+                                    "1X-0F",
+                                )
+                            )
+                        elif black_has_player and not white_has_player:
+                            # Team B has player, Team A forfeits
+                            board_results.append(
+                                (
+                                    -1,  # No opponent
+                                    black_team_info["players"][i]["id"],
+                                    "0F-1X",
+                                )
+                            )
+                    else:  # Odd boards: Team B (black_team) has white
+                        if white_has_player and not black_has_player:
+                            # Team A has player (as black), Team B forfeits (no white)
+                            board_results.append(
+                                (
+                                    -1,  # No opponent (white)
+                                    white_team_info["players"][i][
+                                        "id"
+                                    ],  # Team A player as black
+                                    "0F-1X",
+                                )
+                            )
+                        elif black_has_player and not white_has_player:
+                            # Team B has player (as white), Team A forfeits (no black)
+                            board_results.append(
+                                (
+                                    black_team_info["players"][i][
+                                        "id"
+                                    ],  # Team B player as white
+                                    -1,  # No opponent (black)
+                                    "1X-0F",
+                                )
+                            )
+                    continue  # Forfeit handled, skip to next board
+
+            # Skip if this isn't a forfeit and one team lacks a player
+            if not (white_has_player and black_has_player) and result not in [
+                "1X-0F",
+                "0F-1X",
+            ]:
                 break
 
-            # Alternate colors by board
-            if i % 2 == 0:  # Even boards (0, 2, 4...): white team gets white
-                white_player = white_team_info["players"][i]["id"]
-                black_player = black_team_info["players"][i]["id"]
-            else:  # Odd boards (1, 3, 5...): black team gets white
-                white_player = black_team_info["players"][i]["id"]
-                black_player = white_team_info["players"][i]["id"]
-                # Flip result if colors are swapped
-                if result == "1-0":
-                    result = "0-1"
-                elif result == "0-1":
-                    result = "1-0"
-                elif result == "1X-0F":
-                    result = "0F-1X"
-                elif result == "0F-1X":
-                    result = "1X-0F"
+            # Both teams have players - normal handling
+            if white_has_player and black_has_player:
+                # Alternate colors by board
+                if i % 2 == 0:  # Even boards (0, 2, 4...): white team gets white
+                    white_player = white_team_info["players"][i]["id"]
+                    black_player = black_team_info["players"][i]["id"]
+                else:  # Odd boards (1, 3, 5...): black team gets white
+                    white_player = black_team_info["players"][i]["id"]
+                    black_player = white_team_info["players"][i]["id"]
 
-            board_results.append((white_player, black_player, result))
+                # Store the result exactly as provided - no flipping!
+                board_results.append((white_player, black_player, result))
 
-        return self.add_team_match(
-            white_team_info["id"], black_team_info["id"], board_results
+        # Build player to team mapping
+        player_team_map = {}
+        for player in white_team_info["players"]:
+            player_team_map[player["id"]] = white_team_info["id"]
+        for player in black_team_info["players"]:
+            player_team_map[player["id"]] = black_team_info["id"]
+        
+        return self.add_team_match_with_mapping(
+            white_team_info["id"], black_team_info["id"], board_results, player_team_map
         )
 
     def complete(self) -> "TournamentBuilder":
@@ -276,6 +331,47 @@ class TournamentBuilder:
             converted_results.append((p1_id, p2_id, game_result))
 
         match = create_team_match(team1_id, team2_id, converted_results)
+        self.current_round.matches.append(match)
+        return self
+
+    def add_team_match_with_mapping(
+        self,
+        team1_id: int,
+        team2_id: int,
+        board_results: List[Tuple[int, int, str]],
+        player_team_mapping: Dict[int, int],
+    ) -> "TournamentBuilder":
+        """Add a team match with player-to-team mapping.
+        
+        Args:
+            team1_id: First team ID
+            team2_id: Second team ID
+            board_results: List of (player1_id, player2_id, result_str) 
+            player_team_mapping: Dict mapping player_id to team_id
+        """
+        if not self.current_round:
+            raise ValueError("Must add a round before adding matches")
+
+        result_map = {
+            "1-0": GameResult.P1_WIN,
+            "1/2-1/2": GameResult.DRAW,
+            "0-1": GameResult.P2_WIN,
+            "1X-0F": GameResult.P1_FORFEIT_WIN,
+            "0F-1X": GameResult.P2_FORFEIT_WIN,
+            "0F-0F": GameResult.DOUBLE_FORFEIT,
+            "+": GameResult.P1_FORFEIT_WIN,  # TRF forfeit win notation
+            "-": GameResult.P2_FORFEIT_WIN,  # TRF forfeit loss notation
+        }
+
+        # Convert string results to GameResult enums
+        converted_results = []
+        for p1_id, p2_id, result_str in board_results:
+            game_result = result_map.get(result_str)
+            if not game_result:
+                raise ValueError(f"Invalid result: {result_str}")
+            converted_results.append((p1_id, p2_id, game_result))
+
+        match = create_team_match(team1_id, team2_id, converted_results, player_team_mapping)
         self.current_round.matches.append(match)
         return self
 

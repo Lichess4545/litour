@@ -280,16 +280,13 @@ class TeamTiebreakTestCase(TestCase):
 
     def test_standings_sort_order(self):
         """Test that teams are sorted correctly in standings"""
-        # Create a simple pairing
-        # Board 1: Team 1 plays white, Team 2 plays black
-        # Board 2: Team 2 plays white, Team 1 plays black
-        # To have Team 1 win 2-0, we need:
-        # - Board 1: '1-0' (Team 1 wins as white)
-        # - Board 2: '1-0' (Team 2 wins as white, but this means Team 1 wins the board)
+        # Create a simple pairing for Team 1 to win 2-0
+        # Board 1: Team 1 (white) beats Team 2 (black) = "1-0"
+        # Board 2: Team 2 (white) loses to Team 1 (black) = "0-1"
         tournament = (
             self.create_base_tournament(rounds=1)
             .round(1)
-            .match("Team 1", "Team 2", "1-0", "1-0")  # Team 1 wins 2-0
+            .match("Team 1", "Team 2", "1-0", "0-1")  # Team 1 wins 2-0
             .complete()
             .calculate()
             .build()

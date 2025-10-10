@@ -8,6 +8,7 @@ from heltour.tournament_core.structure import (
     Game,
     GameResult,
     Match,
+    Player,
     create_single_game_match,
     create_bye_match,
     create_team_match,
@@ -113,7 +114,7 @@ class SimpleTiebreakTests(unittest.TestCase):
         # Need to include player 99 in the competitor list to avoid KeyError
         players = [1, 99]
         matches_with_rounds = [
-            (1, Match(1, 99, [Game(1, 99, GameResult.P1_WIN)])),
+            (1, Match(1, 99, [Game(Player(1, 1), Player(99, 99), GameResult.P1_WIN)])),
         ]
 
         tournament = create_tournament_from_matches(
@@ -314,6 +315,54 @@ class SimpleTiebreakTests(unittest.TestCase):
 
         # P3: Drew P4 (2 MP) = 1, Beat P1 (3 MP) = 3, Beat P2 (2 MP) = 2, Total = 6
         self.assertEqual(calculate_sonneborn_berger(results[3], results), 6.0)
+
+    def test_team_tournament_forfeit_win_game_points(self):
+        """Test that forfeit wins count properly in game points tiebreaker."""
+        from heltour.tournament_core.builder import TournamentBuilder
+        from heltour.tournament_core.assertions import assert_tournament
+
+        # Create a team tournament with one round
+        builder = TournamentBuilder()
+        builder.league("Test League", "TL", "team")
+        builder.season("TL", "Spring 2024", rounds=1, boards=4)
+
+        # Team A has 4 players
+        builder.team(
+            "Team A", ("Alice", 2000), ("Bob", 1900), ("Charlie", 1800), ("David", 1700)
+        )
+
+        # Team B has only 3 players
+        builder.team("Team B", ("Eve", 1950), ("Frank", 1850), ("Grace", 1750))
+
+        # Round 1: Team A wins 4-0 (3 regular wins + 1 forfeit win on board 4)
+        # Board 1: Team A (white) wins
+        # Board 2: Team B (white) loses to Team A (black)
+        # Board 3: Team A (white) wins
+        # Board 4: Team B (white) forfeits to Team A (black)
+        builder.round(1)
+        builder.match("Team A", "Team B", "1-0", "0-1", "1-0", "0F-1X")
+        builder.complete()
+
+        tournament = builder.build()
+        results = tournament.calculate_results()
+
+        # Get Team A's ID
+        team_a_id = tournament.name_to_id["Team A"]
+        team_a_result = results[team_a_id]
+
+        # Team A should have:
+        # - 2 match point (match result is a win)
+        self.assertEqual(team_a_result.match_points, 2)
+        self.assertEqual(team_a_result.game_points, 4.0)
+
+        # Check games won tiebreaker
+        games_won_tb = calculate_games_won(team_a_result)
+        self.assertEqual(games_won_tb, 4)
+
+        # Also verify using the assertion interface
+        assert_tournament(tournament).team("Team A").assert_().match_points(
+            2
+        ).game_points(4.0).games_won(4).position(1)
 
 
 if __name__ == "__main__":

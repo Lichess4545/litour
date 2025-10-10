@@ -213,8 +213,9 @@ def team_tournament_to_structure(season) -> Tournament:
                 )
 
             for board_pairing in board_pairings:
-                if not board_pairing.white_id or not board_pairing.black_id:
-                    continue  # Skip empty boards
+                # Handle forfeit wins where one player is missing
+                if not board_pairing.white_id and not board_pairing.black_id:
+                    continue  # Skip completely empty boards
 
                 game_result = _result_to_game_result(
                     board_pairing.result, board_pairing.colors_reversed
@@ -236,18 +237,22 @@ def team_tournament_to_structure(season) -> Tournament:
                     )
                 )
 
-                # Determine which team each player belongs to
+                # Determine which team each player belongs to (handle None for forfeits)
                 white_piece_player_on_white_team = (
-                    board_pairing.white_id in white_team_player_ids
+                    board_pairing.white_id
+                    and board_pairing.white_id in white_team_player_ids
                 )
                 white_piece_player_on_black_team = (
-                    board_pairing.white_id in black_team_player_ids
+                    board_pairing.white_id
+                    and board_pairing.white_id in black_team_player_ids
                 )
                 black_piece_player_on_white_team = (
-                    board_pairing.black_id in white_team_player_ids
+                    board_pairing.black_id
+                    and board_pairing.black_id in white_team_player_ids
                 )
                 black_piece_player_on_black_team = (
-                    board_pairing.black_id in black_team_player_ids
+                    board_pairing.black_id
+                    and board_pairing.black_id in black_team_player_ids
                 )
 
                 if (
@@ -278,6 +283,34 @@ def team_tournament_to_structure(season) -> Tournament:
                         game_result = GameResult.P2_FORFEIT_WIN
                     elif game_result == GameResult.P2_FORFEIT_WIN:
                         game_result = GameResult.P1_FORFEIT_WIN
+                elif (
+                    board_pairing.white_id is None and black_piece_player_on_white_team
+                ):
+                    # Forfeit: white team player (playing black) wins by forfeit
+                    player1_id = board_pairing.black_id  # white_team player
+                    player2_id = -1  # No opponent
+                    game_result = GameResult.P1_FORFEIT_WIN  # white team wins
+                elif (
+                    board_pairing.black_id is None and white_piece_player_on_white_team
+                ):
+                    # Forfeit: white team player (playing white) wins by forfeit
+                    player1_id = board_pairing.white_id  # white_team player
+                    player2_id = -1  # No opponent
+                    game_result = GameResult.P1_FORFEIT_WIN  # white team wins
+                elif (
+                    board_pairing.white_id is None and black_piece_player_on_black_team
+                ):
+                    # Forfeit: black team player (playing black) wins by forfeit
+                    player1_id = -1  # No opponent
+                    player2_id = board_pairing.black_id  # black_team player
+                    game_result = GameResult.P2_FORFEIT_WIN  # black team wins
+                elif (
+                    board_pairing.black_id is None and white_piece_player_on_black_team
+                ):
+                    # Forfeit: black team player (playing white) wins by forfeit
+                    player1_id = -1  # No opponent
+                    player2_id = board_pairing.white_id  # black_team player
+                    game_result = GameResult.P2_FORFEIT_WIN  # black team wins
                 else:
                     # Skip if we can't determine team assignments
                     continue
@@ -285,10 +318,18 @@ def team_tournament_to_structure(season) -> Tournament:
                 board_results.append((player1_id, player2_id, game_result))
 
             if board_results:
+                # Build player to team mapping
+                player_team_mapping = {}
+                for player_id in white_team_player_ids:
+                    player_team_mapping[player_id] = team_pairing.white_team_id
+                for player_id in black_team_player_ids:
+                    player_team_mapping[player_id] = team_pairing.black_team_id
+
                 match = create_team_match(
                     team_pairing.white_team_id,
                     team_pairing.black_team_id,
                     board_results,
+                    player_team_mapping,
                 )
                 matches.append(match)
 

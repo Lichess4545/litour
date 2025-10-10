@@ -200,25 +200,25 @@ class PureTournamentStructureTest(TestCase):
 
         # Check board colors
         # Board 1 (index 0): White Team gets white
-        self.assertEqual(match.games[0].player1_id, builder.metadata.players["W1"])
-        self.assertEqual(match.games[0].player2_id, builder.metadata.players["B1"])
+        self.assertEqual(match.games[0].player1.player_id, builder.metadata.players["W1"])
+        self.assertEqual(match.games[0].player2.player_id, builder.metadata.players["B1"])
         self.assertEqual(match.games[0].result, GameResult.P1_WIN)
 
         # Board 2 (index 1): Black Team gets white (colors swapped)
-        self.assertEqual(match.games[1].player1_id, builder.metadata.players["B2"])
-        self.assertEqual(match.games[1].player2_id, builder.metadata.players["W2"])
+        self.assertEqual(match.games[1].player1.player_id, builder.metadata.players["B2"])
+        self.assertEqual(match.games[1].player2.player_id, builder.metadata.players["W2"])
         self.assertEqual(
-            match.games[1].result, GameResult.P1_WIN
-        )  # Result was flipped from "0-1"
+            match.games[1].result, GameResult.P2_WIN
+        )  # "0-1" means black wins, which is W2
 
         # Board 3 (index 2): White Team gets white again
-        self.assertEqual(match.games[2].player1_id, builder.metadata.players["W3"])
-        self.assertEqual(match.games[2].player2_id, builder.metadata.players["B3"])
+        self.assertEqual(match.games[2].player1.player_id, builder.metadata.players["W3"])
+        self.assertEqual(match.games[2].player2.player_id, builder.metadata.players["B3"])
         self.assertEqual(match.games[2].result, GameResult.P1_WIN)
 
         # Board 4 (index 3): Black Team gets white (colors swapped)
-        self.assertEqual(match.games[3].player1_id, builder.metadata.players["B4"])
-        self.assertEqual(match.games[3].player2_id, builder.metadata.players["W4"])
+        self.assertEqual(match.games[3].player1.player_id, builder.metadata.players["B4"])
+        self.assertEqual(match.games[3].player2.player_id, builder.metadata.players["W4"])
         self.assertEqual(
-            match.games[3].result, GameResult.P1_WIN
-        )  # Result was flipped from "0-1"
+            match.games[3].result, GameResult.P2_WIN
+        )  # "0-1" means black wins, which is W4

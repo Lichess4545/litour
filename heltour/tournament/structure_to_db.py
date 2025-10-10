@@ -365,11 +365,12 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
 
                         # Create board pairings
                         for board_num, game in enumerate(match.games, 1):
-                            # Get players
-                            white_player = player_id_to_db.get(game.player1_id)
-                            black_player = player_id_to_db.get(game.player2_id)
+                            # Get players (None for forfeit opponent with ID -1)
+                            white_player = player_id_to_db.get(game.player1.player_id) if game.player1.player_id != -1 else None
+                            black_player = player_id_to_db.get(game.player2.player_id) if game.player2.player_id != -1 else None
 
-                            if white_player and black_player:
+                            # Create pairing even if one player is missing (forfeit)
+                            if white_player or black_player:
                                 # Convert result
                                 result_str = _game_result_to_string(game.result)
 
