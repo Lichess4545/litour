@@ -29,10 +29,10 @@ def calculate_team_pairing_scores(team_pairing):
     Returns:
         tuple: (white_points, black_points, white_wins, black_wins)
     """
-    white_points = 0.0
-    black_points = 0.0
-    white_wins = 0
-    black_wins = 0
+    white_team_points = 0.0
+    black_team_points = 0.0
+    white_team_wins = 0
+    black_team_wins = 0
 
     # Get team member player IDs for efficient lookup
     white_team_player_ids = set(
@@ -45,88 +45,44 @@ def calculate_team_pairing_scores(team_pairing):
     for board_pairing in (
         team_pairing.teamplayerpairing_set.all().nocache().order_by("board_number")
     ):
-        # Get the piece-level scores first
+        # Skip boards with no result
+        if not board_pairing.result:
+            continue
+
+        # Get the piece-color scores (white's perspective)
         white_score = board_pairing.white_score() or 0
         black_score = board_pairing.black_score() or 0
 
-        # Skip boards with no result
+        # Skip if no actual score (both 0)
         if white_score == 0 and black_score == 0:
             continue
 
-        # Handle forfeit cases where one player might be None
-        if not board_pairing.white_id and not board_pairing.black_id:
-            continue  # Skip completely empty boards
+        # For each non-None player, determine which team they're on
+        if board_pairing.white_id:
+            if board_pairing.white_id in white_team_player_ids:
+                # White pieces player is on white team
+                white_team_points += white_score
+                if white_score == 1:
+                    white_team_wins += 1
+            elif board_pairing.white_id in black_team_player_ids:
+                # White pieces player is on black team
+                black_team_points += white_score
+                if white_score == 1:
+                    black_team_wins += 1
 
-        # Determine team assignments for non-None players
-        white_piece_player_on_white_team = (
-            board_pairing.white_id and board_pairing.white_id in white_team_player_ids
-        )
-        white_piece_player_on_black_team = (
-            board_pairing.white_id and board_pairing.white_id in black_team_player_ids
-        )
-        black_piece_player_on_white_team = (
-            board_pairing.black_id and board_pairing.black_id in white_team_player_ids
-        )
-        black_piece_player_on_black_team = (
-            board_pairing.black_id and board_pairing.black_id in black_team_player_ids
-        )
+        if board_pairing.black_id:
+            if board_pairing.black_id in white_team_player_ids:
+                # Black pieces player is on white team
+                white_team_points += black_score
+                if black_score == 1:
+                    white_team_wins += 1
+            elif board_pairing.black_id in black_team_player_ids:
+                # Black pieces player is on black team
+                black_team_points += black_score
+                if black_score == 1:
+                    black_team_wins += 1
 
-        # For forfeit cases, determine team assignment from the non-None player
-        if not board_pairing.white_id:  # White piece player forfeited
-            if black_piece_player_on_white_team:
-                # Black piece player is on white team, so white team gets black_score
-                white_points += black_score
-                black_points += white_score
-                if black_score == 1:
-                    white_wins += 1
-                if white_score == 1:
-                    black_wins += 1
-            elif black_piece_player_on_black_team:
-                # Black piece player is on black team, so black team gets black_score
-                white_points += white_score
-                black_points += black_score
-                if white_score == 1:
-                    white_wins += 1
-                if black_score == 1:
-                    black_wins += 1
-        elif not board_pairing.black_id:  # Black piece player forfeited
-            if white_piece_player_on_white_team:
-                # White piece player is on white team, so white team gets white_score
-                white_points += white_score
-                black_points += black_score
-                if white_score == 1:
-                    white_wins += 1
-                if black_score == 1:
-                    black_wins += 1
-            elif white_piece_player_on_black_team:
-                # White piece player is on black team, so black team gets white_score
-                white_points += black_score
-                black_points += white_score
-                if black_score == 1:
-                    white_wins += 1
-                if white_score == 1:
-                    black_wins += 1
-        else:
-            # Normal case: both players present
-            if white_piece_player_on_white_team and black_piece_player_on_black_team:
-                # Normal case: white team player has white pieces
-                white_points += white_score
-                black_points += black_score
-                if white_score == 1:
-                    white_wins += 1
-                if black_score == 1:
-                    black_wins += 1
-            elif white_piece_player_on_black_team and black_piece_player_on_white_team:
-                # Swapped case: white team player has black pieces
-                white_points += black_score
-                black_points += white_score
-                if black_score == 1:
-                    white_wins += 1
-                if white_score == 1:
-                    black_wins += 1
-            # else: Skip if we can't determine team assignments
-
-    return white_points, black_points, white_wins, black_wins
+    return white_team_points, black_team_points, white_team_wins, black_team_wins
 
 
 def _result_to_game_result(
