@@ -160,8 +160,10 @@
                                                 <a href="{{ pairing.game_link }}">
                                                     {% if pairing.result %}
                                                         {{ pairing.result_display }}
+                                                    {% elif pairing.tv_state != "has_moves" %}
+                                                        ⏯
                                                     {% else %}
-                                                        &#x2694;
+                                                        ⚔️
                                                     {% endif %}
                                                 </a>
                                             {% else %}
