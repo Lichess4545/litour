@@ -73,7 +73,6 @@ def just_username(qs: QuerySet[Player]) -> UsernamesQuerySet:
     return qs.order_by("lichess_username").values("lichess_username").distinct()
 
 
-
 def active_player_usernames() -> list[str]:
     players_qs = Player.objects.all()
     active_qs = players_qs.filter(seasonplayer__season__is_completed=False)
@@ -104,7 +103,6 @@ def fetch_players_to_update() -> list[str]:
         for player in list(first(divide(10, registered_players)))
     ]
     return active_players + first10th
-
 
 
 @app.task()
@@ -360,10 +358,10 @@ def update_tv_state():
         if gameid is not None:
             try:
                 meta = lichessapi.get_game_meta(gameid, priority=1, timeout=300)
-                if 'status' not in meta or meta['status'] != 'started':
-                    game.tv_state = 'hide'
-                if 'moves' in meta and ' ' in meta['moves']: # ' ' indicates >= 2 moves
-                    game.tv_state = 'has_moves'
+                if "status" not in meta or meta["status"] != "started":
+                    game.tv_state = "hide"
+                if "moves" in meta and " " in meta["moves"]:  # ' ' indicates >= 2 moves
+                    game.tv_state = "has_moves"
                 if meta.get("status") in [
                     "draw",
                     "stalemate",
@@ -372,12 +370,13 @@ def update_tv_state():
                     game.result = "1/2-1/2"
                 if meta.get("status") == "aborted":
                     game.game_link = ""
-                elif 'winner' in meta and meta[
-                    'status'] != 'timeout':  # timeout = claim victory (which isn't allowed)
-                    if meta['winner'] == 'white':
-                        game.result = '1-0'
-                    elif meta['winner'] == 'black':
-                        game.result = '0-1'
+                elif (
+                    "winner" in meta and meta["status"] != "timeout"
+                ):  # timeout = claim victory (which isn't allowed)
+                    if meta["winner"] == "white":
+                        game.result = "1-0"
+                    elif meta["winner"] == "black":
+                        game.result = "0-1"
                 game.save()
             except Exception as e:
                 logger.warning(
@@ -592,6 +591,8 @@ def _init_start_league_games(
     clock = league.time_control_initial()
     increment = league.time_control_increment()
     variant = league.rating_type
+    if variant in ["classical", "rapid", "blitz", "bullet"]:
+        variant = "standard"
     do_clockstart = league.get_leaguesetting().start_clocks
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round(
@@ -663,7 +664,7 @@ def start_games():
 def _create_team_string(season: Season) -> str:
     if not season.league.is_team_league():
         return ""
-    teams = Team.objects.filter(season=season).order_by('number')
+    teams = Team.objects.filter(season=season).order_by("number")
     lines = []
     for team in teams:
         for teamplayer in TeamMember.objects.filter(team=team).order_by(
@@ -998,9 +999,12 @@ def do_update_broadcast(season_id: int, first_board: int = 1, **kwargs) -> None:
         kwargs={"season_id": season_id, "first_board": first_board}
     )
 
+
 @receiver(signals.do_update_broadcast, dispatch_uid="heltour.tournament.tasks")
 def do_update_broadcast(season_id: int, first_board: int = 1, **kwargs) -> None:
-    update_broadcast.apply_async(kwargs={"season_id": season_id, "first_board": first_board})
+    update_broadcast.apply_async(
+        kwargs={"season_id": season_id, "first_board": first_board}
+    )
 
 
 # How late an event is allowed to run before it's discarded instead
@@ -1156,18 +1160,20 @@ def do_round_transition(sender, round_id, **kwargs):
 
 
 @app.task()
-def generate_pairings(round_id, overwrite=False, auto_assign_forfeits=False, publish_immediately=False):
+def generate_pairings(
+    round_id, overwrite=False, auto_assign_forfeits=False, publish_immediately=False
+):
     round_ = Round.objects.get(pk=round_id)
     pairinggen.generate_pairings(round_, overwrite)
-    
+
     # Handle automatic forfeit assignment
     forfeit_count = 0
     if auto_assign_forfeits:
         forfeit_count = pairinggen.assign_automatic_forfeits(round_)
-    
+
     # Set publish status based on option
     round_.publish_pairings = publish_immediately
-    
+
     with reversion.create_revision():
         comment = "Generated pairings."
         if forfeit_count > 0:
@@ -1180,10 +1186,17 @@ def generate_pairings(round_id, overwrite=False, auto_assign_forfeits=False, pub
 
 
 @receiver(signals.do_generate_pairings, dispatch_uid="heltour.tournament.tasks")
-def do_generate_pairings(sender, round_id, overwrite=False, auto_assign_forfeits=False, publish_immediately=False, **kwargs):
+def do_generate_pairings(
+    sender,
+    round_id,
+    overwrite=False,
+    auto_assign_forfeits=False,
+    publish_immediately=False,
+    **kwargs,
+):
     generate_pairings.apply_async(
-        args=[round_id, overwrite, auto_assign_forfeits, publish_immediately], 
-        countdown=1
+        args=[round_id, overwrite, auto_assign_forfeits, publish_immediately],
+        countdown=1,
     )
 
 
