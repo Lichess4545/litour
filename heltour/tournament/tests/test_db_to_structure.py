@@ -236,26 +236,26 @@ class DbToStructureTests(TestCase):
         self.assertEqual(match.competitor2_id, team2.id)
         self.assertEqual(len(match.games), 4)
 
-        # Verify game results and player ordering
-        # Board 1: T1 player wins as white
+        # Verify game results and player ordering (player1 has white pieces, player2 has black)
+        # Board 1: T1 player (white) wins
         self.assertEqual(match.games[0].player1.player_id, players_t1[0].id)
         self.assertEqual(match.games[0].player2.player_id, players_t2[0].id)
         self.assertEqual(match.games[0].result, GameResult.P1_WIN)
 
-        # Board 2: T2 player wins as white (but we flip to maintain T1 as player1)
-        self.assertEqual(match.games[1].player1.player_id, players_t1[1].id)
-        self.assertEqual(match.games[1].player2.player_id, players_t2[1].id)
-        self.assertEqual(match.games[1].result, GameResult.P2_WIN)
+        # Board 2: T2 player (white) wins - T2 player is player1 since they have white
+        self.assertEqual(match.games[1].player1.player_id, players_t2[1].id)
+        self.assertEqual(match.games[1].player2.player_id, players_t1[1].id)
+        self.assertEqual(match.games[1].result, GameResult.P1_WIN)
 
-        # Board 3: Draw
+        # Board 3: Draw - T1 player has white
         self.assertEqual(match.games[2].player1.player_id, players_t1[2].id)
         self.assertEqual(match.games[2].player2.player_id, players_t2[2].id)
         self.assertEqual(match.games[2].result, GameResult.DRAW)
 
-        # Board 4: T1 player wins as black (we flip to maintain T1 as player1)
-        self.assertEqual(match.games[3].player1.player_id, players_t1[3].id)
-        self.assertEqual(match.games[3].player2.player_id, players_t2[3].id)
-        self.assertEqual(match.games[3].result, GameResult.P1_WIN)
+        # Board 4: T1 player (black) wins - T2 player has white so is player1
+        self.assertEqual(match.games[3].player1.player_id, players_t2[3].id)
+        self.assertEqual(match.games[3].player2.player_id, players_t1[3].id)
+        self.assertEqual(match.games[3].result, GameResult.P2_WIN)
 
         # Calculate and verify match result
         results = tournament.calculate_results()
@@ -353,7 +353,7 @@ class DbToStructureTests(TestCase):
         # Use TournamentBuilder with existing league
         builder = TournamentBuilder()
         builder._existing_league = league
-        
+
         # Call league method to set metadata properly
         builder.league(league.name, league.tag, league.competitor_type)
 
@@ -389,3 +389,95 @@ class DbToStructureTests(TestCase):
         # Ensure league type is correctly set in metadata
         self.assertEqual(builder.core_builder.metadata.competitor_type, "team")
 
+    def test_team_tournament_game_points_assignment(self):
+        """Test that game points are correctly assigned to teams when converting to structure.
+
+        This test reproduces the bug where Royal Knights vs Ice Warriors match
+        assigns game points to the wrong team.
+        """
+        from heltour.tournament.builder import TournamentBuilder
+
+        # Use TournamentBuilder to create the test data
+        builder = TournamentBuilder()
+        builder.league("Test League", "TEST", "team")
+        builder.season("TEST", "Test Season", rounds=1, boards=4)
+
+        # Royal Knights has only 3 players (missing board 4)
+        builder.team(
+            "Royal Knights", ("Shakhriyar", 1578), ("Levon", 1995), ("Anatoly", 1899)
+        )
+
+        # Ice Warriors has 4 players
+        builder.team(
+            "Ice Warriors",
+            ("Ding", 2067),
+            ("Bobby", 1735),
+            ("Viswanathan", 1917),
+            ("Anish", 1740),
+        )
+
+        # Round 1: Royal Knights vs Ice Warriors
+        # Board 1: Shakhriyar (white) loses to Ding (black) → "0-1"
+        # Board 2: Bobby (white) forfeits to Levon (black) → "0F-1X"
+        # Board 3: Anatoly (white) draws Viswanathan (black) → "1/2-1/2"
+        # Board 4: Anish (white) wins by forfeit → "1X-0F"
+        builder.round(1)
+        builder.match(
+            "Royal Knights", "Ice Warriors", "0-1", "0F-1X", "1/2-1/2", "1X-0F"
+        )
+        builder.complete()
+        builder.build()
+
+        # Get the created objects
+        season = builder.current_season
+        royal_knights = Team.objects.get(season=season, name="Royal Knights")
+        ice_warriors = Team.objects.get(season=season, name="Ice Warriors")
+        team_pairing = TeamPairing.objects.get(
+            round__season=season,
+            round__number=1,
+            white_team=royal_knights,
+            black_team=ice_warriors,
+        )
+
+        # Verify database values are correct
+        self.assertEqual(
+            team_pairing.white_points,
+            1.5,
+            "Royal Knights (white team) should have 1.5 game points in database",
+        )
+        self.assertEqual(
+            team_pairing.black_points,
+            2.5,
+            "Ice Warriors (black team) should have 2.5 game points in database",
+        )
+
+        # Now convert to tournament structure and calculate results
+        tournament = season_to_tournament_structure(season)
+        results = tournament.calculate_results()
+
+        # Check that the correct teams get the correct game points
+        rk_result = results[royal_knights.id]
+        iw_result = results[ice_warriors.id]
+
+        self.assertEqual(
+            rk_result.game_points,
+            1.5,
+            f"Royal Knights should have 1.5 game points in tournament_core, but got {rk_result.game_points}",
+        )
+        self.assertEqual(
+            iw_result.game_points,
+            2.5,
+            f"Ice Warriors should have 2.5 game points in tournament_core, but got {iw_result.game_points}",
+        )
+
+        # Also check match points
+        self.assertEqual(
+            rk_result.match_points,
+            0,
+            "Royal Knights lost the match and should have 0 match points",
+        )
+        self.assertEqual(
+            iw_result.match_points,
+            2,
+            "Ice Warriors won the match and should have 2 match points",
+        )
