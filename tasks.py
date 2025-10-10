@@ -4,7 +4,7 @@ import os
 import environ
 
 from django.conf import settings
-from heltour.tournament.lichessapi import test_oauth_token
+from heltour.tournament.lichessapi import test_oauth_token, test_whoami
 
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.absolute()
@@ -25,6 +25,12 @@ def project_relative(path):
 def tokentest(c):
     result = test_oauth_token(settings.LICHESS_API_TOKEN)
     print("Token test result:", result)
+
+
+@task
+def whoami(c):
+    result = test_whoami()
+    print("Whoami test result:", result)
 
 
 @task
