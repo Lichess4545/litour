@@ -598,6 +598,8 @@ def _init_start_league_games(
         (datetime.utcnow().timestamp() + clockstart_in * 60) * 1000
     )  # now + 6 minutes in milliseconds
     leaguename = league.name
+    if variant in ['classical', 'rapid', 'blitz', 'bullet']:
+        variant = 'standard'
     result = _start_league_games(
         tokens=tokenstring,
         clock=clock,
