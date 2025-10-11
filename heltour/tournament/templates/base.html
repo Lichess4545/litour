@@ -184,6 +184,18 @@
         </div>
         <!-- /.container-fluid -->
     </nav>
+    {% if announcements %}
+        <div class="container-fluid">
+            {% for announcement in announcements %}
+                <div class="alert alert-{{ announcement.status }} alert-dismissible" role="alert">
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    {{ announcement.text|safe }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
     <div class="container-fluid" id="content">
         {% block content %}{% endblock %}
     </div>

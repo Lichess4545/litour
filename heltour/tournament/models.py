@@ -3954,3 +3954,93 @@ class BroadcastRound(_BaseModel):
 
     def __str__(self) -> str:
         return f"BCR {self.round_id} B{self.first_board}"
+
+
+class Announcement(_BaseModel):
+    """Site-wide announcements that can be shown on specific paths"""
+
+    ANNOUNCEMENT_STATUS_CHOICES = [
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('danger', 'Danger'),
+        ('success', 'Success'),
+    ]
+
+    text = RichTextUploadingField(
+        help_text="Announcement text. Supports rich text formatting.",
+        verbose_name="Announcement Text",
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=ANNOUNCEMENT_STATUS_CHOICES,
+        default='info',
+        help_text="Bootstrap alert style for the announcement",
+        verbose_name="Status",
+    )
+
+    start_date = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="When this announcement should start showing. Leave empty to show immediately.",
+        verbose_name="Start Date",
+    )
+
+    end_date = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="When this announcement should stop showing. Leave empty to show indefinitely.",
+        verbose_name="End Date",
+    )
+
+    path_prefix = models.CharField(
+        max_length=255,
+        default='/',
+        help_text="Path prefix to show announcement on. '/' means all pages. '/tournament/' would show on tournament pages only.",
+        verbose_name="Path Prefix",
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this announcement is active",
+        verbose_name="Active",
+    )
+
+    class Meta:
+        ordering = ['-start_date']
+        verbose_name = "Announcement"
+        verbose_name_plural = "Announcements"
+
+    def __str__(self):
+        if self.start_date:
+            return f"Announcement ({self.status}) - {self.start_date.strftime('%Y-%m-%d')}"
+        else:
+            return f"Announcement ({self.status}) - Always active"
+
+    @classmethod
+    def get_active_for_path(cls, path):
+        """Get all active announcements for a given path"""
+        from django.utils import timezone
+        now = timezone.now()
+
+        # Build date filters: start_date is null OR start_date <= now
+        # AND end_date is null OR end_date >= now
+        from django.db.models import Q
+        date_filter = Q(
+            Q(start_date__isnull=True) | Q(start_date__lte=now)
+        ) & Q(
+            Q(end_date__isnull=True) | Q(end_date__gte=now)
+        )
+
+        announcements = cls.objects.filter(
+            is_active=True
+        ).filter(date_filter).nocache()
+
+        # Filter by path prefix
+        matching_announcements = []
+        for announcement in announcements:
+            # Check if current path matches the announcement's path prefix
+            if path.startswith(announcement.path_prefix):
+                matching_announcements.append(announcement)
+
+        return matching_announcements

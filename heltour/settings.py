@@ -131,6 +131,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "heltour.tournament.context_processors.common_settings",
+                "heltour.tournament.context_processors.announcements",
             ],
         },
     },
