@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 import re
-from collections import defaultdict, namedtuple
+from collections import namedtuple
 from datetime import datetime, timedelta
 
 import reversion
@@ -60,10 +60,17 @@ def add_system_comment(obj, text, user_name="System"):
 def format_score(score, game_played=None):
     if score is None:
         return ""
-    if str(score) == "0.5":
+
+    # Handle quarter values
+    if str(score) == "0.25":
+        score_str = "\u00bc"
+    elif str(score) == "0.5":
         score_str = "\u00bd"
+    elif str(score) == "0.75":
+        score_str = "\u00be"
     else:
-        score_str = str(score).replace(".0", "").replace(".5", "\u00bd")
+        score_str = str(score).replace(".0", "").replace(".25", "\u00bc").replace(".5", "\u00bd").replace(".75", "\u00be")
+
     if game_played is False:
         if score == 1:
             score_str += "X"
@@ -74,18 +81,18 @@ def format_score(score, game_played=None):
     return score_str
 
 
-# Represents a positive number in increments of 0.5 (0, 0.5, 1, etc.)
+# Represents a positive number in increments of 0.25 (0, 0.25, 0.5, 0.75, 1, etc.)
 class ScoreField(models.PositiveIntegerField):
 
     def from_db_value(self, value, expression, connection):
         if value is None:
             return None
-        return value / 2.0
+        return value / 4.0
 
     def get_db_prep_value(self, value, connection, prepared=False):
         if value is None:
             return None
-        return int(value * 2)
+        return int(value * 4)
 
     def to_python(self, value):
         if value is None or value == "":
