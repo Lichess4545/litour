@@ -196,24 +196,28 @@ class League(_BaseModel):
     team_tiebreak_1 = models.CharField(
         max_length=32,
         choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
         default="game_points",
         help_text="First tiebreak for team tournaments",
     )
     team_tiebreak_2 = models.CharField(
         max_length=32,
         choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
         default="head_to_head",
         help_text="Second tiebreak for team tournaments",
     )
     team_tiebreak_3 = models.CharField(
         max_length=32,
         choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
         default="games_won",
         help_text="Third tiebreak for team tournaments",
     )
     team_tiebreak_4 = models.CharField(
         max_length=32,
         choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
         default="sonneborn_berger",
         help_text="Fourth tiebreak for team tournaments",
     )
@@ -1807,6 +1811,11 @@ class TeamScore(_BaseModel):
             "games_won": self.games_won_display,
             "sonneborn_berger": self.sb_score_display,
             "buchholz": self.buchholz_display,
+            # All extended SB variants use the same sb_score field
+            "eggsb": self.sb_score_display,
+            "emmsb": self.sb_score_display,
+            "emgsb": self.sb_score_display,
+            "egmsb": self.sb_score_display,
         }
         method = display_methods.get(tiebreak_name)
         return method() if method else ""
