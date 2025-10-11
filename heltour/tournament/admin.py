@@ -1956,7 +1956,8 @@ class SeasonAdmin(_BaseAdmin):
 
 @admin.register(Round)
 class RoundAdmin(_BaseAdmin):
-    list_filter = ("season",)
+    list_display = ("__str__", "season", "get_league")
+    list_filter = ("season", "season__league")
     actions = [
         "generate_pairings",
         "simulate_results",
@@ -1967,6 +1968,17 @@ class RoundAdmin(_BaseAdmin):
     ]
     league_id_field = "season__league_id"
     search_fields = ["season__tag"]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Use select_related to fetch season and league in a single query
+        return qs.select_related("season", "season__league")
+
+    def get_league(self, obj):
+        return obj.season.league
+
+    get_league.short_description = "League"
+    get_league.admin_order_field = "season__league"
 
     def get_urls(self):
         urls = super(RoundAdmin, self).get_urls()
@@ -2107,8 +2119,12 @@ class RoundAdmin(_BaseAdmin):
                             sender=self.__class__,
                             round_id=round_.pk,
                             overwrite=form.cleaned_data["overwrite_existing"],
-                            auto_assign_forfeits=form.cleaned_data.get("auto_assign_forfeits", False),
-                            publish_immediately=form.cleaned_data.get("publish_immediately", False),
+                            auto_assign_forfeits=form.cleaned_data.get(
+                                "auto_assign_forfeits", False
+                            ),
+                            publish_immediately=form.cleaned_data.get(
+                                "publish_immediately", False
+                            ),
                         )
                         self.message_user(
                             request, "Generating pairings in background.", messages.INFO
@@ -2118,21 +2134,23 @@ class RoundAdmin(_BaseAdmin):
                         pairinggen.generate_pairings(
                             round_, overwrite=form.cleaned_data["overwrite_existing"]
                         )
-                        
+
                         # Handle automatic forfeit assignment
                         forfeit_count = 0
                         if form.cleaned_data.get("auto_assign_forfeits", False):
                             forfeit_count = pairinggen.assign_automatic_forfeits(round_)
                             if forfeit_count > 0:
                                 self.message_user(
-                                    request, 
-                                    f"Assigned {forfeit_count} automatic forfeit results.", 
-                                    messages.INFO
+                                    request,
+                                    f"Assigned {forfeit_count} automatic forfeit results.",
+                                    messages.INFO,
                                 )
-                        
+
                         # Handle immediate publishing
-                        publish_immediately = form.cleaned_data.get("publish_immediately", False)
-                        
+                        publish_immediately = form.cleaned_data.get(
+                            "publish_immediately", False
+                        )
+
                         with reversion.create_revision():
                             reversion.set_user(request.user)
                             reversion.set_comment("Generated pairings.")
@@ -2140,9 +2158,15 @@ class RoundAdmin(_BaseAdmin):
                             round_.save()
 
                         if publish_immediately:
-                            self.message_user(request, "Pairings generated and published.", messages.INFO)
+                            self.message_user(
+                                request,
+                                "Pairings generated and published.",
+                                messages.INFO,
+                            )
                         else:
-                            self.message_user(request, "Pairings generated.", messages.INFO)
+                            self.message_user(
+                                request, "Pairings generated.", messages.INFO
+                            )
                         return redirect("admin:review_pairings", object_id)
                 except pairinggen.PairingsExistException:
                     if not round_.publish_pairings:
