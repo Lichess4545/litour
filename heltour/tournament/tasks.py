@@ -929,7 +929,7 @@ def _start_unscheduled_games(round_id: int) -> None:
     if league.is_team_league():
         games_to_start = (
             TeamPlayerPairing.objects.filter(
-                result="", game_link="", teampairing__round=round_
+                result="", game_link="", team_pairing__round=round_
             )
             .exclude(white=None)
             .exclude(black=None)
