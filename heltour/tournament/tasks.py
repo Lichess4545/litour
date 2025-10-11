@@ -1030,7 +1030,7 @@ def run_scheduled_events():
             # not just at whatever interval this task happens to be run
             future_bound = (
                 upper_bound
-                + settings.CELERYBEAT_SCHEDULE["run_scheduled_events"]["schedule"]
+                + settings.CELERY_BEAT_SCHEDULE["run_scheduled_events"]["schedule"]
             )
 
             def matching_rounds(**kwargs):
@@ -1110,7 +1110,7 @@ def run_scheduled_events():
 
         future_bound = (
             upper_bound
-            + settings.CELERYBEAT_SCHEDULE["run_scheduled_events"]["schedule"]
+            + settings.CELERY_BEAT_SCHEDULE["run_scheduled_events"]["schedule"]
         )
 
         for n in ScheduledNotification.objects.filter(
