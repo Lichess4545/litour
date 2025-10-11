@@ -810,7 +810,7 @@ class RegisterView(LoginRequiredMixin, LeagueView):
                     # Only store email in session if the field exists
                     if 'email' in form.cleaned_data:
                         self.request.session['reg_email'] = form.cleaned_data['email']
-                    
+
                     # Store registration ID in session to check team assignment
                     self.request.session['reg_id'] = registration.id
 
@@ -857,7 +857,7 @@ class RegistrationSuccessView(SeasonView):
             'registration_season': reg_season,
             'email': self.request.session.get('reg_email')
         }
-        
+
         # Check if user registered with a team invite code
         reg_id = self.request.session.get('reg_id')
         if reg_id:
@@ -889,7 +889,7 @@ class RegistrationSuccessView(SeasonView):
                             context['assigned_team'] = team_member.team
             except Registration.DoesNotExist:
                 pass
-        
+
         return self.render('tournament/registration_success.html', context)
 
 
@@ -1023,20 +1023,20 @@ class StandingsView(SeasonView):
         @cached_as(TeamScore, TeamPairing, TeamBye, *common_team_models)
         def _view(league_tag, season_tag, user_data):
             round_numbers = list(range(1, self.season.rounds + 1))
-            
+
             # Use proper sort key based on season status
             if self.season.is_completed:
                 def sort_key(s): return s.final_standings_sort_key()
             else:
                 def sort_key(s): return s.intermediate_standings_sort_key()
-                
+
             raw_team_scores = TeamScore.objects.filter(team__season=self.season).select_related('team').nocache()
             team_scores = list(enumerate(sorted(raw_team_scores, key=sort_key, reverse=True), 1))
             # Get configured tiebreaks for display
             # Get tiebreak names from the model choices
             from heltour.tournament.models import TEAM_TIEBREAK_OPTIONS
             tiebreak_names = dict(TEAM_TIEBREAK_OPTIONS)
-            
+
             tiebreaks = []
             for tb in self.league.get_team_tiebreaks():
                 if tb in tiebreak_names:
@@ -1045,7 +1045,7 @@ class StandingsView(SeasonView):
                     if ' - ' in display_name:
                         display_name = display_name.split(' - ')[0]
                     tiebreaks.append((tb, display_name))
-            
+
             context = {
                 'round_numbers': round_numbers,
                 'team_scores': team_scores,
@@ -1516,6 +1516,23 @@ class LeagueDashboardView(LeagueView):
         next_round = Round.objects.filter(season=self.season, publish_pairings=False,
                                           is_completed=False).order_by('number').first()
 
+        # Get all rounds for status display
+        all_rounds = Round.objects.filter(season=self.season).order_by('number')
+        rounds_with_status = []
+        for round_ in all_rounds:
+            # Check if games have been created
+            pairings_count = round_.pairing_for_round().count()
+            games_created_count = round_.pairing_for_round().exclude(game_link='').count()
+            has_unscheduled = round_.pairing_for_round().filter(game_link='', result='').exists()
+
+            rounds_with_status.append({
+                'round': round_,
+                'pairings_count': pairings_count,
+                'games_created_count': games_created_count,
+                'has_unscheduled': has_unscheduled,
+                'all_games_created': pairings_count > 0 and games_created_count == pairings_count,
+            })
+
         return {
             'current_season_list': current_season_list,
             'completed_season_list': completed_season_list,
@@ -1525,6 +1542,7 @@ class LeagueDashboardView(LeagueView):
             'alternate_search_count': alternate_search_count,
             'last_round': last_round,
             'next_round': next_round,
+            'rounds_with_status': rounds_with_status,
             'reg_season': reg_season,
             'celery_down': uptime.celery.is_down,
             'can_view_dashboard': self.request.user.has_perm('tournament.view_dashboard',
@@ -1600,13 +1618,13 @@ class UserDashboardView(LeagueView):
                     status='approved',
                     invite_code_used__code_type='captain'
                 ).first()
-                
+
                 # Check if they're on a team
                 team_member = TeamMember.objects.filter(
                     player=player,
                     team__season=season
                 ).select_related('team').first()
-                
+
                 if team_member:
                     team_membership_by_season[season] = {
                         'team': team_member.team,
@@ -1941,13 +1959,13 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
     def view(self):
         from heltour.tournament.forms import TeamCreateForm
         from heltour.tournament.models import InviteCode, TeamMember, Registration
-        
+
         # Check if user is already on a team
         existing_member = TeamMember.objects.filter(
             player=self.player,
             team__season=self.season
         ).first()
-        
+
         if existing_member:
             # Already has a team, redirect to team management
             return redirect(
@@ -1956,7 +1974,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 season_tag=self.season.tag,
                 team_number=existing_member.team.number
             )
-        
+
         # Check if user has a captain invite code
         captain_registration = Registration.objects.filter(
             player=self.player,
@@ -1964,7 +1982,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
             status='approved',
             invite_code_used__code_type='captain'
         ).first()
-        
+
         if not captain_registration:
             # Check if they have ANY approved registration
             any_registration = Registration.objects.filter(
@@ -1972,7 +1990,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 season=self.season,
                 status='approved'
             ).first()
-            
+
             if any_registration:
                 # They have an approved registration but not with a captain code
                 # This might be a data issue - let's check if they should be allowed
@@ -1980,27 +1998,27 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 raise Http404("You must have used a captain invite code during registration to create a team")
             else:
                 raise Http404("No approved registration found for this season")
-        
+
         form = TeamCreateForm(season=self.season, player=self.player)
-        
+
         context = {
             'form': form,
             'season': self.season,
             'league': self.league,
         }
-        
+
         return self.render('tournament/team_create.html', context)
-    
+
     def view_post(self):
         from heltour.tournament.forms import TeamCreateForm
         from heltour.tournament.models import TeamMember, Registration
-        
+
         # Check if user already has a team
         existing_member = TeamMember.objects.filter(
             player=self.player,
             team__season=self.season
         ).first()
-        
+
         if existing_member:
             # Already has a team, redirect to team management
             return redirect(
@@ -2009,7 +2027,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 season_tag=self.season.tag,
                 team_number=existing_member.team.number
             )
-        
+
         # Check if user has a captain invite code
         captain_registration = Registration.objects.filter(
             player=self.player,
@@ -2017,7 +2035,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
             status='approved',
             invite_code_used__code_type='captain'
         ).first()
-        
+
         if not captain_registration:
             # Check if they have ANY approved registration
             any_registration = Registration.objects.filter(
@@ -2025,7 +2043,7 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 season=self.season,
                 status='approved'
             ).first()
-            
+
             if any_registration:
                 # They have an approved registration but not with a captain code
                 # This might be a data issue - let's check if they should be allowed
@@ -2033,13 +2051,13 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 raise Http404("You must have used a captain invite code during registration to create a team")
             else:
                 raise Http404("No approved registration found for this season")
-        
+
         form = TeamCreateForm(
             self.request.POST,
             season=self.season,
             player=self.player
         )
-        
+
         if form.is_valid():
             team = form.save()
             return redirect(
@@ -2048,13 +2066,13 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
                 season_tag=self.season.tag,
                 team_number=team.number
             )
-        
+
         context = {
             'form': form,
             'season': self.season,
             'league': self.league,
         }
-        
+
         return self.render('tournament/team_create.html', context)
 
 
@@ -2205,11 +2223,11 @@ class TeamManageView(LoginRequiredMixin, SeasonView):
                 season_tag=self.season.tag,
                 team_number=team_number,
             )
-        
+
         elif action == "update_team_name":
             # Update team name
             form = TeamNameEditForm(self.request.POST, team=team)
-            
+
             if form.is_valid():
                 form.save()
                 return redirect(
@@ -2465,25 +2483,25 @@ class AvailabilityView(LoginRequiredMixin, SeasonView):
                                                                  round__in=round_list).nocache()
             is_available_dict = {(av.round_id, av.player_id): av.is_available for av in
                                  availability_set}
-            
+
             season_player_set = SeasonPlayer.objects.filter(player__in=player_list, season=self.season).nocache()
             has_red_card_dict = {sp.player : sp.card_color == "red" for sp in season_player_set}
-            
+
             if self.league.is_team_league() and len(round_list) > 0:
                 #games can only be scheduled for the current round
                 game_is_scheduled_dict = {(round_list[0], sp.player) : sp.has_scheduled_game_in_round(round_list[0]) for sp in season_player_set}
             else:
                 game_is_scheduled_dict = {}
-            
+
             if post:
                 for r in round_list:
                     for p in player_list:
                         field_name = 'av_r%d_%s' % (r.number, p.lichess_username)
                         is_available = self.request.POST.get(field_name) != 'on'
-                        
+
                         season_player = SeasonPlayer.objects.filter(player=p, season=self.season).first()
                         can_update_availability = season_player is not None and season_player.card_color != 'red' and not game_is_scheduled_dict.get((r, p), False)
-                        
+
                         if (is_available != is_available_dict.get((r.id, p.id), True) and can_update_availability):
                             PlayerAvailability.objects.update_or_create(player=p, round=r,
                                                                         defaults={
