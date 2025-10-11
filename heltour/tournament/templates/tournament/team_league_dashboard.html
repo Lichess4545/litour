@@ -122,6 +122,16 @@
                                 Round {{ last_round.number }}</a>
                                 <span class="dashboard-note">Scheduled time (UTC): {{ last_round.end_date | date_el:"m/d H:i" }}</span>
                             </div>
+                            <div class="dashboard-season-action">
+                                <a href="{% url 'admin:season_create_games' season.pk %}"
+                                   class="btn btn-default">Create Games</a>
+                                <span class="dashboard-note">Round {{ last_round.number }} - Create Lichess games</span>
+                            </div>
+                            <div class="dashboard-season-action">
+                                <a href="{% url 'admin:season_start_clocks' season.pk %}"
+                                   class="btn btn-default">Start Clocks</a>
+                                <span class="dashboard-note">Round {{ last_round.number }} - Start game clocks</span>
+                            </div>
                         {% elif not season.is_completed %}
                             <div class="dashboard-season-action">
                                 <a href="{% url 'admin:round_transition' season.pk %}"
@@ -133,6 +143,84 @@
                                 <a href="{% url 'admin:review_nominated_games' season.pk %}"
                                    class="btn btn-default">Review
                                 Nominations</a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+            {% if season and rounds_with_status and can_view_dashboard %}
+                <div class="well">
+                    <div class="well-head">
+                        <h3>Round Status</h3>
+                    </div>
+                    <div class="well-body">
+                        <table class="table table-condensed">
+                            <thead>
+                                <tr>
+                                    <th>Round</th>
+                                    <th>Status</th>
+                                    <th>Pairings</th>
+                                    <th>Games</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for round_data in rounds_with_status %}
+                                    <tr class="{% if round_data.round == last_round %}info{% elif round_data.round == next_round %}warning{% endif %}">
+                                        <td>
+                                            <a href="{% url 'admin:tournament_round_change' round_data.round.pk %}">
+                                                Round {{ round_data.round.number }}
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {% if round_data.round.is_completed %}
+                                                <span class="label label-success">Completed</span>
+                                            {% elif round_data.round.publish_pairings %}
+                                                <span class="label label-primary">In Progress</span>
+                                            {% else %}
+                                                <span class="label label-default">Not Started</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if round_data.pairings_count > 0 %}
+                                                {{ round_data.pairings_count }} pairing{{ round_data.pairings_count|pluralize }}
+                                                {% if round_data.round.publish_pairings %}
+                                                    <span class="label label-success">Published</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">No pairings</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if round_data.pairings_count > 0 %}
+                                                {% if round_data.all_games_created %}
+                                                    <span class="label label-success">All created</span>
+                                                {% elif round_data.games_created_count > 0 %}
+                                                    <span class="label label-warning">{{ round_data.games_created_count }}/{{ round_data.pairings_count }}</span>
+                                                {% elif round_data.has_unscheduled %}
+                                                    <span class="label label-danger">Not created</span>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% if last_round %}
+                            <div class="alert alert-info">
+                                <strong>Active Round:</strong> Round {{ last_round.number }}
+                                {% if last_round == next_round %}
+                                    - Pairings not yet published
+                                {% else %}
+                                    - Pairings published, awaiting completion
+                                {% endif %}
+                            </div>
+                        {% elif next_round %}
+                            <div class="alert alert-warning">
+                                <strong>Next Round:</strong> Round {{ next_round.number }} - Not yet started
                             </div>
                         {% endif %}
                     </div>

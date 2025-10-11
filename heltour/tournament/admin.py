@@ -724,6 +724,16 @@ class SeasonAdmin(_BaseAdmin):
                 self.admin_site.admin_view(self.export_players_view),
                 name="export_players",
             ),
+            path(
+                "<int:object_id>/create_games/",
+                self.admin_site.admin_view(self.create_games_view),
+                name="season_create_games",
+            ),
+            path(
+                "<int:object_id>/start_clocks/",
+                self.admin_site.admin_view(self.start_clocks_view),
+                name="season_start_clocks",
+            ),
         ]
         return my_urls + urls
 
@@ -1953,6 +1963,62 @@ class SeasonAdmin(_BaseAdmin):
 
         return render(request, "tournament/admin/manage_lone_players.html", context)
 
+    def create_games_view(self, request, object_id):
+        season = get_object_or_404(Season, pk=object_id)
+        if not request.user.has_perm("tournament.change_pairing", season.league):
+            raise PermissionDenied
+
+        # Find the current active round (published pairings, not completed)
+        last_round = Round.objects.filter(
+            season=season, publish_pairings=True, is_completed=False
+        ).order_by('number').first()
+
+        if not last_round:
+            self.message_user(request, "No active round found to create games for.", messages.WARNING)
+            return redirect("by_league:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
+        if last_round.is_player_scheduled_league():
+            self.message_user(
+                request, 
+                "This is a player-scheduled league. Games cannot be created automatically.", 
+                messages.ERROR
+            )
+            return redirect("by_league:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
+        # Send the signal to create games
+        self.message_user(request, f"Attempting to create games for Round {last_round.number}.", messages.INFO)
+        signals.do_start_unscheduled_games.send(sender=request.user, round_id=last_round.pk)
+
+        return redirect("admin:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
+    def start_clocks_view(self, request, object_id):
+        season = get_object_or_404(Season, pk=object_id)
+        if not request.user.has_perm("tournament.change_pairing", season.league):
+            raise PermissionDenied
+
+        # Find the current active round (published pairings, not completed)
+        last_round = Round.objects.filter(
+            season=season, publish_pairings=True, is_completed=False
+        ).order_by('number').first()
+
+        if not last_round:
+            self.message_user(request, "No active round found to start clocks for.", messages.WARNING)
+            return redirect("by_league:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
+        if last_round.is_player_scheduled_league():
+            self.message_user(
+                request, 
+                "This is a player-scheduled league. Clocks cannot be started automatically.", 
+                messages.ERROR
+            )
+            return redirect("by_league:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
+        # Send the signal to start clocks
+        self.message_user(request, f"Attempting to start clocks for Round {last_round.number}.", messages.INFO)
+        signals.do_start_clocks.send(sender=request.user, round_id=last_round.pk)
+
+        return redirect("admin:league_dashboard", league_tag=season.league.tag, season_tag=season.tag)
+
 
 @admin.register(Round)
 class RoundAdmin(_BaseAdmin):
@@ -2118,7 +2184,7 @@ class RoundAdmin(_BaseAdmin):
                         pairinggen.generate_pairings(
                             round_, overwrite=form.cleaned_data["overwrite_existing"]
                         )
-                        
+
                         # Handle automatic forfeit assignment
                         forfeit_count = 0
                         if form.cleaned_data.get("auto_assign_forfeits", False):
@@ -2129,10 +2195,10 @@ class RoundAdmin(_BaseAdmin):
                                     f"Assigned {forfeit_count} automatic forfeit results.", 
                                     messages.INFO
                                 )
-                        
+
                         # Handle immediate publishing
                         publish_immediately = form.cleaned_data.get("publish_immediately", False)
-                        
+
                         with reversion.create_revision():
                             reversion.set_user(request.user)
                             reversion.set_comment("Generated pairings.")
