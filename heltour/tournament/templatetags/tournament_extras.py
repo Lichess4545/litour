@@ -248,3 +248,11 @@ def is_invite_only_league(league):
 
 def concat(str1, str2):
     return str(str1) + str(str2)
+
+
+@register.filter
+def get_tiebreak_display(team_score, tiebreak_name):
+    """Get the display value for a specific tiebreak from a TeamScore object."""
+    if hasattr(team_score, 'get_tiebreak_display'):
+        return team_score.get_tiebreak_display(tiebreak_name)
+    return ""

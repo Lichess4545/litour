@@ -34,10 +34,12 @@
                                             <span class="hidden-sm hidden-xs">Match Points</span>
                                         </th>
                                         {% for tb_name, tb_display in tiebreaks %}
+                                        {% if tb_name != "match_points" %}
                                         <th class="text-center sort">
                                             <span class="visible-sm visible-xs">{{ tb_display|truncatechars:8 }}</span>
                                             <span class="hidden-sm hidden-xs">{{ tb_display }} (Tbk {{ forloop.counter }})</span>
                                         </th>
+                                        {% endif %}
                                         {% endfor %}
                                         {% for round_number in round_numbers %}<th class="text-center sort">Round {{ round_number }}</th>{% endfor %}
                                     </tr>
@@ -55,18 +57,9 @@
                                             {% endif %}
                                             <td class="text-center">{{ team_score.match_points_display }}</td>
                                             {% for tb_name, tb_display in tiebreaks %}
-                                            <td class="text-center">
-                                                {% if tb_name == 'game_points' %}{{ team_score.game_points_display }}
-                                                {% elif tb_name == 'head_to_head' %}{{ team_score.head_to_head_display }}
-                                                {% elif tb_name == 'games_won' %}{{ team_score.games_won_display }}
-                                                {% elif tb_name == 'sonneborn_berger' %}{{ team_score.sb_score_display }}
-                                                {% elif tb_name == 'eggsb' %}{{ team_score.sb_score_display }}
-                                                {% elif tb_name == 'emmsb' %}{{ team_score.sb_score_display }}
-                                                {% elif tb_name == 'emgsb' %}{{ team_score.sb_score_display }}
-                                                {% elif tb_name == 'egmsb' %}{{ team_score.sb_score_display }}
-                                                {% elif tb_name == 'buchholz' %}{{ team_score.buchholz_display }}
-                                                {% endif %}
-                                            </td>
+                                            {% if tb_name != "match_points" %}
+                                            <td class="text-center">{{ team_score|get_tiebreak_display:tb_name }}</td>
+                                            {% endif %}
                                             {% endfor %}
                                             {% for round_score_data in team_score.round_scores %}
                                                 {% if round_score_data|length == 4 %}
