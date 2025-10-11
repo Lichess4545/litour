@@ -508,14 +508,14 @@ class RoundTransitionForm(forms.Form):
 
         if round_to_open is not None:
             if is_team_league:
-                self.fields['update_board_order'] = forms.BooleanField(initial=True,
+                self.fields['update_board_order'] = forms.BooleanField(initial=False,
                                                                        required=False,
                                                                        label='Update board order')
             self.fields['generate_pairings'] = forms.BooleanField(initial=True,
                                                                   required=False,
                                                                   label='Generate pairings for round %d' % round_to_open.number)
             self.fields['auto_assign_forfeits'] = forms.BooleanField(
-                initial=False,
+                initial=True,
                 required=False,
                 label='Auto-assign forfeit wins for missing players',
                 help_text='Automatically assign forfeit results for board pairings with missing players'
