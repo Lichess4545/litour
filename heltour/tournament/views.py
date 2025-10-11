@@ -948,9 +948,13 @@ class RostersView(SeasonView):
                 }
                 return self.render('tournament/team_rosters.html', context)
 
-            teams = Team.objects.filter(season=self.season).order_by('number').prefetch_related(
+            teams = Team.objects.filter(season=self.season).select_related(
+                'season__league'
+            ).prefetch_related(
                 Prefetch('teammember_set', queryset=TeamMember.objects.select_related('player'))
             ).nocache()
+            # Sort teams by average rating (highest to lowest)
+            teams = sorted(teams, key=lambda team: team.average_rating() or 0, reverse=True)
             board_numbers = list(range(1, self.season.boards + 1))
 
             alternates = Alternate.objects.filter(season_player__season=self.season)
