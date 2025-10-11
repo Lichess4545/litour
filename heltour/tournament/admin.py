@@ -51,6 +51,7 @@ from heltour.tournament.models import (
     AlternateBucket,
     AlternateSearch,
     AlternatesManagerSetting,
+    Announcement,
     ApiKey,
     AvailableTime,
     Broadcast,
@@ -3925,3 +3926,29 @@ class InviteCodeAdmin(_BaseAdmin):
         return response
 
     export_codes.short_description = "Export selected codes as CSV"
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "get_text_preview", "status", "path_prefix", "start_date", "end_date", "is_active", "date_created"]
+    list_display_links = ["__str__", "status", "path_prefix"]
+    list_filter = ["status", "is_active", "start_date", "end_date", "date_created"]
+    search_fields = ["text", "path_prefix"]
+    ordering = ["-date_created"]
+    readonly_fields = ["date_created", "date_modified"]
+
+    fieldsets = (
+        (
+            "Announcement Details",
+            {
+                "fields": ("text", "status", "path_prefix", "start_date", "end_date", "is_active")
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("date_created", "date_modified"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
