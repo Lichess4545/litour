@@ -229,6 +229,10 @@ class League(_BaseModel):
     def registration_season(self):
         return Season.get_registration_season(league=self)
 
+    @property
+    def most_recent_season(self):
+        return self.season_set.order_by('-start_date').first()
+
     def time_control_initial(self):
         parts = self.time_control.split("+")
         if len(parts) != 2:
