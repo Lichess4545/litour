@@ -4013,9 +4013,17 @@ class Announcement(_BaseModel):
 
     def __str__(self):
         if self.start_date:
-            return f"Announcement ({self.status}) - {self.start_date.strftime('%Y-%m-%d')}"
+            return f"Announcement #{self.id} ({self.status}) - {self.start_date.strftime('%Y-%m-%d')}"
         else:
-            return f"Announcement ({self.status}) - Always active"
+            return f"Announcement #{self.id} ({self.status}) - Always active"
+
+    def get_text_preview(self):
+        """Return truncated plain text version of the announcement"""
+        from django.utils.html import strip_tags
+        from django.utils.text import Truncator
+        plain_text = strip_tags(self.text)
+        return Truncator(plain_text).chars(80, truncate='...')
+    get_text_preview.short_description = "Message Preview"
 
     @classmethod
     def get_active_for_path(cls, path):
