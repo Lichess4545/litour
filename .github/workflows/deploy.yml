@@ -15,17 +15,11 @@ on:
           - staging
           - production
 
-env:
-  apiworker: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER || secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
-  caddy: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CADDY || secrets.LITOUR_DEPLOY_STAGING_CADDY }}
-  celery: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CELERY || secrets.LITOUR_DEPLOY_STAGING_CELERY }}
-  migrate: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE || secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
-  web: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_WEB || secrets.LITOUR_DEPLOY_STAGING_WEB }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         service:
           - apiworker
@@ -36,4 +30,10 @@ jobs:
     steps:
       - name: ${{ matrix.service }} ${{ inputs.environment }}
         if: github.ref == 'refs/heads/master'
+        env:
+          apiworker: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER || secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
+          caddy: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CADDY || secrets.LITOUR_DEPLOY_STAGING_CADDY }}
+          celery: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CELERY || secrets.LITOUR_DEPLOY_STAGING_CELERY }}
+          migrate: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE || secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
+          web: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_WEB || secrets.LITOUR_DEPLOY_STAGING_WEB }}
         run: curl --fail -X POST ${{ env[matrix.service] }}
