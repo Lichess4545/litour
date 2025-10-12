@@ -34,6 +34,6 @@ jobs:
           - migrate
           - web
     steps:
-      - name: deploy ${{ matrix.service }}
+      - name: ${{ matrix.service }} ${{ inputs.environment }}
         if: github.ref == 'refs/heads/master'
         run: curl --fail -X POST ${{ env[matrix.service] }}
