@@ -76,7 +76,7 @@ jobs:
           REGISTRY: ghcr.io/${{ env.IMAGE_PREFIX }}
           GITHUB_SHORT_SHA: ${{ steps.tag.outputs.GITHUB_SHORT_SHA }}
 
-  deploy-staging:
+  staging:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: build
     uses: ./.github/workflows/deploy.yml
