@@ -77,6 +77,6 @@ jobs:
           GITHUB_SHORT_SHA: ${{ steps.tag.outputs.GITHUB_SHORT_SHA }}
 
   deploy-staging:
-    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
     uses: ./.github/workflows/deploy.yml
