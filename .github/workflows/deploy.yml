@@ -17,6 +17,7 @@ on:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -28,12 +29,20 @@ jobs:
           - migrate
           - web
     steps:
+      - name: Set ${{ inputs.environment }} deploy endpoints
+        run: |
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            echo "apiworker=${{ secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER }}" >> $GITHUB_ENV
+            echo "caddy=${{ secrets.LITOUR_DEPLOY_PRODUCTION_CADDY }}" >> $GITHUB_ENV
+            echo "celery=${{ secrets.LITOUR_DEPLOY_PRODUCTION_CELERY }}"
+            echo "migrate=${{ secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE }}" >> $GITHUB_ENV
+            echo "web=${{ secrets.LITOUR_DEPLOY_PRODUCTION_WEB }}" >> $GITHUB_ENV
+          else
+            echo "apiworker=${{ secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}" >> $GITHUB_ENV
+            echo "caddy=${{ secrets.LITOUR_DEPLOY_STAGING_CADDY }}" >> $GITHUB_ENV
+            echo "celery=${{ secrets.LITOUR_DEPLOY_STAGING_CELERY }}"
+            echo "migrate=${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}" >> $GITHUB_ENV
+            echo "web=${{ secrets.LITOUR_DEPLOY_STAGING_WEB }}" >> $GITHUB_ENV
+          fi
       - name: ${{ matrix.service }} ${{ inputs.environment }}
-        if: github.ref == 'refs/heads/master'
-        env:
-          apiworker: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER || secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
-          caddy: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CADDY || secrets.LITOUR_DEPLOY_STAGING_CADDY }}
-          celery: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_CELERY || secrets.LITOUR_DEPLOY_STAGING_CELERY }}
-          migrate: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE || secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
-          web: ${{ inputs.environment == 'production' && secrets.LITOUR_DEPLOY_PRODUCTION_WEB || secrets.LITOUR_DEPLOY_STAGING_WEB }}
         run: curl --fail -X POST ${{ env[matrix.service] }}
