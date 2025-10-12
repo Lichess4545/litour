@@ -3,7 +3,6 @@ name: Docker Build
 on:
   push:
   pull_request:
-  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -80,42 +79,4 @@ jobs:
   deploy-staging:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: build
-    runs-on: ubuntu-latest
-    env:
-      apiworker: ${{ secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}
-      caddy: ${{ secrets.LITOUR_DEPLOY_STAGING_CADDY }}
-      celery: ${{ secrets.LITOUR_DEPLOY_STAGING_CELERY }}
-      migrate: ${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}
-      web: ${{ secrets.LITOUR_DEPLOY_STAGING_WEB }}
-    strategy:
-      matrix:
-        service:
-          - apiworker
-          - caddy
-          - celery
-          - migrate
-          - web
-    steps:
-      - name: deploy ${{ matrix.service }}
-        run: curl -X POST ${{ env[matrix.service] }}
-
-  deploy-prod:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    env:
-      apiworker: ${{ secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER }}
-      caddy: ${{ secrets.LITOUR_DEPLOY_PRODUCTION_CADDY }}
-      celery: ${{ secrets.LITOUR_DEPLOY_PRODUCTION_CELERY }}
-      migrate: ${{ secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE }}
-      web: ${{ secrets.LITOUR_DEPLOY_PRODUCTION_WEB }}
-    strategy:
-      matrix:
-        service:
-          - apiworker
-          - caddy
-          - celery
-          - migrate
-          - web
-    steps:
-      - name: deploy ${{ matrix.service }}
-        run: curl -X POST ${{ env[matrix.service] }}
+    uses: ./.github/workflows/deploy.yml
