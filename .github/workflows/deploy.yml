@@ -34,13 +34,13 @@ jobs:
           if [ "${{ inputs.environment }}" == "production" ]; then
             echo "apiworker=${{ secrets.LITOUR_DEPLOY_PRODUCTION_APIWORKER }}" >> $GITHUB_ENV
             echo "caddy=${{ secrets.LITOUR_DEPLOY_PRODUCTION_CADDY }}" >> $GITHUB_ENV
-            echo "celery=${{ secrets.LITOUR_DEPLOY_PRODUCTION_CELERY }}"
+            echo "celery=${{ secrets.LITOUR_DEPLOY_PRODUCTION_CELERY }}" >> $GITHUB_ENV
             echo "migrate=${{ secrets.LITOUR_DEPLOY_PRODUCTION_MIGRATE }}" >> $GITHUB_ENV
             echo "web=${{ secrets.LITOUR_DEPLOY_PRODUCTION_WEB }}" >> $GITHUB_ENV
           else
             echo "apiworker=${{ secrets.LITOUR_DEPLOY_STAGING_APIWORKER }}" >> $GITHUB_ENV
             echo "caddy=${{ secrets.LITOUR_DEPLOY_STAGING_CADDY }}" >> $GITHUB_ENV
-            echo "celery=${{ secrets.LITOUR_DEPLOY_STAGING_CELERY }}"
+            echo "celery=${{ secrets.LITOUR_DEPLOY_STAGING_CELERY }}" >> $GITHUB_ENV
             echo "migrate=${{ secrets.LITOUR_DEPLOY_STAGING_MIGRATE }}" >> $GITHUB_ENV
             echo "web=${{ secrets.LITOUR_DEPLOY_STAGING_WEB }}" >> $GITHUB_ENV
           fi

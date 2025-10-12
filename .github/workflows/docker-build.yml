@@ -80,3 +80,4 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: build
     uses: ./.github/workflows/deploy.yml
+    secrets: inherit
