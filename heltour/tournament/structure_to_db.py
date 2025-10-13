@@ -95,14 +95,28 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
     # Import timezone at the top if not already
     from django.utils import timezone
 
+    # Generate a unique season tag from the season name
+    import re
+    season_name = metadata.season_name or "Test Season"
+    base_tag = re.sub(r'[^a-zA-Z0-9]', '', season_name.lower())[:20]  # Clean and truncate
+    if not base_tag:  # If no valid characters, use a default
+        base_tag = "season"
+    
+    # Ensure tag is unique within the league
+    tag = base_tag
+    counter = 2
+    while Season.objects.filter(league=league, tag=tag).exists():
+        tag = f"{base_tag}{counter}"
+        counter += 1
+
     # Create Season
     season_data = {
         "league": league,
-        "name": metadata.season_name or "Test Season",
+        "name": season_name,
         "rounds": metadata.season_settings.get("rounds", len(tournament.rounds)) or 1,
         "boards": metadata.boards if metadata.competitor_type == "team" else None,
         "is_active": True,  # Make the season visible
-        "tag": "current",  # Default season tag
+        "tag": tag,  # Use generated unique tag
         "start_date": timezone.now(),  # Set start date
     }
     # Add any additional season settings
