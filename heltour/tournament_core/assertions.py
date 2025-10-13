@@ -7,7 +7,7 @@ for testing purposes. It works with the pure Python tournament_core structures.
 
 from typing import Dict, Optional, Union
 from dataclasses import dataclass
-from heltour.tournament_core.structure import Tournament
+from heltour.tournament_core.structure import Tournament, TournamentFormat
 from heltour.tournament_core.tiebreaks import CompetitorScore, calculate_all_tiebreaks
 
 
@@ -275,6 +275,147 @@ class CompetitorResultAssertion(StandingsAssertion):
             raise AssertionError(
                 f"{self._get_competitor_name()} expected position {expected}, got {actual_position}"
             )
+        return self
+
+    def advances_to_round(self, round_name: str) -> "CompetitorResultAssertion":
+        """Assert that competitor advances to a specific knockout round.
+
+        Args:
+            round_name: Round name like "semifinals", "finals", etc.
+        """
+        if self.tournament.format != TournamentFormat.KNOCKOUT:
+            raise AssertionError(
+                "Tournament must be knockout format for advancement assertions"
+            )
+
+        # Find the round with this knockout stage name
+        target_round = None
+        for round in self.tournament.rounds:
+            if round.knockout_stage == round_name:
+                target_round = round
+                break
+
+        if target_round is None:
+            raise AssertionError(f"Round '{round_name}' not found in tournament")
+
+        # Check if competitor is in this round
+        competitor_in_round = False
+        for match in target_round.matches:
+            if (
+                match.competitor1_id == self.competitor_id
+                or match.competitor2_id == self.competitor_id
+            ):
+                competitor_in_round = True
+                break
+
+        if not competitor_in_round:
+            raise AssertionError(
+                f"{self._get_competitor_name()} did not advance to {round_name}"
+            )
+
+        return self
+
+    def eliminated_in_round(self, round_name: str) -> "CompetitorResultAssertion":
+        """Assert that competitor was eliminated in a specific knockout round.
+
+        Args:
+            round_name: Round name like "quarterfinals", "semifinals", etc.
+        """
+        if self.tournament.format != TournamentFormat.KNOCKOUT:
+            raise AssertionError(
+                "Tournament must be knockout format for elimination assertions"
+            )
+
+        # Find the round with this knockout stage name
+        elimination_round = None
+        for round in self.tournament.rounds:
+            if round.knockout_stage == round_name:
+                elimination_round = round
+                break
+
+        if elimination_round is None:
+            raise AssertionError(f"Round '{round_name}' not found in tournament")
+
+        # Check if competitor lost in this round
+        eliminated = False
+        for match in elimination_round.matches:
+            if (
+                match.competitor1_id == self.competitor_id
+                or match.competitor2_id == self.competitor_id
+            ):
+                winner = match.winner_id()
+                if winner is not None and winner != self.competitor_id:
+                    eliminated = True
+                    break
+
+        if not eliminated:
+            raise AssertionError(
+                f"{self._get_competitor_name()} was not eliminated in {round_name}"
+            )
+
+        return self
+
+    def bracket_position(
+        self, stage: str, match_number: int
+    ) -> "CompetitorResultAssertion":
+        """Assert competitor's position in a specific bracket stage.
+
+        Args:
+            stage: Knockout stage name like "quarterfinals", "semifinals"
+            match_number: Match number within that stage (1-indexed)
+        """
+        if self.tournament.format != TournamentFormat.KNOCKOUT:
+            raise AssertionError(
+                "Tournament must be knockout format for bracket assertions"
+            )
+
+        # Find the round with this knockout stage name
+        target_round = None
+        for round in self.tournament.rounds:
+            if round.knockout_stage == stage:
+                target_round = round
+                break
+
+        if target_round is None:
+            raise AssertionError(f"Knockout stage '{stage}' not found in tournament")
+
+        if match_number < 1 or match_number > len(target_round.matches):
+            raise AssertionError(
+                f"Match number {match_number} out of range for {stage} (1-{len(target_round.matches)})"
+            )
+
+        # Check the specific match
+        target_match = target_round.matches[match_number - 1]  # Convert to 0-indexed
+
+        if (
+            target_match.competitor1_id != self.competitor_id
+            and target_match.competitor2_id != self.competitor_id
+        ):
+            raise AssertionError(
+                f"{self._get_competitor_name()} not found in {stage} match {match_number}"
+            )
+
+        return self
+
+    def wins_knockout_tournament(self) -> "CompetitorResultAssertion":
+        """Assert that competitor wins the entire knockout tournament."""
+        if self.tournament.format != TournamentFormat.KNOCKOUT:
+            raise AssertionError("Tournament must be knockout format")
+
+        from heltour.tournament_core.knockout import get_knockout_winner
+
+        winner_id = get_knockout_winner(self.tournament)
+
+        if winner_id != self.competitor_id:
+            winner_name = "No winner" if winner_id is None else f"ID:{winner_id}"
+            if winner_id is not None:
+                self._ensure_mappings()
+                winner_name = self._id_to_name.get(winner_id, f"ID:{winner_id}")
+
+            raise AssertionError(
+                f"{self._get_competitor_name()} did not win tournament (winner: {winner_name})"
+            )
+
         return self
 
 

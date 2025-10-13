@@ -17,6 +17,13 @@ from heltour.tournament_core.tiebreaks import MatchResult, CompetitorScore
 from heltour.tournament_core.scoring import ScoringSystem, STANDARD_SCORING
 
 
+class TournamentFormat(Enum):
+    """Tournament format type."""
+
+    SWISS = "swiss"
+    KNOCKOUT = "knockout"
+
+
 @dataclass(frozen=True)
 class Player:
     """Represents a player with their ID and the competitor (team) they belong to."""
@@ -76,12 +83,18 @@ class Match:
     are the individual players, but the match is between the teams (competitors).
     The games should be ordered such that the first player in each game belongs
     to competitor1's team.
+
+    For knockout tournaments:
+    - games_per_match: Number of games in this match (for multi-game knockout matches)
+    - manual_tiebreak_value: Arbiter-set value to determine winner in case of tie
     """
 
     competitor1_id: int
     competitor2_id: int
     games: List[Game] = field(default_factory=list)
     is_bye: bool = False
+    games_per_match: int = 1
+    manual_tiebreak_value: Optional[float] = None
 
     def _calculate_game_results(
         self, scoring: ScoringSystem = STANDARD_SCORING
@@ -146,17 +159,51 @@ class Match:
         _, _, c1_wins, c2_wins = self._calculate_game_results()
         return (c1_wins, c2_wins)
 
+    def winner_id(self, scoring: ScoringSystem = STANDARD_SCORING) -> Optional[int]:
+        """Return the ID of the match winner, or None if draw/no winner determined.
+
+        For knockout tournaments, this considers:
+        1. Game points comparison
+        2. Manual tiebreak value (if set)
+        3. None if still tied (needs manual intervention)
+        """
+        if self.is_bye:
+            return self.competitor1_id
+
+        c1_game_pts, c2_game_pts = self.game_points(scoring)
+
+        # First check game points
+        if c1_game_pts > c2_game_pts:
+            return self.competitor1_id
+        elif c2_game_pts > c1_game_pts:
+            return self.competitor2_id
+
+        # If tied on game points, check manual tiebreak
+        if self.manual_tiebreak_value is not None:
+            if self.manual_tiebreak_value > 0:
+                return self.competitor1_id
+            elif self.manual_tiebreak_value < 0:
+                return self.competitor2_id
+
+        # Still tied - needs manual intervention
+        return None
+
 
 @dataclass(frozen=True)
 class Round:
-    """A round in a tournament containing multiple matches."""
+    """A round in a tournament containing multiple matches.
+
+    For knockout tournaments:
+    - knockout_stage: Stage name like "semifinals", "finals", etc.
+    """
 
     number: int
     matches: List[Match] = field(default_factory=list)
+    knockout_stage: Optional[str] = None
 
     def add_match(self, match: Match) -> "Round":
         """Return a new Round with the match added (immutable pattern)."""
-        return Round(self.number, self.matches + [match])
+        return Round(self.number, self.matches + [match], self.knockout_stage)
 
 
 @dataclass
@@ -166,6 +213,7 @@ class Tournament:
     competitors: List[int]  # List of competitor IDs
     rounds: List[Round] = field(default_factory=list)  # List of rounds
     scoring: ScoringSystem = field(default_factory=lambda: STANDARD_SCORING)
+    format: TournamentFormat = TournamentFormat.SWISS
 
     @property
     def matches(self) -> List[Match]:
@@ -305,7 +353,7 @@ def create_bye_match(competitor_id: int, games_per_match: int = 1) -> Match:
             Game(player, bye_player, GameResult.P1_WIN) for _ in range(games_per_match)
         ]
 
-    return Match(competitor_id, -1, games, is_bye=True)
+    return Match(competitor_id, -1, games, is_bye=True, games_per_match=games_per_match)
 
 
 def create_team_match(
