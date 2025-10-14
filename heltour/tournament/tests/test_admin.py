@@ -521,3 +521,255 @@ class SeasonAdminNoPublishedPairingsTestCase(TestCase):
         self.assertEqual(Team.objects.all().count(), 5)
         self.assertEqual(Team.objects.get(number=5).name, "AddTeam")
         self.assertFalse(message.called)
+
+
+class TeamCopyAdminTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        cls.superuser = User.objects.create(
+            username="superuser", password="password", is_superuser=True, is_staff=True
+        )
+        
+        # Get existing teams and season
+        cls.original_season = get_season("team")
+        cls.original_teams = Team.objects.filter(season=cls.original_season)[:2]  # Get first 2 teams
+        
+        # Create a new compatible season (same league, same boards)
+        from heltour.tournament.models import League
+        cls.target_league = League.objects.create(
+            name="Test Target League",
+            tag="TTL",
+            competitor_type="team"
+        )
+        cls.target_season = Season.objects.create(
+            league=cls.target_league,
+            name="Target Season",
+            tag="TS",
+            rounds=10,  # Required field
+            boards=2,  # Same as original (createCommonLeagueData uses 2 boards)
+            is_active=True
+        )
+        
+        # Create incompatible season (different boards)
+        cls.incompatible_season = Season.objects.create(
+            league=cls.target_league,
+            name="Incompatible Season", 
+            tag="IS",
+            rounds=10,  # Required field
+            boards=6,  # Different boards
+            is_active=True
+        )
+
+    def test_copy_teams_to_season_view_get(self):
+        """Test the GET request shows the form with compatible seasons"""
+        self.client.force_login(user=self.superuser)
+        team_ids = ','.join([str(team.id) for team in self.original_teams])
+        response = self.client.get(f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Copy Teams to New Season')
+        self.assertContains(response, self.target_season.name)
+        self.assertNotContains(response, self.incompatible_season.name)  # Should not show incompatible
+        
+        # Check teams are displayed
+        for team in self.original_teams:
+            self.assertContains(response, team.name)
+
+    def test_copy_teams_success(self):
+        """Test successful team copying"""
+        self.client.force_login(user=self.superuser)
+        team_ids = ','.join([str(team.id) for team in self.original_teams])
+        
+        # Count teams before
+        original_count = Team.objects.filter(season=self.target_season).count()
+        
+        # Post the copy request
+        response = self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': self.target_season.id},
+            follow=True
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Successfully copied 2 teams')
+        
+        # Check teams were created
+        new_teams = Team.objects.filter(season=self.target_season)
+        self.assertEqual(new_teams.count(), original_count + 2)
+        
+        # Verify team data was copied correctly
+        for original_team in self.original_teams:
+            copied_team = new_teams.get(name=original_team.name)
+            self.assertEqual(copied_team.company_name, original_team.company_name)
+            self.assertEqual(copied_team.company_address, original_team.company_address)
+            self.assertEqual(copied_team.team_contact_email, original_team.team_contact_email)
+            self.assertEqual(copied_team.team_contact_number, original_team.team_contact_number)
+            self.assertTrue(copied_team.is_active)
+            self.assertEqual(copied_team.slack_channel, '')  # Should be blank
+            self.assertEqual(copied_team.seed_rating, original_team.seed_rating)  # Should match original
+            
+            # Verify TeamScore object was created (required for standings)
+            self.assertTrue(hasattr(copied_team, 'teamscore'))
+            team_score = copied_team.teamscore
+            self.assertIsNotNone(team_score)
+            self.assertEqual(team_score.team, copied_team)
+            
+            # Check team members were copied
+            original_members = original_team.teammember_set.all()
+            copied_members = copied_team.teammember_set.all()
+            self.assertEqual(copied_members.count(), original_members.count())
+            
+            for original_member in original_members:
+                copied_member = copied_members.get(board_number=original_member.board_number)
+                self.assertEqual(copied_member.player, original_member.player)
+                self.assertEqual(copied_member.is_captain, original_member.is_captain)
+                self.assertEqual(copied_member.is_vice_captain, original_member.is_vice_captain)
+                
+                # Check player was registered for target season
+                self.assertTrue(
+                    SeasonPlayer.objects.filter(
+                        season=self.target_season,
+                        player=original_member.player
+                    ).exists()
+                )
+
+    def test_team_number_assignment(self):
+        """Test that team numbers are assigned correctly using max + 1"""
+        self.client.force_login(user=self.superuser)
+        
+        # Create an existing team with number 3 in target season
+        existing_team = Team.objects.create(
+            season=self.target_season,
+            number=3,
+            name="Existing Team",
+            company_name="Existing Co",
+            is_active=True
+        )
+        
+        team_ids = str(self.original_teams[0].id)
+        response = self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': self.target_season.id},
+            follow=True
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # New team should get number 4 (max 3 + 1)
+        new_team = Team.objects.filter(season=self.target_season, name=self.original_teams[0].name).first()
+        self.assertIsNotNone(new_team)
+        self.assertEqual(new_team.number, 4)
+
+    def test_duplicate_team_name_handling(self):
+        """Test that duplicate team names are handled by appending numbers"""
+        self.client.force_login(user=self.superuser)
+        
+        # Create an existing team with the same name as one we'll copy
+        original_team_name = self.original_teams[0].name
+        Team.objects.create(
+            season=self.target_season,
+            number=1,
+            name=original_team_name,  # Same name as original team
+            company_name="Existing Co",
+            is_active=True
+        )
+        
+        # Copy the team
+        team_ids = str(self.original_teams[0].id)
+        response = self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': self.target_season.id},
+            follow=True
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Successfully copied 1 teams')
+        
+        # Check that the copied team has a modified name
+        copied_team = Team.objects.filter(
+            season=self.target_season, 
+            name=f"{original_team_name} (2)"
+        ).first()
+        self.assertIsNotNone(copied_team)
+        self.assertEqual(copied_team.name, f"{original_team_name} (2)")
+        
+        # Verify the original name team still exists
+        original_name_team = Team.objects.filter(
+            season=self.target_season,
+            name=original_team_name
+        ).first()
+        self.assertIsNotNone(original_name_team)
+
+    def test_board_order_editing_after_copy(self):
+        """Test that board order editing works on copied teams"""
+        self.client.force_login(user=self.superuser)
+        
+        # Copy a team first
+        team_ids = str(self.original_teams[0].id)
+        self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': self.target_season.id}
+        )
+        
+        # Get the copied team
+        copied_team = Team.objects.get(season=self.target_season, name=self.original_teams[0].name)
+        copied_members = list(copied_team.teammember_set.order_by('board_number'))
+        
+        # Verify we have team members to work with
+        self.assertGreater(len(copied_members), 1)
+        
+        # Test the board order editing action
+        response = self.client.post(
+            reverse('admin:tournament_team_changelist'),
+            data={
+                'action': 'update_board_order_by_rating',
+                '_selected_action': [copied_team.id]
+            },
+            follow=True
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Board order updated')
+        
+        # Verify board order was updated (members should be reordered by rating)
+        updated_members = list(copied_team.teammember_set.order_by('board_number'))
+        
+        # Check that all members still exist and have valid board numbers
+        self.assertEqual(len(updated_members), len(copied_members))
+        for i, member in enumerate(updated_members):
+            self.assertEqual(member.board_number, i + 1)
+
+    def test_copy_teams_permission_denied(self):
+        """Test that copying fails without proper permissions"""
+        # Create a non-superuser
+        regular_user = User.objects.create(
+            username="regular", password="password", is_staff=True
+        )
+        self.client.force_login(user=regular_user)
+        
+        team_ids = str(self.original_teams[0].id)
+        
+        # Should return error message instead of raising exception
+        response = self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': self.target_season.id},
+            follow=True
+        )
+        
+        # Should contain permission error or redirect back to team list
+        self.assertEqual(response.status_code, 200)
+
+    def test_copy_teams_invalid_target_season(self):
+        """Test error handling for invalid target season"""
+        self.client.force_login(user=self.superuser)
+        team_ids = str(self.original_teams[0].id)
+        
+        response = self.client.post(
+            f'/admin/tournament/team/copy_teams_to_season/?team_ids={team_ids}',
+            data={'target_season': 99999},  # Non-existent season
+            follow=True
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Invalid target season')

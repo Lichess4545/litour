@@ -18,7 +18,7 @@ from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.core.mail.message import EmailMultiAlternatives
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.db.models.query import Prefetch
 from django.db.models.signals import post_save
 from django.dispatch.dispatcher import receiver
@@ -2559,6 +2559,7 @@ class TeamAdmin(_BaseAdmin):
         "update_board_order_by_rating",
         "create_slack_channels",
         "generate_team_invite_codes",
+        "copy_teams_to_new_season",
     ]
     league_id_field = "season__league_id"
     league_competitor_type = "team"
@@ -2622,6 +2623,14 @@ class TeamAdmin(_BaseAdmin):
             return
         return redirect("admin:generate_team_invite_codes", object_id=team.pk)
 
+    def copy_teams_to_new_season(self, request, queryset):
+        team_ids = [str(team.id) for team in queryset]
+        from django.urls import reverse
+        from urllib.parse import urlencode
+        base_url = reverse("admin:copy_teams_to_season")
+        query_string = urlencode({"team_ids": ",".join(team_ids)})
+        return redirect(f"{base_url}?{query_string}")
+
     def get_urls(self):
         urls = super(TeamAdmin, self).get_urls()
         my_urls = [
@@ -2629,6 +2638,11 @@ class TeamAdmin(_BaseAdmin):
                 "<int:object_id>/generate_team_invite_codes/",
                 self.admin_site.admin_view(self.generate_team_invite_codes_view),
                 name="generate_team_invite_codes",
+            ),
+            path(
+                "copy_teams_to_season/",
+                self.admin_site.admin_view(self.copy_teams_to_season_view),
+                name="copy_teams_to_season",
             ),
         ]
         return my_urls + urls
@@ -2709,6 +2723,124 @@ class TeamAdmin(_BaseAdmin):
         return render(
             request, "tournament/admin/generate_team_invite_codes.html", context
         )
+
+    def copy_teams_to_season_view(self, request):
+        team_ids_param = request.GET.get('team_ids', '')
+        if not team_ids_param:
+            messages.error(request, "No teams selected")
+            return redirect("admin:tournament_team_changelist")
+        
+        try:
+            team_ids = [int(id.strip()) for id in team_ids_param.split(',') if id.strip()]
+        except ValueError:
+            messages.error(request, "Invalid team IDs")
+            return redirect("admin:tournament_team_changelist")
+
+        teams = Team.objects.filter(id__in=team_ids).select_related('season', 'season__league')
+        if not teams.exists():
+            messages.error(request, "No valid teams found")
+            return redirect("admin:tournament_team_changelist")
+
+        # Get compatible seasons (team leagues with same number of boards)
+        source_boards = teams.first().season.boards
+        available_seasons = Season.objects.filter(
+            league__competitor_type='team',
+            boards=source_boards
+        ).order_by('-start_date')
+
+        if request.method == "POST":
+            target_season_id = request.POST.get('target_season')
+            if not target_season_id:
+                messages.error(request, "Please select a target season")
+            else:
+                try:
+                    target_season = Season.objects.get(
+                        id=target_season_id,
+                        league__competitor_type='team',
+                        boards=source_boards
+                    )
+                    
+                    # Check permission for target season
+                    if not request.user.has_perm("tournament.manage_players", target_season.league):
+                        raise PermissionDenied("You don't have permission to manage teams in the target season")
+                    
+                    copied_count = self._copy_teams(teams, target_season, request.user)
+                    messages.success(request, f"Successfully copied {copied_count} teams to {target_season}")
+                    return redirect("admin:tournament_team_changelist")
+                except Season.DoesNotExist:
+                    messages.error(request, "Invalid target season")
+                except PermissionDenied as e:
+                    messages.error(request, str(e))
+                except Exception as e:
+                    messages.error(request, f"Error copying teams: {str(e)}")
+
+        context = {
+            "teams": teams,
+            "available_seasons": available_seasons,
+            "title": "Copy Teams to New Season",
+            "opts": self.model._meta,
+            "app_label": self.model._meta.app_label,
+        }
+
+        return render(request, "tournament/admin/copy_teams_to_season.html", context)
+
+    def _copy_teams(self, teams, target_season, user):
+        copied_count = 0
+        
+        for original_team in teams:
+            # Find the next available team number in the target season
+            max_number = Team.objects.filter(season=target_season).aggregate(
+                Max('number')
+            )['number__max'] or 0
+            next_number = max_number + 1
+            
+            # Ensure team name is unique in the target season
+            team_name = original_team.name
+            existing_names = set(Team.objects.filter(season=target_season).values_list('name', flat=True))
+            if team_name in existing_names:
+                counter = 2
+                while f"{team_name} ({counter})" in existing_names:
+                    counter += 1
+                team_name = f"{team_name} ({counter})"
+            
+            # Create new team
+            new_team = Team.objects.create(
+                season=target_season,
+                number=next_number,
+                name=team_name,
+                company_name=original_team.company_name,
+                company_address=original_team.company_address,
+                team_contact_email=original_team.team_contact_email,
+                team_contact_number=original_team.team_contact_number,
+                seed_rating=original_team.seed_rating,  # Copy seed rating
+                is_active=True,
+                # Note: slack_channel is left blank
+            )
+            
+            # Create TeamScore object (required for standings display)
+            TeamScore.objects.create(team=new_team)
+            
+            # Copy team members
+            original_members = original_team.teammember_set.all()
+            for original_member in original_members:
+                # Check if player is registered for the target season
+                season_player, created = SeasonPlayer.objects.get_or_create(
+                    season=target_season,
+                    player=original_member.player
+                )
+                
+                TeamMember.objects.create(
+                    team=new_team,
+                    player=original_member.player,
+                    board_number=original_member.board_number,
+                    is_captain=original_member.is_captain,
+                    is_vice_captain=original_member.is_vice_captain,
+                    # player_rating will be set automatically
+                )
+            
+            copied_count += 1
+        
+        return copied_count
 
 
 # -------------------------------------------------------------------------------
