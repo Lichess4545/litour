@@ -13,6 +13,7 @@ do_update_broadcast = Signal()
 do_create_broadcast = Signal()
 do_start_unscheduled_games = Signal()
 do_start_clocks = Signal()
+do_add_clock_time = Signal()
 
 # Signals that send notifications
 pairing_forfeit_changed = Signal()
