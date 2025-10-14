@@ -60,6 +60,9 @@ from heltour.tournament.models import (
     GameNomination,
     GameSelection,
     InviteCode,
+    KnockoutAdvancement,
+    KnockoutBracket,
+    KnockoutSeeding,
     League,
     LeagueChannel,
     LeagueDocument,
@@ -1957,8 +1960,8 @@ class SeasonAdmin(_BaseAdmin):
 
 @admin.register(Round)
 class RoundAdmin(_BaseAdmin):
-    list_display = ("__str__", "season", "get_league")
-    list_filter = ("season", "season__league")
+    list_display = ("__str__", "season", "get_league", "knockout_stage", "is_knockout_multi_round")
+    list_filter = ("season", "season__league", "knockout_stage", "is_knockout_multi_round")
     actions = [
         "generate_pairings",
         "simulate_results",
@@ -1966,9 +1969,32 @@ class RoundAdmin(_BaseAdmin):
         "update_broadcast_round",
         "start_games",
         "start_clocks",
+        "advance_knockout_tournament_action",
     ]
     league_id_field = "season__league_id"
     search_fields = ["season__tag"]
+    
+    fieldsets = (
+        (
+            "Round Details",
+            {
+                "fields": ("season", "number", "start_date", "end_date", "bulk_id")
+            },
+        ),
+        (
+            "Status", 
+            {
+                "fields": ("publish_pairings", "is_completed")
+            },
+        ),
+        (
+            "Knockout Settings",
+            {
+                "fields": ("knockout_stage", "is_knockout_multi_round", "knockout_multi_round_group"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -2103,6 +2129,75 @@ class RoundAdmin(_BaseAdmin):
             return
         self.message_user(request, "Attempting to start clocks.", messages.INFO)
         signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
+    
+    def advance_knockout_tournament_action(self, request, queryset):
+        """Advance knockout tournament to next round based on current round results."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one round to advance from.",
+                messages.ERROR
+            )
+            return
+        
+        round_ = queryset.first()
+        
+        # Check if this is a knockout tournament
+        if round_.season.league.pairing_type not in ['knockout-single', 'knockout-multi']:
+            self.message_user(
+                request,
+                f"Round {round_} is not part of a knockout tournament.",
+                messages.ERROR
+            )
+            return
+        
+        # Check if round is completed
+        if not round_.is_completed:
+            self.message_user(
+                request,
+                f"Round {round_} is not marked as completed. Complete the round first.",
+                messages.ERROR
+            )
+            return
+        
+        try:
+            # Import here to avoid circular imports
+            from heltour.tournament.pairinggen import advance_knockout_tournament
+            
+            next_round = advance_knockout_tournament(round_)
+            
+            if next_round:
+                self.message_user(
+                    request,
+                    f"Successfully advanced to round {next_round.number} "
+                    f"({next_round.knockout_stage}). "
+                    f"Pairings have been generated.",
+                    messages.SUCCESS
+                )
+            else:
+                self.message_user(
+                    request,
+                    f"Tournament complete! {round_.knockout_stage} was the final round.",
+                    messages.SUCCESS
+                )
+                
+                # Mark bracket as completed
+                try:
+                    from heltour.tournament.models import KnockoutBracket
+                    bracket = KnockoutBracket.objects.get(season=round_.season)
+                    bracket.is_completed = True
+                    bracket.save()
+                except KnockoutBracket.DoesNotExist:
+                    pass
+        
+        except Exception as e:
+            self.message_user(
+                request,
+                f"Error advancing knockout tournament: {str(e)}",
+                messages.ERROR
+            )
+    
+    advance_knockout_tournament_action.short_description = "Advance knockout tournament to next round"
 
     def generate_pairings_view(self, request, object_id):
         round_ = get_object_or_404(Round, pk=object_id)
@@ -2792,13 +2887,109 @@ class AlternatesManagerSettingAdmin(_BaseAdmin):
 # -------------------------------------------------------------------------------
 @admin.register(TeamPairing)
 class TeamPairingAdmin(_BaseAdmin):
-    list_display = ("white_team_name", "black_team_name", "season_name", "round_number")
+    list_display = ("white_team_name", "black_team_name", "season_name", "round_number", "get_manual_tiebreak_display")
     search_fields = ("white_team__name", "black_team__name")
-    list_filter = ("round__season", "round__number")
-    raw_id_fields = ("white_team", "black_team", "round")
-    autocomplete_fields = ("white_team", "black_team", "round")
+    list_filter = ("round__season", "round__number", "round__knockout_stage")
+    raw_id_fields = ("white_team", "black_team", "round", "advances_winner_to_round")
+    autocomplete_fields = ("white_team", "black_team", "round", "advances_winner_to_round")
     league_id_field = "round__season__league_id"
     league_competitor_type = "team"
+    actions = ["set_white_wins_tiebreak", "set_black_wins_tiebreak", "clear_manual_tiebreak"]
+    
+    fieldsets = (
+        (
+            "Pairing Details",
+            {
+                "fields": ("white_team", "black_team", "round", "pairing_order")
+            },
+        ),
+        (
+            "Results",
+            {
+                "fields": ("white_points", "white_wins", "black_points", "black_wins")
+            },
+        ),
+        (
+            "Knockout Settings",
+            {
+                "fields": ("manual_tiebreak_value", "advances_winner_to_round"),
+                "classes": ("collapse",),
+                "description": "Manual tiebreak: positive values favor white team, negative favor black team"
+            },
+        ),
+    )
+    
+    def get_manual_tiebreak_display(self, obj):
+        if obj.manual_tiebreak_value is None:
+            return "-"
+        elif obj.manual_tiebreak_value > 0:
+            return f"+{obj.manual_tiebreak_value} (White)"
+        elif obj.manual_tiebreak_value < 0:
+            return f"{obj.manual_tiebreak_value} (Black)"
+        else:
+            return "0 (Tie)"
+    
+    get_manual_tiebreak_display.short_description = "Manual Tiebreak"
+    
+    def set_white_wins_tiebreak(self, request, queryset):
+        """Set manual tiebreak to favor white team (+1.0)."""
+        knockout_pairings = queryset.filter(
+            round__season__league__pairing_type__in=['knockout-single', 'knockout-multi']
+        )
+        
+        if not knockout_pairings.exists():
+            self.message_user(
+                request,
+                "Selected pairings are not from knockout tournaments.",
+                messages.ERROR
+            )
+            return
+        
+        updated_count = knockout_pairings.update(manual_tiebreak_value=1.0)
+        
+        self.message_user(
+            request,
+            f"Set manual tiebreak to favor white team for {updated_count} pairings.",
+            messages.SUCCESS
+        )
+    
+    set_white_wins_tiebreak.short_description = "Set manual tiebreak: White team wins"
+    
+    def set_black_wins_tiebreak(self, request, queryset):
+        """Set manual tiebreak to favor black team (-1.0)."""
+        knockout_pairings = queryset.filter(
+            round__season__league__pairing_type__in=['knockout-single', 'knockout-multi']
+        )
+        
+        if not knockout_pairings.exists():
+            self.message_user(
+                request,
+                "Selected pairings are not from knockout tournaments.",
+                messages.ERROR
+            )
+            return
+        
+        updated_count = knockout_pairings.update(manual_tiebreak_value=-1.0)
+        
+        self.message_user(
+            request,
+            f"Set manual tiebreak to favor black team for {updated_count} pairings.",
+            messages.SUCCESS
+        )
+    
+    set_black_wins_tiebreak.short_description = "Set manual tiebreak: Black team wins"
+    
+    def clear_manual_tiebreak(self, request, queryset):
+        """Clear manual tiebreak values."""
+        updated_count = queryset.update(manual_tiebreak_value=None)
+        
+        self.message_user(
+            request,
+            f"Cleared manual tiebreak for {updated_count} pairings.",
+            messages.SUCCESS
+        )
+    
+    clear_manual_tiebreak.short_description = "Clear manual tiebreak"
 
 
 # -------------------------------------------------------------------------------
@@ -3952,3 +4143,194 @@ class AnnouncementAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+# ===============================================================================
+# Knockout Tournament Admin
+# ===============================================================================
+
+class KnockoutSeedingInline(admin.TabularInline):
+    model = KnockoutSeeding
+    extra = 0
+    fields = ('seed_number', 'team', 'is_manual_seed')
+    ordering = ('seed_number',)
+
+
+@admin.register(KnockoutBracket)
+class KnockoutBracketAdmin(admin.ModelAdmin):
+    list_display = ['season', 'bracket_size', 'seeding_style', 'games_per_match', 'is_completed']
+    list_filter = ['seeding_style', 'games_per_match', 'is_completed']
+    search_fields = ['season__name', 'season__league__name']
+    inlines = [KnockoutSeedingInline]
+    actions = ['generate_knockout_bracket_action', 'regenerate_seedings_action']
+    
+    fieldsets = (
+        (
+            "Bracket Configuration",
+            {
+                "fields": ("season", "bracket_size", "seeding_style", "games_per_match")
+            },
+        ),
+        (
+            "Status",
+            {
+                "fields": ("is_completed",)
+            },
+        ),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('season', 'season__league')
+    
+    def generate_knockout_bracket_action(self, request, queryset):
+        """Generate knockout bracket and first round pairings."""
+        if queryset.count() != 1:
+            self.message_user(
+                request, 
+                "Please select exactly one bracket to generate.", 
+                messages.ERROR
+            )
+            return
+        
+        bracket = queryset.first()
+        
+        try:
+            # Import here to avoid circular imports
+            from heltour.tournament.pairinggen import generate_knockout_bracket
+            
+            # Check if bracket already has pairings
+            first_round = bracket.season.round_set.filter(number=1).first()
+            if first_round and first_round.teampairing_set.exists():
+                self.message_user(
+                    request,
+                    f"Bracket for {bracket.season} already has pairings. "
+                    "Use 'Regenerate Seedings' to update seedings only.",
+                    messages.ERROR
+                )
+                return
+            
+            # Generate the bracket
+            generate_knockout_bracket(bracket.season)
+            
+            self.message_user(
+                request,
+                f"Successfully generated knockout bracket for {bracket.season}.",
+                messages.SUCCESS
+            )
+            
+        except Exception as e:
+            self.message_user(
+                request,
+                f"Error generating knockout bracket: {str(e)}",
+                messages.ERROR
+            )
+    
+    generate_knockout_bracket_action.short_description = "Generate knockout bracket and first round"
+    
+    def regenerate_seedings_action(self, request, queryset):
+        """Regenerate seedings for existing brackets."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one bracket to regenerate seedings.",
+                messages.ERROR
+            )
+            return
+        
+        bracket = queryset.first()
+        
+        try:
+            # Clear existing seedings
+            KnockoutSeeding.objects.filter(bracket=bracket).delete()
+            
+            # Get active teams/players
+            if bracket.season.league.competitor_type == "team":
+                from heltour.tournament.models import Team
+                competitors = Team.objects.filter(
+                    season=bracket.season, is_active=True
+                ).order_by('id')
+            else:
+                from heltour.tournament.models import SeasonPlayer
+                season_players = SeasonPlayer.objects.filter(
+                    season=bracket.season, is_active=True
+                ).select_related('player').order_by('id')
+                competitors = [sp.player for sp in season_players]
+            
+            # Create new seedings
+            for i, competitor in enumerate(competitors):
+                KnockoutSeeding.objects.create(
+                    bracket=bracket,
+                    team=competitor if bracket.season.league.competitor_type == "team" else None,
+                    # For individual tournaments, we'd need a different field
+                    seed_number=i + 1,
+                    is_manual_seed=False
+                )
+            
+            self.message_user(
+                request,
+                f"Successfully regenerated seedings for {bracket.season}. "
+                f"Created {len(competitors)} seedings.",
+                messages.SUCCESS
+            )
+            
+        except Exception as e:
+            self.message_user(
+                request,
+                f"Error regenerating seedings: {str(e)}",
+                messages.ERROR
+            )
+    
+    regenerate_seedings_action.short_description = "Regenerate automatic seedings"
+
+
+@admin.register(KnockoutSeeding)  
+class KnockoutSeedingAdmin(admin.ModelAdmin):
+    list_display = ['bracket', 'seed_number', 'team', 'is_manual_seed']
+    list_filter = ['is_manual_seed', 'bracket__season__league']
+    search_fields = ['team__name', 'bracket__season__name']
+    ordering = ('bracket', 'seed_number')
+    
+    fieldsets = (
+        (
+            "Seeding Details",
+            {
+                "fields": ("bracket", "seed_number", "team", "is_manual_seed")
+            },
+        ),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'bracket', 'bracket__season', 'bracket__season__league', 'team'
+        )
+
+
+@admin.register(KnockoutAdvancement)
+class KnockoutAdvancementAdmin(admin.ModelAdmin):
+    list_display = ['team', 'bracket', 'from_stage', 'to_stage', 'advanced_date']
+    list_filter = ['from_stage', 'to_stage', 'bracket__season__league', 'advanced_date']
+    search_fields = ['team__name', 'bracket__season__name']
+    ordering = ('-advanced_date',)
+    readonly_fields = ('advanced_date',)
+    
+    fieldsets = (
+        (
+            "Advancement Details",
+            {
+                "fields": ("bracket", "team", "from_stage", "to_stage", "source_pairing")
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("advanced_date",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'bracket', 'bracket__season', 'bracket__season__league', 
+            'team', 'source_pairing'
+        )

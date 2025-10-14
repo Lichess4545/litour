@@ -44,6 +44,7 @@ season_urlpatterns = [
         views.ICalPairingsView.as_view(),
         name="pairings_icalendar",
     ),
+    path("bracket/", views.KnockoutBracketView.as_view(), name="knockout_bracket"),
     path(
         "pairings/team/<int:team_number>/",
         views.PairingsView.as_view(),

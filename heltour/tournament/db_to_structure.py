@@ -10,6 +10,8 @@ from heltour.tournament_core.structure import (
     GameResult,
     Round,
     Tournament,
+    TournamentFormat,
+    Match,
     create_single_game_match,
     create_bye_match,
     create_team_match,
@@ -142,6 +144,9 @@ def team_tournament_to_structure(season) -> Tournament:
     # Get all teams in the season
     teams = list(Team.objects.filter(season=season).values_list("id", flat=True))
 
+    # Determine tournament format
+    format_type = TournamentFormat.KNOCKOUT if season.league.pairing_type in ['knockout-single', 'knockout-multi'] else TournamentFormat.SWISS
+
     # Get all completed rounds ordered by number
     rounds = []
     for round_obj in season.round_set.filter(is_completed=True).order_by("number"):
@@ -197,12 +202,29 @@ def team_tournament_to_structure(season) -> Tournament:
                 for tm in team_pairing.black_team.teammember_set.all():
                     player_team_mapping[tm.player_id] = team_pairing.black_team_id
 
+                # Create match with knockout-specific properties
                 match = create_team_match(
                     team_pairing.white_team_id,
                     team_pairing.black_team_id,
                     board_results,
                     player_team_mapping,
                 )
+                
+                # For knockout tournaments, add manual tiebreak and games per match
+                if format_type == TournamentFormat.KNOCKOUT:
+                    games_per_match = season.league.knockout_games_per_match or 1
+                    manual_tiebreak = team_pairing.manual_tiebreak_value
+                    
+                    # Create match with knockout properties
+                    match = Match(
+                        competitor1_id=match.competitor1_id,
+                        competitor2_id=match.competitor2_id,
+                        games=match.games,
+                        is_bye=match.is_bye,
+                        games_per_match=games_per_match,
+                        manual_tiebreak_value=manual_tiebreak
+                    )
+                
                 matches.append(match)
 
         # Add bye matches for teams with TeamBye records
@@ -217,10 +239,11 @@ def team_tournament_to_structure(season) -> Tournament:
             matches.append(create_bye_match(team_bye.team_id, boards))
 
         if matches:
-            rounds.append(Round(round_obj.number, matches))
+            knockout_stage = round_obj.knockout_stage if format_type == TournamentFormat.KNOCKOUT else None
+            rounds.append(Round(round_obj.number, matches, knockout_stage))
 
-    # Create the tournament with standard scoring
-    return Tournament(teams, rounds, STANDARD_SCORING)
+    # Create the tournament with appropriate format
+    return Tournament(teams, rounds, STANDARD_SCORING, format_type)
 
 
 def lone_tournament_to_structure(season) -> Tournament:
@@ -238,6 +261,9 @@ def lone_tournament_to_structure(season) -> Tournament:
     players = list(
         SeasonPlayer.objects.filter(season=season).values_list("player_id", flat=True)
     )
+
+    # Determine tournament format
+    format_type = TournamentFormat.KNOCKOUT if season.league.pairing_type in ['knockout-single', 'knockout-multi'] else TournamentFormat.SWISS
 
     # Get all completed rounds ordered by number
     rounds = []
@@ -260,23 +286,37 @@ def lone_tournament_to_structure(season) -> Tournament:
             match = create_single_game_match(
                 pairing.white_id, pairing.black_id, game_result
             )
+            
+            # For knockout tournaments, add games per match (always 1 for individual)
+            if format_type == TournamentFormat.KNOCKOUT:
+                match = Match(
+                    competitor1_id=match.competitor1_id,
+                    competitor2_id=match.competitor2_id,
+                    games=match.games,
+                    is_bye=match.is_bye,
+                    games_per_match=1,
+                    manual_tiebreak_value=None  # Individual knockout doesn't use manual tiebreaks
+                )
+            
             matches.append(match)
 
-        # Add byes for players that didn't play
-        players_that_played = set()
-        for match in matches:
-            players_that_played.add(match.competitor1_id)
-            players_that_played.add(match.competitor2_id)
+        # Add byes for players that didn't play (Swiss only)
+        if format_type == TournamentFormat.SWISS:
+            players_that_played = set()
+            for match in matches:
+                players_that_played.add(match.competitor1_id)
+                players_that_played.add(match.competitor2_id)
 
-        for player_id in players:
-            if player_id not in players_that_played:
-                matches.append(create_bye_match(player_id))
+            for player_id in players:
+                if player_id not in players_that_played:
+                    matches.append(create_bye_match(player_id))
 
         if matches:
-            rounds.append(Round(round_obj.number, matches))
+            knockout_stage = round_obj.knockout_stage if format_type == TournamentFormat.KNOCKOUT else None
+            rounds.append(Round(round_obj.number, matches, knockout_stage))
 
-    # Create the tournament with standard scoring
-    return Tournament(players, rounds, STANDARD_SCORING)
+    # Create the tournament with appropriate format
+    return Tournament(players, rounds, STANDARD_SCORING, format_type)
 
 
 def season_to_tournament_structure(
@@ -304,3 +344,166 @@ def season_to_tournament_structure(
         tournament.scoring = scoring
 
     return tournament
+
+
+def knockout_bracket_to_structure(knockout_bracket) -> Tournament:
+    """Convert a KnockoutBracket model to tournament_core structure.
+    
+    This function creates a tournament structure from the KnockoutBracket,
+    KnockoutSeeding, and Round/Pairing data.
+    
+    Args:
+        knockout_bracket: KnockoutBracket model instance
+        
+    Returns:
+        Tournament object representing the knockout bracket
+    """
+    from heltour.tournament.models import KnockoutSeeding
+    
+    # Get the season from the bracket
+    season = knockout_bracket.season
+    
+    # Get seeded competitors in order
+    seedings = KnockoutSeeding.objects.filter(
+        bracket=knockout_bracket
+    ).order_by('seed_number').select_related('team' if season.league.competitor_type == 'team' else None)
+    
+    if season.league.competitor_type == "team":
+        competitors = [seeding.team.id for seeding in seedings]
+    else:
+        # For individual tournaments, we'd need to adapt this
+        # For now, assume team tournaments
+        competitors = [seeding.team.id for seeding in seedings]
+    
+    # Convert using the standard tournament conversion
+    tournament = season_to_tournament_structure(season)
+    
+    # Ensure the format is set correctly
+    tournament.format = TournamentFormat.KNOCKOUT
+    
+    return tournament
+
+
+def multi_match_knockout_to_structure(season) -> Tournament:
+    """Convert a multi-match knockout tournament to tournament_core structure.
+    
+    This function handles the aggregation of multiple rounds with the same 
+    pairings for multi-match knockout tournaments.
+    
+    Args:
+        season: Season object for multi-match knockout tournament
+        
+    Returns:
+        Tournament object with aggregated multi-match results
+    """
+    if season.league.pairing_type != 'knockout-multi':
+        raise ValueError(f"Season {season} is not a multi-match knockout tournament")
+    
+    # Get base tournament structure
+    tournament = season_to_tournament_structure(season)
+    
+    # Group rounds by knockout_multi_round_group
+    from collections import defaultdict
+    round_groups = defaultdict(list)
+    
+    for round_obj in season.round_set.filter(is_completed=True).order_by("number"):
+        group_id = round_obj.knockout_multi_round_group or f"single_{round_obj.number}"
+        round_groups[group_id].append(round_obj)
+    
+    # Rebuild tournament with aggregated matches
+    aggregated_rounds = []
+    
+    for group_id, group_rounds in round_groups.items():
+        if len(group_rounds) == 1:
+            # Single round - use as is
+            round_obj = group_rounds[0]
+            existing_round = next(
+                (r for r in tournament.rounds if r.number == round_obj.number), 
+                None
+            )
+            if existing_round:
+                aggregated_rounds.append(existing_round)
+        else:
+            # Multiple rounds - aggregate them
+            aggregated_round = _aggregate_multi_match_rounds(group_rounds, tournament, season)
+            aggregated_rounds.append(aggregated_round)
+    
+    # Sort rounds by number
+    aggregated_rounds.sort(key=lambda r: r.number)
+    
+    # Create new tournament with aggregated rounds
+    return Tournament(
+        competitors=tournament.competitors,
+        rounds=aggregated_rounds,
+        scoring=tournament.scoring,
+        format=TournamentFormat.KNOCKOUT
+    )
+
+
+def _aggregate_multi_match_rounds(group_rounds, base_tournament, season):
+    """Aggregate multiple rounds with same pairings into single round structure."""
+    from heltour.tournament.models import TeamPairing
+    
+    # Use the first round as the base
+    base_round = min(group_rounds, key=lambda r: r.number)
+    
+    # Group pairings by teams
+    pairing_groups = defaultdict(list)
+    
+    for round_obj in group_rounds:
+        round_structure = next(
+            (r for r in base_tournament.rounds if r.number == round_obj.number),
+            None
+        )
+        if round_structure:
+            for match in round_structure.matches:
+                # Create a key for this pairing
+                key = tuple(sorted([match.competitor1_id, match.competitor2_id]))
+                pairing_groups[key].append(match)
+    
+    # Create aggregated matches
+    aggregated_matches = []
+    
+    for pairing_key, matches in pairing_groups.items():
+        if len(matches) == 1:
+            # Single match - use as is but update games_per_match
+            match = matches[0]
+            aggregated_match = Match(
+                competitor1_id=match.competitor1_id,
+                competitor2_id=match.competitor2_id,
+                games=match.games,
+                is_bye=match.is_bye,
+                games_per_match=season.league.knockout_games_per_match or len(matches),
+                manual_tiebreak_value=match.manual_tiebreak_value
+            )
+            aggregated_matches.append(aggregated_match)
+        else:
+            # Multiple matches - aggregate games
+            all_games = []
+            manual_tiebreak = None
+            
+            # Ensure consistent competitor ordering
+            first_match = matches[0]
+            competitor1_id = first_match.competitor1_id
+            competitor2_id = first_match.competitor2_id
+            
+            for match in matches:
+                all_games.extend(match.games)
+                if match.manual_tiebreak_value is not None:
+                    manual_tiebreak = match.manual_tiebreak_value
+            
+            aggregated_match = Match(
+                competitor1_id=competitor1_id,
+                competitor2_id=competitor2_id,
+                games=all_games,
+                is_bye=first_match.is_bye,
+                games_per_match=len(all_games),
+                manual_tiebreak_value=manual_tiebreak
+            )
+            aggregated_matches.append(aggregated_match)
+    
+    return Round(
+        number=base_round.number,
+        matches=aggregated_matches,
+        knockout_stage=base_round.knockout_stage
+    )

@@ -73,6 +73,9 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             "rating_type": metadata.league_settings.get("rating_type", "standard"),
             "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
             "theme": metadata.league_settings.get("theme", "blue"),
+            # Knockout-specific settings
+            "knockout_games_per_match": metadata.league_settings.get("knockout_games_per_match", 1),
+            "knockout_seeding_style": metadata.league_settings.get("knockout_seeding_style", "traditional"),
         }
         
         # Configure tiebreaks for team tournaments
@@ -277,15 +280,22 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         round_start = timezone.now() + timedelta(weeks=(round_struct.number - 1))
         round_end = round_start + timedelta(days=7)
 
+        # Include knockout stage if present
+        round_defaults = {
+            "start_date": round_start,
+            "end_date": round_end,
+            "is_completed": False,
+            "publish_pairings": True,
+        }
+        
+        # Add knockout stage if tournament is knockout format
+        if hasattr(round_struct, 'knockout_stage') and round_struct.knockout_stage:
+            round_defaults["knockout_stage"] = round_struct.knockout_stage
+        
         round_obj, created = Round.objects.get_or_create(
             season=season,
             number=round_struct.number,
-            defaults={
-                "start_date": round_start,
-                "end_date": round_end,
-                "is_completed": False,
-                "publish_pairings": True,
-            },
+            defaults=round_defaults,
         )
         # Ensure publish_pairings is True even for existing rounds
         if not created and not round_obj.publish_pairings:
@@ -356,12 +366,19 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                     )
 
                     if team1 and team2:
-                        team_pairing = TeamPairing.objects.create(
-                            round=round_obj,
-                            white_team=team1,
-                            black_team=team2,
-                            pairing_order=pairing_order,
-                        )
+                        # Include manual tiebreak value if present
+                        pairing_data = {
+                            "round": round_obj,
+                            "white_team": team1,
+                            "black_team": team2,
+                            "pairing_order": pairing_order,
+                        }
+                        
+                        # Add manual tiebreak if present
+                        if hasattr(match, 'manual_tiebreak_value') and match.manual_tiebreak_value is not None:
+                            pairing_data["manual_tiebreak_value"] = match.manual_tiebreak_value
+                        
+                        team_pairing = TeamPairing.objects.create(**pairing_data)
 
                         # Create board pairings
                         for board_num, game in enumerate(match.games, 1):

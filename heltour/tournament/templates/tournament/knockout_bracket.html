@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% load static tournament_extras %}
+{% block title %}Knockout Bracket - {{ season.name }} - {{ league.name }}{% endblock %}
+{% block nav_bracket %}active{% endblock %}
+{% block css %}
+<style>
+.knockout-bracket {
+    overflow-x: auto;
+    padding: 20px;
+}
+
+.bracket-round {
+    display: inline-block;
+    vertical-align: top;
+    margin-right: 40px;
+    min-width: 200px;
+}
+
+.bracket-round:last-child {
+    margin-right: 0;
+}
+
+.round-title {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 5px;
+}
+
+.bracket-match {
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.match-competitor {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    position: relative;
+    min-height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.match-competitor:last-child {
+    border-bottom: none;
+}
+
+.match-competitor.winner {
+    background-color: #d4edda;
+    border-left: 4px solid #28a745;
+    font-weight: bold;
+}
+
+.match-competitor.loser {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.match-competitor.tie {
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+}
+
+.competitor-name {
+    flex-grow: 1;
+}
+
+.competitor-score {
+    font-weight: bold;
+    margin-left: 10px;
+    min-width: 40px;
+    text-align: right;
+}
+
+.tiebreak-indicator {
+    font-size: 0.8em;
+    color: #666;
+    margin-left: 5px;
+}
+
+.bye-match {
+    background-color: #f8f9fa;
+    border-style: dashed;
+    border-color: #ced4da;
+}
+
+.bye-match .match-competitor {
+    background-color: transparent;
+    font-style: italic;
+    color: #6c757d;
+    justify-content: center;
+}
+
+.bracket-connector {
+    position: relative;
+    height: 2px;
+    background-color: #ddd;
+    margin: 15px 0;
+}
+
+.bracket-connector::before {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: -1px;
+    width: 20px;
+    height: 4px;
+    background-color: #ddd;
+}
+
+.pending-match {
+    border-color: #17a2b8;
+    background-color: #e7f3ff;
+}
+
+.pending-match .match-competitor {
+    background-color: transparent;
+}
+
+.manual-tiebreak {
+    background-color: #fff3cd !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
+.seeding-info {
+    font-size: 0.85em;
+    color: #666;
+    margin-left: 10px;
+}
+
+@media (max-width: 768px) {
+    .knockout-bracket {
+        padding: 10px;
+    }
+    
+    .bracket-round {
+        margin-right: 20px;
+        min-width: 180px;
+    }
+    
+    .match-competitor {
+        padding: 8px 10px;
+        font-size: 0.9em;
+    }
+    
+    .seeding-info {
+        display: none;
+    }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="row row-condensed-xs">
+    <div class="col-md-12">
+        <div class="well">
+            <div class="well-head">
+                <h3>
+                    Knockout Bracket
+                    {% if bracket.seeding_style == "traditional" %}
+                        (Traditional Seeding)
+                    {% elif bracket.seeding_style == "adjacent" %}
+                        (Adjacent Seeding)
+                    {% endif %}
+                </h3>
+            </div>
+            <div class="well-body">
+                {% if bracket_rounds %}
+                    <div class="knockout-bracket">
+                        {% for round_data in bracket_rounds %}
+                            <div class="bracket-round">
+                                <div class="round-title">
+                                    {{ round_data.stage_name }}
+                                    {% if round_data.round %}
+                                        <br><small>Round {{ round_data.round.number }}</small>
+                                    {% endif %}
+                                </div>
+                                
+                                {% for match in round_data.matches %}
+                                    {% if match.is_bye %}
+                                        <div class="bracket-match bye-match">
+                                            <div class="match-competitor">
+                                                <span class="competitor-name">
+                                                    {% if league.competitor_type == "team" %}
+                                                        <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor.number %}">
+                                                            {{ match.competitor.name }}
+                                                        </a>
+                                                    {% else %}
+                                                        <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor.lichess_username %}">
+                                                            {{ match.competitor.lichess_username }}
+                                                        </a>
+                                                    {% endif %}
+                                                    <span class="seeding-info">(Seed {{ match.seed }})</span>
+                                                </span>
+                                                <span class="competitor-score">BYE</span>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <div class="bracket-match {% if not match.completed %}pending-match{% endif %}">
+                                            <div class="match-competitor {% if match.completed %}{% if match.competitor1_won %}winner{% elif match.competitor2_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
+                                                <span class="competitor-name">
+                                                    {% if league.competitor_type == "team" %}
+                                                        <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor1.number %}">
+                                                            {{ match.competitor1.name }}
+                                                        </a>
+                                                    {% else %}
+                                                        <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor1.lichess_username %}">
+                                                            {{ match.competitor1.lichess_username }}
+                                                        </a>
+                                                    {% endif %}
+                                                    <span class="seeding-info">(Seed {{ match.seed1 }})</span>
+                                                </span>
+                                                <span class="competitor-score">
+                                                    {% if match.completed %}
+                                                        {{ match.competitor1_score|floatformat }}
+                                                        {% if match.manual_tiebreak and match.competitor1_won %}
+                                                            <span class="tiebreak-indicator">TB</span>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </span>
+                                            </div>
+                                            <div class="match-competitor {% if match.completed %}{% if match.competitor2_won %}winner{% elif match.competitor1_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
+                                                <span class="competitor-name">
+                                                    {% if league.competitor_type == "team" %}
+                                                        <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor2.number %}">
+                                                            {{ match.competitor2.name }}
+                                                        </a>
+                                                    {% else %}
+                                                        <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor2.lichess_username %}">
+                                                            {{ match.competitor2.lichess_username }}
+                                                        </a>
+                                                    {% endif %}
+                                                    <span class="seeding-info">(Seed {{ match.seed2 }})</span>
+                                                </span>
+                                                <span class="competitor-score">
+                                                    {% if match.completed %}
+                                                        {{ match.competitor2_score|floatformat }}
+                                                        {% if match.manual_tiebreak and match.competitor2_won %}
+                                                            <span class="tiebreak-indicator">TB</span>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </span>
+                                            </div>
+                                            {% if match.completed and league.competitor_type == "team" %}
+                                                <div style="padding: 5px 15px; background-color: #f8f9fa; font-size: 0.85em; color: #666; text-align: center;">
+                                                    <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
+                                                        View Individual Games
+                                                    </a>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>No bracket available. The knockout bracket has not been generated yet.</p>
+                    {% if user.is_staff %}
+                        <p><a href="{% url 'admin:tournament_knockoutbracket_changelist' %}" class="btn btn-primary">Generate Bracket (Admin)</a></p>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if bracket_info %}
+            <div class="well">
+                <div class="well-head">
+                    <h3>Bracket Information</h3>
+                </div>
+                <div class="well-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-condensed">
+                                <tr>
+                                    <td><strong>Bracket Size:</strong></td>
+                                    <td>{{ bracket_info.bracket_size }} {{ league.competitor_type }}s</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Seeding Style:</strong></td>
+                                    <td>{{ bracket_info.seeding_style|title }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Games per Match:</strong></td>
+                                    <td>{{ bracket_info.games_per_match }}</td>
+                                </tr>
+                                {% if bracket_info.total_rounds %}
+                                <tr>
+                                    <td><strong>Total Rounds:</strong></td>
+                                    <td>{{ bracket_info.total_rounds }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        {% if advancements %}
+                            <div class="col-md-6">
+                                <h4>Recent Advancements</h4>
+                                <div class="table-responsive">
+                                    <table class="table table-condensed table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>{{ league.competitor_type|title }}</th>
+                                                <th>Stage</th>
+                                                <th>Seed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for advancement in advancements %}
+                                                <tr>
+                                                    <td>
+                                                        {% if league.competitor_type == "team" %}
+                                                            <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag advancement.competitor.number %}">
+                                                                {{ advancement.competitor.name }}
+                                                            </a>
+                                                        {% else %}
+                                                            <a href="{% leagueurl 'player_profile' league.tag season.tag advancement.competitor.lichess_username %}">
+                                                                {{ advancement.competitor.lichess_username }}
+                                                            </a>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ advancement.to_stage }}</td>
+                                                    <td>{{ advancement.seed_number }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

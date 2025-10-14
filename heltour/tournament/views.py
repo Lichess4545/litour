@@ -348,6 +348,18 @@ class LeagueHomeView(LeagueView):
 
 class SeasonLandingView(SeasonView):
     def view(self):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            knockout_view = KnockoutSeasonLandingView()
+            knockout_view.request = self.request
+            knockout_view.args = self.args
+            knockout_view.kwargs = self.kwargs
+            knockout_view.league = self.league
+            knockout_view.season = self.season
+            knockout_view.player = self.player
+            knockout_view.user_data = self.user_data
+            return knockout_view.view()
+        
         if self.league.is_team_league():
             return self.team_view()
         else:
@@ -511,6 +523,18 @@ class SeasonLandingView(SeasonView):
 
 class PairingsView(SeasonView):
     def view(self, round_number=None, team_number=None):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            knockout_view = KnockoutPairingsView()
+            knockout_view.request = self.request
+            knockout_view.args = self.args
+            knockout_view.kwargs = self.kwargs
+            knockout_view.league = self.league
+            knockout_view.season = self.season
+            knockout_view.player = self.player
+            knockout_view.user_data = self.user_data
+            return knockout_view.view(round_number, team_number)
+        
         if self.league.is_team_league():
             return self.team_view(round_number, team_number)
         else:
@@ -2964,3 +2988,457 @@ def _get_nav_tree(league_tag, season_tag):
         return (text, url, children, append_separator)
 
     return [transform(item) for item in root_items]
+
+
+# -------------------------------------------------------------------------------
+# Knockout Tournament Views
+
+class KnockoutBracketView(SeasonView):
+    """View for displaying knockout tournament brackets."""
+    
+    def view(self):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            raise Http404("This season is not a knockout tournament")
+            
+        from heltour.tournament.models import KnockoutBracket, KnockoutSeeding, KnockoutAdvancement
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        # Get the knockout bracket
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+        except KnockoutBracket.DoesNotExist:
+            # No bracket exists yet
+            context = {
+                'bracket_rounds': None,
+                'bracket_info': None,
+                'advancements': None,
+            }
+            return self.render('tournament/knockout_bracket.html', context)
+        
+        # Get all rounds for this season
+        rounds = Round.objects.filter(season=self.season).order_by('number')
+        
+        # Build bracket visualization data
+        bracket_rounds = []
+        
+        for round_obj in rounds:
+            stage_name = get_knockout_stage_name(bracket.bracket_size, round_obj.number)
+            
+            if self.league.competitor_type == 'team':
+                pairings = TeamPairing.objects.filter(round=round_obj).select_related(
+                    'white_team', 'black_team'
+                ).prefetch_related(
+                    'white_team__knockoutseeding_set',
+                    'black_team__knockoutseeding_set'
+                )
+            else:
+                pairings = LonePlayerPairing.objects.filter(round=round_obj).select_related(
+                    'white', 'black'
+                ).prefetch_related(
+                    'white__knockoutseeding_set',
+                    'black__knockoutseeding_set'
+                )
+            
+            # Convert pairings to match data
+            matches = []
+            for pairing in pairings:
+                if self.league.competitor_type == 'team':
+                    if pairing.black_team_id is None:
+                        # Bye
+                        seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                        matches.append({
+                            'is_bye': True,
+                            'competitor': pairing.white_team,
+                            'seed': seeding.seed_number if seeding else None,
+                        })
+                    else:
+                        # Regular match
+                        white_seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                        black_seeding = pairing.black_team.knockoutseeding_set.filter(bracket=bracket).first()
+                        
+                        # Determine winner
+                        competitor1_won = pairing.white_points > pairing.black_points
+                        competitor2_won = pairing.black_points > pairing.white_points
+                        is_tie = pairing.white_points == pairing.black_points and pairing.white_points is not None
+                        
+                        matches.append({
+                            'is_bye': False,
+                            'competitor1': pairing.white_team,
+                            'competitor2': pairing.black_team,
+                            'seed1': white_seeding.seed_number if white_seeding else None,
+                            'seed2': black_seeding.seed_number if black_seeding else None,
+                            'competitor1_score': pairing.white_points,
+                            'competitor2_score': pairing.black_points,
+                            'competitor1_won': competitor1_won,
+                            'competitor2_won': competitor2_won,
+                            'is_tie': is_tie,
+                            'completed': pairing.result != '',
+                            'manual_tiebreak': pairing.manual_tiebreak_value is not None,
+                            'round_number': round_obj.number,
+                        })
+                else:
+                    # Individual tournament logic similar to team
+                    if pairing.black_id is None:
+                        # Bye
+                        seeding = pairing.white.knockoutseeding_set.filter(bracket=bracket).first()
+                        matches.append({
+                            'is_bye': True,
+                            'competitor': pairing.white,
+                            'seed': seeding.seed_number if seeding else None,
+                        })
+                    else:
+                        # Regular match
+                        white_seeding = pairing.white.knockoutseeding_set.filter(bracket=bracket).first()
+                        black_seeding = pairing.black.knockoutseeding_set.filter(bracket=bracket).first()
+                        
+                        # Determine winner based on result
+                        if pairing.result in ['1-0', '1X-0F']:
+                            competitor1_won, competitor2_won = True, False
+                        elif pairing.result in ['0-1', '0F-1X']:
+                            competitor1_won, competitor2_won = False, True
+                        elif pairing.result == '1/2-1/2':
+                            competitor1_won, competitor2_won = False, False
+                        else:
+                            competitor1_won = competitor2_won = False
+                        
+                        matches.append({
+                            'is_bye': False,
+                            'competitor1': pairing.white,
+                            'competitor2': pairing.black,
+                            'seed1': white_seeding.seed_number if white_seeding else None,
+                            'seed2': black_seeding.seed_number if black_seeding else None,
+                            'competitor1_score': 1.0 if competitor1_won else (0.5 if pairing.result == '1/2-1/2' else 0.0),
+                            'competitor2_score': 1.0 if competitor2_won else (0.5 if pairing.result == '1/2-1/2' else 0.0),
+                            'competitor1_won': competitor1_won,
+                            'competitor2_won': competitor2_won,
+                            'is_tie': pairing.result == '1/2-1/2',
+                            'completed': pairing.result != '',
+                            'manual_tiebreak': False,  # Individual tournaments don't have manual tiebreaks per pairing
+                            'round_number': round_obj.number,
+                        })
+            
+            bracket_rounds.append({
+                'stage_name': stage_name,
+                'round': round_obj,
+                'matches': matches,
+            })
+        
+        # Get recent advancements
+        advancements = KnockoutAdvancement.objects.filter(bracket=bracket).select_related(
+            'team' if self.league.competitor_type == 'team' else 'player'
+        ).order_by('-from_round')[:10]
+        
+        # Add competitor info to advancements
+        advancement_list = []
+        for advancement in advancements:
+            competitor = advancement.team if self.league.competitor_type == 'team' else advancement.player
+            advancement_list.append({
+                'competitor': competitor,
+                'to_stage': advancement.to_stage,
+                'seed_number': advancement.seed_number,
+            })
+        
+        context = {
+            'bracket_rounds': bracket_rounds,
+            'bracket_info': {
+                'bracket_size': bracket.bracket_size,
+                'seeding_style': bracket.seeding_style,
+                'games_per_match': bracket.games_per_match,
+                'total_rounds': len(bracket_rounds),
+            },
+            'advancements': advancement_list,
+        }
+        
+        return self.render('tournament/knockout_bracket.html', context)
+
+
+class KnockoutSeasonLandingView(SeasonView):
+    """Modified season landing view for knockout tournaments."""
+    
+    def view(self):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            # Fall back to regular season landing
+            return SeasonLandingView.view(self)
+            
+        from heltour.tournament.models import KnockoutBracket, KnockoutAdvancement
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        current_seasons, completed_seasons = _get_season_lists(self.league)
+        has_more_seasons = len(current_seasons) + len(completed_seasons) > 1
+        
+        # Get active round
+        active_round = Round.objects.filter(
+            season=self.season, 
+            publish_pairings=True,
+            is_completed=False, 
+            start_date__lt=timezone.now(),
+            end_date__gt=timezone.now()
+        ).order_by('-number').first()
+        
+        # Get bracket status
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+            bracket_status = self._get_bracket_status(bracket)
+        except KnockoutBracket.DoesNotExist:
+            bracket_status = None
+        
+        # Get recent results
+        recent_results = self._get_recent_results()
+        
+        # Get finalist preview or elimination summary
+        finalist_preview = self._get_finalist_preview(bracket_status)
+        elimination_summary = self._get_elimination_summary() if not finalist_preview else None
+        
+        links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
+        
+        context = {
+            'has_more_seasons': has_more_seasons,
+            'current_seasons': current_seasons,
+            'completed_seasons': completed_seasons,
+            'active_round': active_round,
+            'bracket_status': bracket_status,
+            'recent_results': recent_results,
+            'finalist_preview': finalist_preview,
+            'elimination_summary': elimination_summary,
+            'links_doc': links_doc,
+            'can_edit_document': self.request.user.has_perm('tournament.change_document', self.league),
+        }
+        
+        return self.render('tournament/knockout_season_landing.html', context)
+    
+    def _get_bracket_status(self, bracket):
+        """Get current status of the knockout bracket."""
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        rounds = Round.objects.filter(season=self.season).order_by('number')
+        total_rounds = len(rounds)
+        completed_rounds = rounds.filter(is_completed=True).count()
+        
+        # Calculate progress
+        progress_percentage = int((completed_rounds / max(total_rounds, 1)) * 100)
+        
+        # Get current stage
+        if completed_rounds >= total_rounds:
+            # Tournament complete
+            current_stage = "completed"
+            next_stage = None
+            remaining_count = 1
+            
+            # Get champion
+            if self.league.competitor_type == 'team':
+                last_pairing = TeamPairing.objects.filter(
+                    round__season=self.season
+                ).order_by('-round__number').first()
+                if last_pairing and last_pairing.result:
+                    champion = last_pairing.white_team if last_pairing.white_points > last_pairing.black_points else last_pairing.black_team
+                else:
+                    champion = None
+            else:
+                last_pairing = LonePlayerPairing.objects.filter(
+                    round__season=self.season
+                ).order_by('-round__number').first()
+                if last_pairing and last_pairing.result:
+                    champion = last_pairing.white if last_pairing.result in ['1-0', '1X-0F'] else last_pairing.black
+                else:
+                    champion = None
+        else:
+            # Tournament in progress
+            current_round = completed_rounds + 1
+            current_stage = get_knockout_stage_name(bracket.bracket_size, current_round)
+            next_stage = get_knockout_stage_name(bracket.bracket_size, current_round + 1) if current_round < total_rounds else None
+            remaining_count = bracket.bracket_size // (2 ** completed_rounds)
+            champion = None
+        
+        return {
+            'is_completed': completed_rounds >= total_rounds,
+            'current_stage': current_stage,
+            'next_stage': next_stage,
+            'remaining_count': remaining_count,
+            'progress_percentage': progress_percentage,
+            'champion': champion,
+        }
+    
+    def _get_recent_results(self):
+        """Get recent match results."""
+        if self.league.competitor_type == 'team':
+            recent_pairings = TeamPairing.objects.filter(
+                round__season=self.season,
+                round__is_completed=True
+            ).exclude(result='').select_related(
+                'white_team', 'black_team'
+            ).order_by('-round__number', '-pairing_order')[:5]
+            
+            results = []
+            for pairing in recent_pairings:
+                if pairing.black_team_id:  # Not a bye
+                    results.append({
+                        'competitor1': pairing.white_team,
+                        'competitor2': pairing.black_team,
+                        'competitor1_score': pairing.white_points,
+                        'competitor2_score': pairing.black_points,
+                        'competitor1_won': pairing.white_points > pairing.black_points,
+                        'competitor2_won': pairing.black_points > pairing.white_points,
+                        'manual_tiebreak': pairing.manual_tiebreak_value is not None,
+                    })
+            return results
+        else:
+            # Individual tournament results
+            recent_pairings = LonePlayerPairing.objects.filter(
+                round__season=self.season,
+                round__is_completed=True
+            ).exclude(result='').select_related(
+                'white', 'black'
+            ).order_by('-round__number', '-pairing_order')[:5]
+            
+            results = []
+            for pairing in recent_pairings:
+                if pairing.black_id:  # Not a bye
+                    if pairing.result in ['1-0', '1X-0F']:
+                        comp1_score, comp2_score = 1.0, 0.0
+                        comp1_won, comp2_won = True, False
+                    elif pairing.result in ['0-1', '0F-1X']:
+                        comp1_score, comp2_score = 0.0, 1.0
+                        comp1_won, comp2_won = False, True
+                    else:  # Draw
+                        comp1_score, comp2_score = 0.5, 0.5
+                        comp1_won, comp2_won = False, False
+                    
+                    results.append({
+                        'competitor1': pairing.white,
+                        'competitor2': pairing.black,
+                        'competitor1_score': comp1_score,
+                        'competitor2_score': comp2_score,
+                        'competitor1_won': comp1_won,
+                        'competitor2_won': comp2_won,
+                        'manual_tiebreak': False,
+                    })
+            return results
+    
+    def _get_finalist_preview(self, bracket_status):
+        """Get preview of finalists or next stage competitors."""
+        if not bracket_status or bracket_status['remaining_count'] > 4:
+            return None
+            
+        # Get competitors in current stage (semifinals or finals)
+        current_round = Round.objects.filter(
+            season=self.season,
+            is_completed=False
+        ).order_by('number').first()
+        
+        if not current_round:
+            return None
+            
+        competitors = []
+        if self.league.competitor_type == 'team':
+            pairings = TeamPairing.objects.filter(round=current_round).select_related(
+                'white_team', 'black_team'
+            ).prefetch_related('white_team__knockoutseeding_set', 'black_team__knockoutseeding_set')
+            
+            for pairing in pairings:
+                if pairing.white_team:
+                    seeding = pairing.white_team.knockoutseeding_set.first()
+                    competitors.append({
+                        'name': pairing.white_team.name,
+                        'number': pairing.white_team.number,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+                if pairing.black_team:
+                    seeding = pairing.black_team.knockoutseeding_set.first()
+                    competitors.append({
+                        'name': pairing.black_team.name, 
+                        'number': pairing.black_team.number,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+        else:
+            pairings = LonePlayerPairing.objects.filter(round=current_round).select_related(
+                'white', 'black'
+            ).prefetch_related('white__knockoutseeding_set', 'black__knockoutseeding_set')
+            
+            for pairing in pairings:
+                if pairing.white:
+                    seeding = pairing.white.knockoutseeding_set.first()
+                    competitors.append({
+                        'lichess_username': pairing.white.lichess_username,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+                if pairing.black:
+                    seeding = pairing.black.knockoutseeding_set.first()
+                    competitors.append({
+                        'lichess_username': pairing.black.lichess_username,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+        
+        return competitors
+    
+    def _get_elimination_summary(self):
+        """Get summary of recent eliminations."""
+        # This would require tracking eliminations, which we can implement later
+        # For now, return empty list
+        return []
+
+
+class KnockoutPairingsView(PairingsView):
+    """Modified pairings view for knockout tournaments."""
+    
+    def view(self, round_number=None, team_number=None):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            # Fall back to regular pairings view
+            return super().view(round_number, team_number)
+        
+        if self.league.is_team_league():
+            return self.knockout_team_view(round_number, team_number)
+        else:
+            return self.knockout_lone_view(round_number, team_number)
+    
+    def knockout_team_view(self, round_number=None, team_number=None):
+        """Knockout-specific team pairings view."""
+        from heltour.tournament.models import KnockoutBracket
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        # Get the knockout bracket
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+        except KnockoutBracket.DoesNotExist:
+            bracket = None
+        
+        # Get context from parent class but modify for knockout
+        context = self.get_team_context(
+            self.league.tag, self.season.tag, round_number, team_number,
+            self.request.user.has_perm('tournament.change_pairing', self.league)
+        )
+        
+        # Add knockout-specific information
+        if bracket and context['round_number']:
+            current_stage = get_knockout_stage_name(bracket.bracket_size, context['round_number'])
+            context['current_stage'] = current_stage
+            
+            # Convert round number list to include stage names
+            stage_rounds = []
+            for rnum in context['round_number_list']:
+                stage_name = get_knockout_stage_name(bracket.bracket_size, rnum)
+                stage_rounds.append({
+                    'round_number': rnum,
+                    'stage_name': stage_name,
+                })
+            context['round_number_list'] = stage_rounds
+            
+            # Add stage info
+            total_pairings = len(context['pairing_lists']) if context['pairing_lists'] else 0
+            total_competitors = total_pairings * 2
+            context['stage_info'] = {
+                'stage_name': current_stage,
+                'total_matches': total_pairings,
+                'total_competitors': total_competitors,
+                'games_per_match': bracket.games_per_match,
+            }
+        
+        return self.render('tournament/knockout_pairings.html', context)
+    
+    def knockout_lone_view(self, round_number=None, team_number=None):
+        """Knockout-specific individual pairings view."""
+        # Similar to team view but for individual tournaments
+        context = self.get_lone_context(round_number, team_number)
+        
+        # Add knockout-specific modifications here if needed
+        # For now, use regular lone pairings template
+        return self.render('tournament/lone_pairings.html', context)
