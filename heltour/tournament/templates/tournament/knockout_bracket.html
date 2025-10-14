@@ -163,9 +163,9 @@
             <div class="well-head">
                 <h3>
                     Knockout Bracket
-                    {% if bracket.seeding_style == "traditional" %}
+                    {% if bracket and bracket.seeding_style == "traditional" %}
                         (Traditional Seeding)
-                    {% elif bracket.seeding_style == "adjacent" %}
+                    {% elif bracket and bracket.seeding_style == "adjacent" %}
                         (Adjacent Seeding)
                     {% endif %}
                 </h3>

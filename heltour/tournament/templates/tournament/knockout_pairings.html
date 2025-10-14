@@ -80,7 +80,7 @@
                                                 <span class="bye-indicator">BYE</span>
                                             {% endif %}
                                         </th>
-                                        <th class="text-center match-score-header">Score</th>
+                                        <th class="text-center match-score-header" colspan="2">Score</th>
                                         <th colspan="2" class="match-status">
                                             {% if team_pairing.black_team_id %}
                                                 {% if team_pairing.result %}
@@ -110,6 +110,11 @@
                                                 {{ team_pairing.white_points_display|formatscore }}
                                             {% else %}
                                                 <span class="bye-score">{{ team_pairing.white_points_display|formatscore }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center cell-score {% if team_pairing.black_team_id %}{% resultclass team_pairing.black_points team_pairing.white_points %}{% endif %}">
+                                            {% if team_pairing.black_team_id %}
+                                                {{ team_pairing.black_points_display|formatscore }}
                                             {% endif %}
                                         </td>
                                         <td class="competitor-name text-right">
@@ -162,7 +167,7 @@
                                                         {% endif %}
                                                     </td>
                                                     {% if pairing.game_link and not pairing.result %}
-                                                        <td class="cell-score text-center">
+                                                        <td class="cell-score text-center" colspan="2">
                                                             <a href="{{ pairing.game_link }}">
                                                                 {% if pairing.tv_state != "has_moves" %}
                                                                     ⏯
@@ -172,12 +177,14 @@
                                                             </a>
                                                         </td>
                                                     {% else %}
-                                                        <td class="cell-game-result text-center">
+                                                        <td class="cell-game-result text-center {% resultclass pairing.white_team_score pairing.black_team_score %}">
                                                             {% if pairing.game_link %}<a href="{{ pairing.game_link }}">{% endif %}
-                                                                {% spaceless %}
-                                                                    <span>{{ pairing.white_team_score_str }}</span>
-                                                                    <span>{{ pairing.black_team_score_str }}</span>
-                                                                {% endspaceless %}
+                                                                {{ pairing.white_team_score_str }}
+                                                                {% if pairing.game_link %}</a>{% endif %}
+                                                        </td>
+                                                        <td class="cell-game-result text-center {% resultclass pairing.black_team_score pairing.white_team_score %}">
+                                                            {% if pairing.game_link %}<a href="{{ pairing.game_link }}">{% endif %}
+                                                                {{ pairing.black_team_score_str }}
                                                                 {% if pairing.game_link %}</a>{% endif %}
                                                         </td>
                                                     {% endif %}
@@ -215,7 +222,7 @@
                                     
                                     {# Spacing between matches #}
                                     <tr class="match-spacer">
-                                        <td colspan="{% if can_edit %}6{% else %}5{% endif %}">&nbsp;</td>
+                                        <td colspan="{% if can_edit %}7{% else %}6{% endif %}">&nbsp;</td>
                                     </tr>
                                 {% endwith %}
                             {% endfor %}
@@ -300,5 +307,6 @@
             background-color: #ffc107;
             color: #212529;
         }
+        
     </style>
 {% endblock %}

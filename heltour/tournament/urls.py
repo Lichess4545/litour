@@ -22,6 +22,7 @@ from django.urls import include, path
 from django.views.decorators.cache import cache_control
 
 season_urlpatterns = [
+    path("", views.SeasonLandingView.as_view(), name="season_root"),
     path("summary/", views.SeasonLandingView.as_view(), name="season_landing"),
     path("register/", views.RegisterView.as_view(), name="register"),
     path(

@@ -37,7 +37,7 @@ from heltour.tournament_core.knockout import (
 
 def generate_pairings(round_, overwrite=False):
     # Check if this is a knockout tournament
-    if round_.season.league.pairing_type in ['knockout-single', 'knockout-multi']:
+    if round_.season.league.pairing_type in ["knockout-single", "knockout-multi"]:
         if round_.season.league.competitor_type == "team":
             _generate_knockout_team_pairings(round_, overwrite)
         else:
@@ -694,38 +694,38 @@ class JavafoInstance:
 def assign_automatic_forfeits(round_):
     """
     Assign forfeit wins for pairings with missing players.
-    
+
     This function looks for TeamPlayerPairing objects where either white or black
     is None and automatically assigns appropriate forfeit results:
     - 1X-0F: White wins by forfeit (black is missing)
-    - 0F-1X: Black wins by forfeit (white is missing)  
+    - 0F-1X: Black wins by forfeit (white is missing)
     - 0F-0F: Double forfeit (both missing)
-    
+
     Args:
         round_: Round object to process
-        
+
     Returns:
         int: Number of forfeit results assigned
     """
     forfeit_count = 0
-    
+
     if round_.season.league.competitor_type == "team":
         # Process team tournament board pairings
         team_pairings = TeamPairing.objects.filter(round=round_).prefetch_related(
-            'teamplayerpairing_set'
+            "teamplayerpairing_set"
         )
-        
+
         for team_pairing in team_pairings:
             board_pairings = team_pairing.teamplayerpairing_set.all()
-            
+
             for board_pairing in board_pairings:
                 # Only assign forfeits if result is empty
                 if board_pairing.result:
                     continue
-                    
+
                 white_missing = board_pairing.white is None
                 black_missing = board_pairing.black is None
-                
+
                 if white_missing and black_missing:
                     # Both players missing - double forfeit
                     board_pairing.result = "0F-0F"
@@ -741,24 +741,24 @@ def assign_automatic_forfeits(round_):
                     board_pairing.result = "1X-0F"
                     board_pairing.save()
                     forfeit_count += 1
-            
+
             # Update team pairing points after assigning forfeit results
             if forfeit_count > 0:
                 team_pairing.refresh_points()
                 team_pairing.save()
-    
+
     else:
         # Process individual tournament pairings
         lone_pairings = LonePlayerPairing.objects.filter(round=round_)
-        
+
         for pairing in lone_pairings:
             # Only assign forfeits if result is empty
             if pairing.result:
                 continue
-                
+
             white_missing = pairing.white is None
             black_missing = pairing.black is None
-            
+
             if white_missing and black_missing:
                 # Both players missing - double forfeit
                 pairing.result = "0F-0F"
@@ -774,7 +774,7 @@ def assign_automatic_forfeits(round_):
                 pairing.result = "1X-0F"
                 pairing.save()
                 forfeit_count += 1
-    
+
     return forfeit_count
 
 
@@ -792,10 +792,10 @@ def _generate_knockout_team_pairings(round_, overwrite=False):
         bracket, created = KnockoutBracket.objects.get_or_create(
             season=round_.season,
             defaults={
-                'bracket_size': _calculate_bracket_size(round_.season),
-                'seeding_style': round_.season.league.knockout_seeding_style,
-                'games_per_match': round_.season.league.knockout_games_per_match,
-            }
+                "bracket_size": _calculate_bracket_size(round_.season),
+                "seeding_style": round_.season.league.knockout_seeding_style,
+                "games_per_match": round_.season.league.knockout_games_per_match,
+            },
         )
 
         if round_.number == 1:
@@ -820,10 +820,10 @@ def _generate_knockout_lone_pairings(round_, overwrite=False):
         bracket, created = KnockoutBracket.objects.get_or_create(
             season=round_.season,
             defaults={
-                'bracket_size': _calculate_bracket_size(round_.season),
-                'seeding_style': round_.season.league.knockout_seeding_style,
-                'games_per_match': round_.season.league.knockout_games_per_match,
-            }
+                "bracket_size": _calculate_bracket_size(round_.season),
+                "seeding_style": round_.season.league.knockout_seeding_style,
+                "games_per_match": round_.season.league.knockout_games_per_match,
+            },
         )
 
         if round_.number == 1:
@@ -839,58 +839,61 @@ def _calculate_bracket_size(season):
     if season.league.competitor_type == "team":
         active_teams = Team.objects.filter(season=season, is_active=True).count()
     else:
-        active_players = SeasonPlayer.objects.filter(season=season, is_active=True).count()
+        active_players = SeasonPlayer.objects.filter(
+            season=season, is_active=True
+        ).count()
         active_teams = active_players
 
     # Find next power of 2 that can accommodate all competitors
     bracket_size = 2
     while bracket_size < active_teams:
         bracket_size *= 2
-    
+
     return bracket_size
 
 
 def _generate_initial_knockout_bracket(round_, bracket):
     """Generate initial knockout bracket for team tournaments."""
     # Get active teams
-    teams = Team.objects.filter(season=round_.season, is_active=True).order_by('id')
-    
+    teams = Team.objects.filter(season=round_.season, is_active=True).order_by("id")
+
     # Ensure bracket size is valid
     if not validate_bracket_size(len(teams)):
         raise PairingGenerationException(
             f"Team count {len(teams)} is not a power of 2. Knockout requires power of 2."
         )
-    
+
     # Create seedings if they don't exist
     if not KnockoutSeeding.objects.filter(bracket=bracket).exists():
         for i, team in enumerate(teams):
             KnockoutSeeding.objects.create(
-                bracket=bracket,
-                team=team,
-                seed_number=i + 1,
-                is_manual_seed=False
+                bracket=bracket, team=team, seed_number=i + 1, is_manual_seed=False
             )
-    
+
     # Get seeded teams in order
-    seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by('seed_number')
+    seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by("seed_number")
     seeded_teams = [seeding.team for seeding in seedings]
-    
+
     # Generate first round pairings
-    if bracket.seeding_style == 'traditional':
-        pairings = generate_knockout_seedings_traditional([team.id for team in seeded_teams])
+    if bracket.seeding_style == "traditional":
+        pairings = generate_knockout_seedings_traditional(
+            [team.id for team in seeded_teams]
+        )
     else:  # adjacent
-        pairings = generate_knockout_seedings_adjacent([team.id for team in seeded_teams])
-    
+        pairings = generate_knockout_seedings_adjacent(
+            [team.id for team in seeded_teams]
+        )
+
     # Set round knockout stage
     stage_name = get_knockout_stage_name(len(seeded_teams))
     round_.knockout_stage = stage_name
     round_.save()
-    
+
     # Create team pairings
     for i, (team1_id, team2_id) in enumerate(pairings):
         team1 = Team.objects.get(id=team1_id)
         team2 = Team.objects.get(id=team2_id)
-        
+
         with reversion.create_revision():
             reversion.set_comment("Generated knockout bracket.")
             team_pairing = TeamPairing.objects.create(
@@ -899,7 +902,7 @@ def _generate_initial_knockout_bracket(round_, bracket):
                 round=round_,
                 pairing_order=i + 1,
             )
-        
+
         # Create board pairings for team matches
         _create_board_pairings_for_knockout(team_pairing, round_.season.boards)
 
@@ -907,36 +910,39 @@ def _generate_initial_knockout_bracket(round_, bracket):
 def _generate_initial_knockout_bracket_lone(round_, bracket):
     """Generate initial knockout bracket for individual tournaments."""
     # Get active players
-    season_players = SeasonPlayer.objects.filter(
-        season=round_.season, is_active=True
-    ).select_related('player').order_by('id')
-    
+    season_players = (
+        SeasonPlayer.objects.filter(season=round_.season, is_active=True)
+        .select_related("player")
+        .order_by("id")
+    )
+
     players = [sp.player for sp in season_players]
-    
+
     # Ensure bracket size is valid
     if not validate_bracket_size(len(players)):
         raise PairingGenerationException(
             f"Player count {len(players)} is not a power of 2. Knockout requires power of 2."
         )
-    
+
     # Generate first round pairings
-    if bracket.seeding_style == 'traditional':
+    if bracket.seeding_style == "traditional":
         pairings = generate_knockout_seedings_traditional([p.id for p in players])
     else:  # adjacent
         pairings = generate_knockout_seedings_adjacent([p.id for p in players])
-    
+
     # Set round knockout stage
     stage_name = get_knockout_stage_name(len(players))
     round_.knockout_stage = stage_name
     round_.save()
-    
+
     # Create lone player pairings
     rank_dict = lone_player_pairing_rank_dict(round_.season)
     for i, (player1_id, player2_id) in enumerate(pairings):
         from heltour.tournament.models import Player
+
         player1 = Player.objects.get(id=player1_id)
         player2 = Player.objects.get(id=player2_id)
-        
+
         with reversion.create_revision():
             reversion.set_comment("Generated knockout bracket.")
             lone_pairing = LonePlayerPairing.objects.create(
@@ -951,13 +957,11 @@ def _generate_initial_knockout_bracket_lone(round_, bracket):
 
 def _generate_next_knockout_round(round_, bracket):
     """Generate next round pairings based on previous round advancement."""
-    previous_round = round_.season.round_set.filter(
-        number=round_.number - 1
-    ).first()
-    
+    previous_round = round_.season.round_set.filter(number=round_.number - 1).first()
+
     if not previous_round:
         raise PairingGenerationException("No previous round found for advancement")
-    
+
     # Get winners from previous round
     winners = []
     for pairing in TeamPairing.objects.filter(round=previous_round):
@@ -965,7 +969,7 @@ def _generate_next_knockout_round(round_, bracket):
             raise PairingGenerationException(
                 f"Round {previous_round.number} results incomplete"
             )
-        
+
         # Determine winner including manual tiebreak
         if pairing.white_points > pairing.black_points:
             winners.append(pairing.white_team)
@@ -982,31 +986,36 @@ def _generate_next_knockout_round(round_, bracket):
                 winners.append(pairing.white_team)
             else:
                 winners.append(pairing.black_team)
-        
-        # Create advancement record
-        winner = winners[-1]
+
+    # Create advancement records for all winners
+    # Calculate the target stage based on current round's teams remaining
+    current_teams_remaining = bracket.bracket_size // (2 ** (round_.number - 1))
+    target_stage = get_knockout_stage_name(current_teams_remaining)
+
+    for i, pairing in enumerate(TeamPairing.objects.filter(round=previous_round)):
+        winner = winners[i]
         KnockoutAdvancement.objects.get_or_create(
             bracket=bracket,
             team=winner,
             from_stage=previous_round.knockout_stage,
-            to_stage=get_knockout_stage_name(len(winners) * 2),
-            source_pairing=pairing
+            to_stage=target_stage,
+            source_pairing=pairing,
         )
-    
+
     # Generate next round pairings
     winner_ids = [team.id for team in winners]
     next_pairings = generate_next_round_pairings(winner_ids)
-    
+
     # Set round knockout stage
     stage_name = get_knockout_stage_name(len(winners))
     round_.knockout_stage = stage_name
     round_.save()
-    
+
     # Create team pairings for next round
     for i, (team1_id, team2_id) in enumerate(next_pairings):
         team1 = Team.objects.get(id=team1_id)
         team2 = Team.objects.get(id=team2_id)
-        
+
         with reversion.create_revision():
             reversion.set_comment("Advanced to next knockout round.")
             team_pairing = TeamPairing.objects.create(
@@ -1015,20 +1024,18 @@ def _generate_next_knockout_round(round_, bracket):
                 round=round_,
                 pairing_order=i + 1,
             )
-        
+
         # Create board pairings for team matches
         _create_board_pairings_for_knockout(team_pairing, round_.season.boards)
 
 
 def _generate_next_knockout_round_lone(round_, bracket):
     """Generate next round pairings for individual tournaments."""
-    previous_round = round_.season.round_set.filter(
-        number=round_.number - 1
-    ).first()
-    
+    previous_round = round_.season.round_set.filter(number=round_.number - 1).first()
+
     if not previous_round:
         raise PairingGenerationException("No previous round found for advancement")
-    
+
     # Get winners from previous round
     winners = []
     for pairing in LonePlayerPairing.objects.filter(round=previous_round):
@@ -1036,11 +1043,11 @@ def _generate_next_knockout_round_lone(round_, bracket):
             raise PairingGenerationException(
                 f"Round {previous_round.number} results incomplete"
             )
-        
+
         # Determine winner based on result
         white_score = pairing.white_score()
         black_score = pairing.black_score()
-        
+
         if white_score > black_score:
             winners.append(pairing.white)
         elif black_score > white_score:
@@ -1052,23 +1059,24 @@ def _generate_next_knockout_round_lone(round_, bracket):
                 f"Tied pairing between {pairing.white} and {pairing.black} "
                 "in individual knockout tournament"
             )
-    
+
     # Generate next round pairings
     winner_ids = [player.id for player in winners]
     next_pairings = generate_next_round_pairings(winner_ids)
-    
+
     # Set round knockout stage
     stage_name = get_knockout_stage_name(len(winners))
     round_.knockout_stage = stage_name
     round_.save()
-    
+
     # Create lone player pairings for next round
     rank_dict = lone_player_pairing_rank_dict(round_.season)
     for i, (player1_id, player2_id) in enumerate(next_pairings):
         from heltour.tournament.models import Player
+
         player1 = Player.objects.get(id=player1_id)
         player2 = Player.objects.get(id=player2_id)
-        
+
         with reversion.create_revision():
             reversion.set_comment("Advanced to next knockout round.")
             lone_pairing = LonePlayerPairing.objects.create(
@@ -1089,15 +1097,15 @@ def _create_board_pairings_for_knockout(team_pairing, board_count):
     black_player_list = _get_player_list(
         team_pairing.black_team, team_pairing.round, board_count
     )
-    
+
     for board_number in range(1, board_count + 1):
         white_player = white_player_list[board_number - 1]
         black_player = black_player_list[board_number - 1]
-        
+
         # Alternate colors by board (same as Swiss)
         if board_number % 2 == 0:
             white_player, black_player = black_player, white_player
-        
+
         with reversion.create_revision():
             reversion.set_comment("Generated knockout board pairing.")
             TeamPlayerPairing.objects.create(
@@ -1111,66 +1119,66 @@ def _create_board_pairings_for_knockout(team_pairing, board_count):
 def generate_knockout_bracket(season):
     """
     Generate initial knockout bracket for a season.
-    
+
     This function creates the KnockoutBracket and KnockoutSeeding records,
     then generates the first round pairings.
-    
+
     Args:
         season: Season object to create bracket for
-        
+
     Returns:
         KnockoutBracket: The created bracket
-        
+
     Raises:
         PairingGenerationException: If bracket generation fails
     """
-    if season.league.pairing_type not in ['knockout-single', 'knockout-multi']:
+    if season.league.pairing_type not in ["knockout-single", "knockout-multi"]:
         raise PairingGenerationException(
             f"Season {season} is not configured for knockout tournaments"
         )
-    
+
     # Calculate bracket size
     bracket_size = _calculate_bracket_size(season)
-    
+
     # Create or get existing bracket
     bracket, created = KnockoutBracket.objects.get_or_create(
         season=season,
         defaults={
-            'bracket_size': bracket_size,
-            'seeding_style': season.league.knockout_seeding_style,
-            'games_per_match': season.league.knockout_games_per_match,
-        }
+            "bracket_size": bracket_size,
+            "seeding_style": season.league.knockout_seeding_style,
+            "games_per_match": season.league.knockout_games_per_match,
+        },
     )
-    
+
     # Generate first round if it exists
     first_round = season.round_set.filter(number=1).first()
     if first_round:
         generate_pairings(first_round, overwrite=True)
-    
+
     return bracket
 
 
 def advance_knockout_tournament(round_):
     """
     Calculate advancement for completed knockout round and create next round.
-    
+
     Args:
         round_: Completed Round object
-        
+
     Returns:
         Round: The next round created, or None if tournament is complete
-        
+
     Raises:
         PairingGenerationException: If advancement calculation fails
     """
-    if round_.season.league.pairing_type not in ['knockout-single', 'knockout-multi']:
+    if round_.season.league.pairing_type not in ["knockout-single", "knockout-multi"]:
         raise PairingGenerationException(
             f"Season {round_.season} is not a knockout tournament"
         )
-    
+
     # Check if tournament is complete
     bracket = KnockoutBracket.objects.get(season=round_.season)
-    
+
     if round_.season.league.competitor_type == "team":
         remaining_teams = TeamPairing.objects.filter(round=round_).count() * 2
         if remaining_teams == 2:
@@ -1185,15 +1193,17 @@ def advance_knockout_tournament(round_):
             bracket.is_completed = True
             bracket.save()
             return None
-    
-    # Create next round
-    next_round = round_.season.round_set.create(
+
+    # Create next round (use get_or_create to avoid duplicates)
+    next_round, created = round_.season.round_set.get_or_create(
         number=round_.number + 1,
-        start_date=round_.end_date,
-        end_date=round_.end_date + (round_.end_date - round_.start_date),
+        defaults={
+            "start_date": round_.end_date,
+            "end_date": round_.end_date + (round_.end_date - round_.start_date),
+        },
     )
-    
+
     # Generate pairings for next round
     generate_pairings(next_round)
-    
+
     return next_round
