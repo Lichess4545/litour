@@ -987,6 +987,7 @@ def _add_clock_time(playerpairing_ids: list[int]) -> None:
         lichessapi.add_clock_time(
             gameid=pairing.game_id(),
             token=pairing.get_white_access_token(),
+            ### TODO: make this more flexible so we can add values other than 60 seconds
             seconds=60
         )
 
