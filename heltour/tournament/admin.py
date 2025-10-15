@@ -2859,7 +2859,6 @@ class PlayerPairingAdmin(_BaseAdmin):
 
     def add_clock_time_black(self, request, queryset):
         ids = list(queryset.values_list("id", flat=True))
-        print(ids)
         if ids:
             signals.do_add_clock_time.send(sender=request.user, playerpairing_ids=ids)
         self.message_user(
