@@ -116,6 +116,9 @@ class TournamentBuilder:
             )
 
         self.metadata.teams[name] = team_info
+        
+        # Set competitor type to team
+        self.metadata.competitor_type = "team"
 
         # Add team to competitors
         if team_id not in self.competitors:
@@ -358,6 +361,92 @@ class TournamentBuilder:
         
         return self
 
+    # Multi-match knockout methods
+
+    def multi_match_knockout(self, matches_per_stage: int) -> "TournamentBuilder":
+        """Set up multi-match knockout tournament (e.g., return matches with color switching).
+        
+        Args:
+            matches_per_stage: Number of matches each pair plays before elimination
+                              (1 = single elimination, 2 = return matches, etc.)
+        """
+        if matches_per_stage < 1:
+            raise ValueError("Matches per stage must be at least 1")
+            
+        self.tournament.format = TournamentFormat.KNOCKOUT
+        self.tournament.matches_per_stage = matches_per_stage
+        self.tournament.current_match_number = 1
+        return self
+
+    def complete_current_match_set(self) -> "TournamentBuilder":
+        """Mark current match set as complete for all teams.
+        
+        This is used in simulation to indicate all teams have finished
+        their current match number and next match set can be generated.
+        """
+        # This is primarily for simulation/testing purposes
+        # In practice, matches are completed by adding game results
+        return self
+
+    def generate_next_match_set(self) -> "TournamentBuilder":
+        """Generate the next set of matches with color switching.
+        
+        Can only be called when all teams have completed their current match.
+        Creates return matches with colors flipped from original matches.
+        """
+        if not self.current_round:
+            raise ValueError("Must have a current round to generate next match set")
+            
+        # Use the multi-match module to generate next match set
+        from heltour.tournament_core.multi_match import can_generate_next_match_set, generate_next_match_set
+        
+        round_number = self.current_round.number
+        
+        if not can_generate_next_match_set(self.tournament, round_number):
+            raise ValueError("Cannot generate next match set - not all teams completed current match")
+            
+        self.tournament = generate_next_match_set(self.tournament, round_number)
+        
+        # Update current round reference
+        self.current_round = self.tournament.rounds[round_number - 1]
+        
+        return self
+
+    def simulate_multi_match_stage(self, stage_results: List[Tuple[str, str]]) -> "TournamentBuilder":
+        """Simulate results for a complete multi-match stage.
+        
+        Args:
+            stage_results: List of (winner_name, loser_name) tuples for each team pair
+        """
+        if not self.current_round:
+            raise ValueError("Must have a current round to simulate")
+            
+        if self.tournament.matches_per_stage == 1:
+            # Single match - just use regular match simulation
+            for winner, loser in stage_results:
+                self.match(winner, loser, "1-0")
+        else:
+            # Multi-match stage - simulate all matches for each pair
+            from heltour.tournament_core.multi_match import get_multi_match_stage_status
+            
+            # For simulation, we'll create results for each match number
+            for match_number in range(1, self.tournament.matches_per_stage + 1):
+                # Generate/simulate results for this match number
+                for winner, loser in stage_results:
+                    if match_number == 1:
+                        # First match - use normal colors
+                        self.match(winner, loser, "1-0")
+                    else:
+                        # Return matches - colors are already flipped by generate_next_match_set
+                        # So the "winner" is still the overall winner but may be black in return match
+                        self.match(winner, loser, "0-1")  # Winner wins as black in return match
+                        
+                # Generate next match set if not the last match
+                if match_number < self.tournament.matches_per_stage:
+                    self.generate_next_match_set()
+                    
+        return self
+
     # Low-level API methods (original TournamentBuilder interface)
 
     def add_round(self, round_number: int) -> "TournamentBuilder":
@@ -533,12 +622,21 @@ class TournamentBuilder:
         # For knockout tournaments, find existing match and update it
         if self.tournament.format == TournamentFormat.KNOCKOUT:
             # Find existing match between these teams
+            # In multi-match scenarios, prefer exact order match (for return matches)
             target_match = None
+            
+            # First, try to find exact order match
             for i, existing_match in enumerate(self.current_round.matches):
-                if ((existing_match.competitor1_id == team1_id and existing_match.competitor2_id == team2_id) or
-                    (existing_match.competitor1_id == team2_id and existing_match.competitor2_id == team1_id)):
+                if existing_match.competitor1_id == team1_id and existing_match.competitor2_id == team2_id:
                     target_match = (i, existing_match)
                     break
+            
+            # If no exact match found, look for reverse order match
+            if target_match is None:
+                for i, existing_match in enumerate(self.current_round.matches):
+                    if existing_match.competitor1_id == team2_id and existing_match.competitor2_id == team1_id:
+                        target_match = (i, existing_match)
+                        break
             
             if target_match is not None:
                 match_index, existing_match = target_match
@@ -659,9 +757,10 @@ class TournamentBuilder:
         else:  # adjacent
             pairings = generate_knockout_seedings_adjacent(team_ids)
         
-        # Create first round
+        # Create first round if not already created
         stage_name = get_knockout_stage_name(len(teams))
-        self.add_round(1)
+        if not self.current_round:
+            self.add_round(1)
         self.knockout_stage(stage_name)
         
         # Add matches for each pairing

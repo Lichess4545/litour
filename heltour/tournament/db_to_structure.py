@@ -378,10 +378,20 @@ def knockout_bracket_to_structure(knockout_bracket) -> Tournament:
     # Convert using the standard tournament conversion
     tournament = season_to_tournament_structure(season)
     
-    # Ensure the format is set correctly
-    tournament.format = TournamentFormat.KNOCKOUT
+    # Update tournament with knockout bracket specific fields
+    from heltour.tournament_core.structure import Tournament
     
-    return tournament
+    # Create updated tournament with multi-match fields
+    updated_tournament = Tournament(
+        competitors=tournament.competitors,
+        rounds=tournament.rounds,
+        scoring=tournament.scoring,
+        format=TournamentFormat.KNOCKOUT,
+        matches_per_stage=knockout_bracket.matches_per_stage,
+        current_match_number=_calculate_current_match_number(tournament.rounds, knockout_bracket.matches_per_stage)
+    )
+    
+    return updated_tournament
 
 
 def multi_match_knockout_to_structure(season) -> Tournament:
@@ -507,3 +517,127 @@ def _aggregate_multi_match_rounds(group_rounds, base_tournament, season):
         matches=aggregated_matches,
         knockout_stage=base_round.knockout_stage
     )
+
+
+def _calculate_current_match_number(rounds, matches_per_stage):
+    """Calculate the current match number based on tournament rounds.
+    
+    This function uses the multi-match logic to determine which match number
+    is currently being played based on the number of matches present.
+    
+    Args:
+        rounds: List of Round objects
+        matches_per_stage: Number of matches per stage from KnockoutBracket
+        
+    Returns:
+        Current match number (1, 2, 3, ...)
+    """
+    if not rounds or matches_per_stage <= 1:
+        return 1
+        
+    # Use the multi-match module to calculate current match number
+    from heltour.tournament_core.multi_match import _get_current_match_number_from_matches
+    
+    # Get matches from the most recent round
+    latest_round = max(rounds, key=lambda r: r.number)
+    if not latest_round.matches:
+        return 1
+        
+    # Calculate total pairs from the number of original matches
+    # This is an approximation - in practice we might need more sophisticated logic
+    total_matches = len(latest_round.matches)
+    estimated_total_pairs = total_matches // matches_per_stage if total_matches > 0 else 1
+    
+    if estimated_total_pairs == 0:
+        return 1
+        
+    return _get_current_match_number_from_matches(latest_round.matches, estimated_total_pairs)
+
+
+def update_multi_match_progress_from_tournament(tournament, bracket):
+    """Update TeamMultiMatchProgress records based on tournament_core structure.
+    
+    This function creates or updates progress tracking records based on the
+    current state of a tournament structure.
+    
+    Args:
+        tournament: Tournament structure from tournament_core
+        bracket: KnockoutBracket model instance
+        
+    Returns:
+        Number of progress records created/updated
+    """
+    from heltour.tournament.models import TeamMultiMatchProgress, Team
+    from heltour.tournament_core.multi_match import get_multi_match_stage_status
+    
+    if tournament.matches_per_stage <= 1:
+        return 0  # No multi-match progress to track
+    
+    records_updated = 0
+    
+    for round_obj in tournament.rounds:
+        if not round_obj.matches:
+            continue
+            
+        # Calculate stage status
+        # Use the actual unique pairs, not the division logic
+        total_pairs = len(set(
+            tuple(sorted([match.competitor1_id, match.competitor2_id])) 
+            for match in round_obj.matches
+        ))
+        if total_pairs == 0:
+            continue
+            
+        stage_status = get_multi_match_stage_status(
+            round_obj.matches, total_pairs, tournament.matches_per_stage
+        )
+        
+        # Update progress for each team pair
+        for original_pairing_order in range(1, total_pairs + 1):
+            # Find the original match for this pairing order
+            from heltour.tournament_core.multi_match import _find_match_by_pairing_order_and_match_number
+            
+            original_match = _find_match_by_pairing_order_and_match_number(
+                round_obj.matches, original_pairing_order, 1, total_pairs
+            )
+            
+            if original_match:
+                try:
+                    team_a = Team.objects.get(id=original_match.competitor1_id)
+                    team_b = Team.objects.get(id=original_match.competitor2_id)
+                    
+                    # Update progress for team A
+                    progress_a, created = TeamMultiMatchProgress.objects.update_or_create(
+                        bracket=bracket,
+                        team=team_a,
+                        round_number=round_obj.number,
+                        defaults={
+                            'stage_name': round_obj.knockout_stage or f"round_{round_obj.number}",
+                            'opponent_team': team_b,
+                            'original_pairing_order': original_pairing_order,
+                            'matches_completed': stage_status['completed_current_match'],
+                            'total_matches_required': tournament.matches_per_stage,
+                        }
+                    )
+                    
+                    # Update progress for team B  
+                    progress_b, created = TeamMultiMatchProgress.objects.update_or_create(
+                        bracket=bracket,
+                        team=team_b,
+                        round_number=round_obj.number,
+                        defaults={
+                            'stage_name': round_obj.knockout_stage or f"round_{round_obj.number}",
+                            'opponent_team': team_a,
+                            'original_pairing_order': original_pairing_order,
+                            'matches_completed': stage_status['completed_current_match'],
+                            'total_matches_required': tournament.matches_per_stage,
+                        }
+                    )
+                    
+                    records_updated += 2
+                    
+                except Team.DoesNotExist:
+                    # Skip if teams don't exist in database
+                    continue
+    
+    return records_updated

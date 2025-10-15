@@ -214,6 +214,10 @@ class Tournament:
     rounds: List[Round] = field(default_factory=list)  # List of rounds
     scoring: ScoringSystem = field(default_factory=lambda: STANDARD_SCORING)
     format: TournamentFormat = TournamentFormat.SWISS
+    
+    # Multi-match knockout fields
+    matches_per_stage: int = 1  # Number of matches each pair plays before elimination (e.g., 2 for return matches)
+    current_match_number: int = 1  # Current match number being played in active stages
 
     @property
     def matches(self) -> List[Match]:

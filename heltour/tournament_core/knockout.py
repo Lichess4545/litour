@@ -144,6 +144,7 @@ def create_knockout_tournament(
     games_per_match: int = 1,
     max_rounds: Optional[int] = None,
     scoring: ScoringSystem = STANDARD_SCORING,
+    matches_per_stage: int = 1,
 ) -> Tournament:
     """Create a complete knockout tournament structure (without results).
 
@@ -153,6 +154,7 @@ def create_knockout_tournament(
         games_per_match: Number of games per match
         max_rounds: Maximum rounds to play (None = play to completion)
         scoring: Scoring system to use
+        matches_per_stage: Number of matches each pair plays (1 = single elimination, 2 = return matches)
 
     Returns:
         Tournament structure with empty matches ready for results
@@ -213,6 +215,8 @@ def create_knockout_tournament(
         rounds=rounds,
         scoring=scoring,
         format=TournamentFormat.KNOCKOUT,
+        matches_per_stage=matches_per_stage,
+        current_match_number=1,
     )
 
 
@@ -315,3 +319,53 @@ def get_knockout_winner(tournament: Tournament) -> Optional[int]:
 
     final_match = tournament.rounds[-1].matches[0]
     return final_match.winner_id()
+
+
+def can_generate_next_match_set_for_tournament(tournament: Tournament, round_number: int) -> bool:
+    """Check if next match set can be generated for a tournament round.
+    
+    This is a convenience wrapper around the multi_match module function.
+    """
+    # Import here to avoid circular imports
+    from heltour.tournament_core.multi_match import can_generate_next_match_set
+    return can_generate_next_match_set(tournament, round_number)
+
+
+def generate_next_match_set_for_tournament(tournament: Tournament, round_number: int) -> Tournament:
+    """Generate the next match set for a tournament round.
+    
+    This is a convenience wrapper around the multi_match module function.
+    """
+    # Import here to avoid circular imports
+    from heltour.tournament_core.multi_match import generate_next_match_set
+    return generate_next_match_set(tournament, round_number)
+
+
+def calculate_multi_match_knockout_advancement(tournament: Tournament, round_number: int) -> List[int]:
+    """Calculate advancement from a multi-match knockout round.
+    
+    Args:
+        tournament: Tournament structure
+        round_number: Round number to calculate advancement for (1-indexed)
+        
+    Returns:
+        List of advancing competitor IDs
+        
+    Raises:
+        ValueError: If round is not complete or winners can't be determined
+    """
+    if round_number < 1 or round_number > len(tournament.rounds):
+        raise ValueError(f"Invalid round number: {round_number}")
+        
+    round_obj = tournament.rounds[round_number - 1]
+    
+    if tournament.matches_per_stage == 1:
+        # Single match per stage - use existing logic
+        return calculate_knockout_advancement(round_obj.matches, tournament.scoring)
+    else:
+        # Multi-match per stage - use multi-match logic
+        from heltour.tournament_core.multi_match import calculate_multi_match_winners, _get_total_pairs_in_round
+        total_pairs = _get_total_pairs_in_round(round_obj)
+        return calculate_multi_match_winners(
+            round_obj.matches, total_pairs, tournament.matches_per_stage, tournament.scoring
+        )

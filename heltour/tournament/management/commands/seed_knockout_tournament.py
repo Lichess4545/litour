@@ -45,6 +45,12 @@ class Command(BaseCommand):
             help="Number of games per knockout match (default: 1)",
         )
         parser.add_argument(
+            "--matches-per-stage",
+            type=int,
+            default=1,
+            help="Number of matches per stage (1=single elimination, 2=return matches, 3=best of 3, etc.) (default: 1)",
+        )
+        parser.add_argument(
             "--boards",
             type=int,
             default=4,
@@ -72,6 +78,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Clear existing knockout league data before creating new tournament",
         )
+        parser.add_argument(
+            "--rounds",
+            type=int,
+            help="Number of rounds to play (default: calculate from teams for full elimination)",
+        )
 
     def handle(self, *args, **options):
         fake = Faker()
@@ -80,11 +91,13 @@ class Command(BaseCommand):
         tournament_type = options["tournament_type"]
         seeding_style = options["seeding_style"]
         games_per_match = options["games_per_match"]
+        matches_per_stage = options["matches_per_stage"]
         boards = options["boards"]
         league_name = options["league_name"]
         season_name = options["season_name"]
         generate_bracket = options["generate_bracket"]
         clear_existing = options["clear_existing"]
+        custom_rounds = options.get("rounds")
 
         # Validate teams count is power of 2
         if not self._is_power_of_2(teams_count):
@@ -96,7 +109,13 @@ class Command(BaseCommand):
             self._clear_knockout_data(league_name)
 
         # Calculate number of rounds
-        rounds = int(math.log2(teams_count))
+        if custom_rounds:
+            rounds = custom_rounds
+            max_rounds = int(math.log2(teams_count))
+            if rounds > max_rounds:
+                raise CommandError(f"Cannot have {rounds} rounds with {teams_count} teams (max: {max_rounds})")
+        else:
+            rounds = int(math.log2(teams_count))
 
         self.stdout.write(
             self.style.WARNING(f"Creating {league_name} - {season_name}...")
@@ -104,11 +123,20 @@ class Command(BaseCommand):
         self.stdout.write(
             f"  - {teams_count} {tournament_type}{'s' if tournament_type == 'team' else 's'}"
         )
-        self.stdout.write(f"  - {rounds} rounds ({self._get_stage_names(teams_count)})")
+        if custom_rounds:
+            remaining_teams = teams_count // (2 ** rounds)
+            self.stdout.write(f"  - {rounds} rounds (stops at {remaining_teams} teams)")
+        else:
+            self.stdout.write(f"  - {rounds} rounds ({self._get_stage_names(teams_count)})")
         self.stdout.write(f"  - {seeding_style.title()} seeding")
         self.stdout.write(
             f"  - {games_per_match} game{'s' if games_per_match > 1 else ''} per match"
         )
+        if matches_per_stage > 1:
+            match_type = "Return matches" if matches_per_stage == 2 else f"Best of {matches_per_stage}"
+            self.stdout.write(f"  - {match_type} ({matches_per_stage} matches per stage)")
+        else:
+            self.stdout.write("  - Single elimination")
         if tournament_type == "team":
             self.stdout.write(f"  - {boards} boards per team")
 
@@ -119,13 +147,19 @@ class Command(BaseCommand):
 
                 # Create league and season with knockout configuration
                 competitor_type = "team" if tournament_type == "team" else "lone"
+                
+                # Choose pairing type based on matches per stage
+                pairing_type = "knockout-multi" if matches_per_stage > 1 else "knockout-single"
+
+                # Generate league tag from league name
+                league_tag = league_name.upper().replace(" ", "").replace("-", "")[:20]
 
                 builder.league(
                     league_name,
-                    "KNOCKOUT",
+                    league_tag,
                     competitor_type,
                     # Set knockout-specific settings
-                    pairing_type="knockout-single",
+                    pairing_type=pairing_type,
                     knockout_seeding_style=seeding_style,
                     knockout_games_per_match=games_per_match,
                     # Set tiebreaks for team tournaments
@@ -142,7 +176,9 @@ class Command(BaseCommand):
                 )
 
                 builder.knockout_format(
-                    seeding_style=seeding_style, games_per_match=games_per_match
+                    seeding_style=seeding_style, 
+                    games_per_match=games_per_match,
+                    matches_per_stage=matches_per_stage
                 )
 
                 season_kwargs = {
@@ -158,7 +194,7 @@ class Command(BaseCommand):
                 if tournament_type == "team":
                     season_kwargs["boards"] = boards
 
-                builder.season("KNOCKOUT", season_name, **season_kwargs)
+                builder.season(league_tag, season_name, **season_kwargs)
 
                 # Generate teams/players
                 if tournament_type == "team":

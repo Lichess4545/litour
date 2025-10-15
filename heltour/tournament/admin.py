@@ -98,6 +98,7 @@ from heltour.tournament.models import (
     Team,
     TeamBye,
     TeamMember,
+    TeamMultiMatchProgress,
     TeamPairing,
     TeamPlayerPairing,
     TeamScore,
@@ -4158,17 +4159,17 @@ class KnockoutSeedingInline(admin.TabularInline):
 
 @admin.register(KnockoutBracket)
 class KnockoutBracketAdmin(admin.ModelAdmin):
-    list_display = ['season', 'bracket_size', 'seeding_style', 'games_per_match', 'is_completed']
-    list_filter = ['seeding_style', 'games_per_match', 'is_completed']
+    list_display = ['season', 'bracket_size', 'seeding_style', 'games_per_match', 'matches_per_stage', 'tournament_type', 'is_completed']
+    list_filter = ['seeding_style', 'games_per_match', 'matches_per_stage', 'is_completed']
     search_fields = ['season__name', 'season__league__name']
     inlines = [KnockoutSeedingInline]
-    actions = ['generate_knockout_bracket_action', 'regenerate_seedings_action']
+    actions = ['generate_knockout_bracket_action', 'regenerate_seedings_action', 'generate_next_match_set_action']
     
     fieldsets = (
         (
             "Bracket Configuration",
             {
-                "fields": ("season", "bracket_size", "seeding_style", "games_per_match")
+                "fields": ("season", "bracket_size", "seeding_style", "games_per_match", "matches_per_stage")
             },
         ),
         (
@@ -4281,6 +4282,154 @@ class KnockoutBracketAdmin(admin.ModelAdmin):
             )
     
     regenerate_seedings_action.short_description = "Regenerate automatic seedings"
+    
+    def generate_next_match_set_action(self, request, queryset):
+        """Generate next set of matches for multi-match knockout tournaments."""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one bracket to generate next match set for.",
+                messages.ERROR
+            )
+            return
+        
+        bracket = queryset.first()
+        
+        # Check if this is a multi-match tournament
+        if bracket.matches_per_stage <= 1:
+            self.message_user(
+                request,
+                f"Bracket for {bracket.season} is not a multi-match tournament (matches_per_stage = {bracket.matches_per_stage}).",
+                messages.ERROR
+            )
+            return
+        
+        try:
+            from heltour.tournament.db_to_structure import knockout_bracket_to_structure
+            from heltour.tournament_core.multi_match import can_generate_next_match_set, generate_next_match_set
+            
+            # Convert bracket to tournament structure
+            tournament = knockout_bracket_to_structure(bracket)
+            
+            # Find the most recent round
+            if not tournament.rounds:
+                self.message_user(
+                    request,
+                    f"No rounds found for {bracket.season}. Generate initial bracket first.",
+                    messages.ERROR
+                )
+                return
+            
+            latest_round_number = max(r.number for r in tournament.rounds)
+            
+            # Check if next match set can be generated
+            if not can_generate_next_match_set(tournament, latest_round_number):
+                self.message_user(
+                    request,
+                    f"Cannot generate next match set for {bracket.season}. "
+                    "Either all teams haven't completed their current matches, "
+                    "or all matches for this stage are already complete.",
+                    messages.WARNING
+                )
+                return
+            
+            # Generate next match set
+            updated_tournament = generate_next_match_set(tournament, latest_round_number)
+            
+            # Convert updated tournament back to database models
+            self._create_next_match_pairings(updated_tournament, bracket, latest_round_number)
+            
+            # Update progress tracking
+            from heltour.tournament.db_to_structure import update_multi_match_progress_from_tournament
+            update_multi_match_progress_from_tournament(updated_tournament, bracket)
+            
+            self.message_user(
+                request,
+                f"Successfully generated next match set for {bracket.season}. "
+                f"New return matches created with flipped colors.",
+                messages.SUCCESS
+            )
+            
+        except Exception as e:
+            self.message_user(
+                request,
+                f"Error generating next match set: {str(e)}",
+                messages.ERROR
+            )
+    
+    generate_next_match_set_action.short_description = "Generate next match set (multi-match tournaments)"
+    
+    def _create_next_match_pairings(self, updated_tournament, bracket, round_number):
+        """Create TeamPairing objects for the next match set."""
+        import reversion
+        from heltour.tournament.models import Team, Round as RoundModel, TeamPairing
+        from heltour.tournament_core.multi_match import get_pairing_order_for_match
+        
+        # Get the database round for this specific tournament
+        try:
+            round_obj = RoundModel.objects.get(season=bracket.season, number=round_number)
+        except RoundModel.MultipleObjectsReturned:
+            # If multiple rounds exist, try to find the one with existing pairings
+            all_rounds = RoundModel.objects.filter(season=bracket.season, number=round_number)
+            
+            # Try to find the round that has pairings
+            round_with_pairings = None
+            for round_candidate in all_rounds:
+                pairing_count = TeamPairing.objects.filter(round=round_candidate).count()
+                if pairing_count > 0:
+                    round_with_pairings = round_candidate
+                    break
+            
+            round_obj = round_with_pairings or all_rounds.first()
+        except RoundModel.DoesNotExist:
+            raise ValueError(f"Round {round_number} does not exist for season {bracket.season}")
+        
+        # Find the new matches (return matches) in the updated tournament
+        tournament_round = updated_tournament.rounds[round_number - 1]
+        
+        # Calculate how many matches existed before (original matches)
+        total_pairs = len(set(
+            tuple(sorted([match.competitor1_id, match.competitor2_id])) 
+            for match in tournament_round.matches
+        ))
+        
+        existing_pairings_count = TeamPairing.objects.filter(round=round_obj).count()
+        
+        # Create pairings for the new matches only
+        new_matches = tournament_round.matches[existing_pairings_count:]
+        
+        with reversion.create_revision():
+            reversion.set_comment(f"Generated next match set for multi-match knockout (match {updated_tournament.current_match_number})")
+            
+            for i, match in enumerate(new_matches):
+                try:
+                    white_team = Team.objects.get(id=match.competitor1_id)
+                    black_team = Team.objects.get(id=match.competitor2_id)
+                    
+                    # Calculate the correct pairing order for this return match
+                    pairing_order = existing_pairings_count + i + 1
+                    
+                    TeamPairing.objects.create(
+                        white_team=white_team,
+                        black_team=black_team,
+                        round=round_obj,
+                        pairing_order=pairing_order
+                    )
+                    
+                except Team.DoesNotExist:
+                    # Skip if teams don't exist
+                    continue
+    
+    def tournament_type(self, obj):
+        """Display the tournament type based on matches per stage."""
+        if obj.matches_per_stage == 1:
+            return "Single Elimination"
+        elif obj.matches_per_stage == 2:
+            return "Return Matches"
+        else:
+            return f"{obj.matches_per_stage}-Match Stages"
+    
+    tournament_type.short_description = "Tournament Type"
 
 
 @admin.register(KnockoutSeeding)  
@@ -4334,3 +4483,61 @@ class KnockoutAdvancementAdmin(admin.ModelAdmin):
             'bracket', 'bracket__season', 'bracket__season__league', 
             'team', 'source_pairing'
         )
+
+
+@admin.register(TeamMultiMatchProgress)
+class TeamMultiMatchProgressAdmin(admin.ModelAdmin):
+    list_display = ['team', 'opponent_team', 'bracket', 'round_number', 'stage_name', 
+                   'matches_completed', 'total_matches_required', 'progress_percentage', 'last_updated']
+    list_filter = ['bracket__season__league', 'round_number', 'stage_name', 
+                  'matches_completed', 'total_matches_required']
+    search_fields = ['team__name', 'opponent_team__name', 'bracket__season__name']
+    ordering = ('bracket', 'round_number', 'original_pairing_order')
+    readonly_fields = ('last_updated', 'progress_percentage', 'current_match_status')
+    
+    fieldsets = (
+        (
+            "Match Progress Details",
+            {
+                "fields": ("bracket", "team", "opponent_team", "round_number", "stage_name")
+            },
+        ),
+        (
+            "Progress Tracking",
+            {
+                "fields": ("original_pairing_order", "matches_completed", "total_matches_required", 
+                          "progress_percentage", "current_match_status")
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("last_updated",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'bracket', 'bracket__season', 'bracket__season__league', 
+            'team', 'opponent_team'
+        )
+    
+    def progress_percentage(self, obj):
+        """Display progress as percentage."""
+        if obj.total_matches_required == 0:
+            return "0%"
+        percentage = (obj.matches_completed / obj.total_matches_required) * 100
+        return f"{percentage:.0f}%"
+    
+    progress_percentage.short_description = "Progress"
+    
+    def current_match_status(self, obj):
+        """Display current match status."""
+        if obj.is_stage_complete_for_pair:
+            return "✅ Stage Complete"
+        else:
+            return f"🔄 Match {obj.current_match_number} of {obj.total_matches_required}"
+    
+    current_match_status.short_description = "Status"

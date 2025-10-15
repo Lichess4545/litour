@@ -962,9 +962,9 @@ def _generate_next_knockout_round(round_, bracket):
     if not previous_round:
         raise PairingGenerationException("No previous round found for advancement")
 
-    # Get winners from previous round
+    # Get winners from previous round in bracket order (pairing_order)
     winners = []
-    for pairing in TeamPairing.objects.filter(round=previous_round):
+    for pairing in TeamPairing.objects.filter(round=previous_round).order_by('pairing_order'):
         if pairing.white_points is None or pairing.black_points is None:
             raise PairingGenerationException(
                 f"Round {previous_round.number} results incomplete"
@@ -992,7 +992,7 @@ def _generate_next_knockout_round(round_, bracket):
     current_teams_remaining = bracket.bracket_size // (2 ** (round_.number - 1))
     target_stage = get_knockout_stage_name(current_teams_remaining)
 
-    for i, pairing in enumerate(TeamPairing.objects.filter(round=previous_round)):
+    for i, pairing in enumerate(TeamPairing.objects.filter(round=previous_round).order_by('pairing_order')):
         winner = winners[i]
         KnockoutAdvancement.objects.get_or_create(
             bracket=bracket,
@@ -1036,9 +1036,9 @@ def _generate_next_knockout_round_lone(round_, bracket):
     if not previous_round:
         raise PairingGenerationException("No previous round found for advancement")
 
-    # Get winners from previous round
+    # Get winners from previous round in bracket order (pairing_order)
     winners = []
-    for pairing in LonePlayerPairing.objects.filter(round=previous_round):
+    for pairing in LonePlayerPairing.objects.filter(round=previous_round).order_by('pairing_order'):
         if not pairing.result:
             raise PairingGenerationException(
                 f"Round {previous_round.number} results incomplete"
@@ -1141,12 +1141,16 @@ def generate_knockout_bracket(season):
     bracket_size = _calculate_bracket_size(season)
 
     # Create or get existing bracket
+    # Set matches_per_stage based on pairing type
+    matches_per_stage = 2 if season.league.pairing_type == "knockout-multi" else 1
+    
     bracket, created = KnockoutBracket.objects.get_or_create(
         season=season,
         defaults={
             "bracket_size": bracket_size,
             "seeding_style": season.league.knockout_seeding_style,
             "games_per_match": season.league.knockout_games_per_match,
+            "matches_per_stage": matches_per_stage,
         },
     )
 

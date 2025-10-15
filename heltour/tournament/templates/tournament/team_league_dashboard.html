@@ -75,65 +75,118 @@
                                 {% endif %}
                             </span>
                         </div>
-                        <div class="dashboard-season-action">
-                            <a href="{% url 'admin:tournament_registration_changelist' %}?season__id__exact={{ reg_season.pk }}&status__exact=pending"
-                               class="btn btn-default">Review Registrations</a>
-                            <span class="dashboard-note">Pending: {{ pending_reg_count }}</span>
-                        </div>
-                        <div class="dashboard-season-action">
-                            <a href="{% url 'admin:tournament_modrequest_changelist' %}?season__id__exact={{ reg_season.pk }}&status__exact=pending"
-                               class="btn btn-default">Review Mod Requests</a>
-                            <span class="dashboard-note">Pending: {{ pending_modreq_count }}</span>
-                        </div>
-                        <div class="dashboard-season-action">
-                            <a href="{% url 'admin:manage_players' season.pk %}"
-                               class="btn btn-default">Edit
-                            Rosters</a>
-                            <span class="dashboard-note">Unassigned players: {{ unassigned_player_count }}</span>
-                        </div>
-                        {% if alternate_search_count != None %}
+                        {% if not is_knockout_tournament %}
                             <div class="dashboard-season-action">
-                                <a href="{% leagueurl 'alternates' league.tag season.tag %}"
-                                   class="btn btn-default">Alternate
-                                Searches</a>
-                                <span class="dashboard-note">Open spots: {{ alternate_search_count }}</span>
+                                <a href="{% url 'admin:tournament_registration_changelist' %}?season__id__exact={{ reg_season.pk }}&status__exact=pending"
+                                   class="btn btn-default">Review Registrations</a>
+                                <span class="dashboard-note">Pending: {{ pending_reg_count }}</span>
                             </div>
+                            <div class="dashboard-season-action">
+                                <a href="{% url 'admin:tournament_modrequest_changelist' %}?season__id__exact={{ reg_season.pk }}&status__exact=pending"
+                                   class="btn btn-default">Review Mod Requests</a>
+                                <span class="dashboard-note">Pending: {{ pending_modreq_count }}</span>
+                            </div>
+                            <div class="dashboard-season-action">
+                                <a href="{% url 'admin:manage_players' season.pk %}"
+                                   class="btn btn-default">Edit
+                                Rosters</a>
+                                <span class="dashboard-note">Unassigned players: {{ unassigned_player_count }}</span>
+                            </div>
+                            {% if alternate_search_count != None %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% leagueurl 'alternates' league.tag season.tag %}"
+                                       class="btn btn-default">Alternate
+                                    Searches</a>
+                                    <span class="dashboard-note">Open spots: {{ alternate_search_count }}</span>
+                                </div>
+                            {% endif %}
                         {% endif %}
                         <div class="dashboard-season-action">
                             <a href="{% url 'admin:team_spam' season.pk %}" class="btn btn-default">Message All
                             Teams</a>
                         </div>
-                        {% if next_round %}
-                            <div class="dashboard-season-action">
-                                <a href="{% url 'admin:pre_round_report' season.pk %}"
-                                   class="btn btn-default">Pre-Round
-                                Report</a>
-                            </div>
-                            <div class="dashboard-season-action">
-                                <a href="{% url 'admin:round_transition' season.pk %}"
-                                   class="btn btn-default">Start
-                                Round {{ next_round.number }}</a>
-                                <span class="dashboard-note">Scheduled time: {{ next_round.start_date | date_el:"m/d H:i" }}</span>
-                            </div>
-                        {% elif last_round %}
-                            <div class="dashboard-season-action">
-                                <a href="{% url 'admin:round_transition' season.pk %}"
-                                   class="btn btn-default">Close
-                                Round {{ last_round.number }}</a>
-                                <span class="dashboard-note">Scheduled time (UTC): {{ last_round.end_date | date_el:"m/d H:i" }}</span>
-                            </div>
-                        {% elif not season.is_completed %}
-                            <div class="dashboard-season-action">
-                                <a href="{% url 'admin:round_transition' season.pk %}"
-                                   class="btn btn-default">Close
-                                Season</a>
-                            </div>
+                        {% if is_knockout_tournament %}
+                            {% if knockout_advancement_info %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% leagueurl 'knockout_bracket' league.tag season.tag %}"
+                                       class="btn btn-primary">View Knockout Bracket</a>
+                                </div>
+                                {% if knockout_advancement_info.can_advance %}
+                                    <div class="dashboard-season-action">
+                                        <form method="post" style="display: inline;">
+                                            {% csrf_token %}
+                                            {% if knockout_advancement_info.is_final_round %}
+                                                <button type="submit" name="advance_tournament" value="1" 
+                                                        class="btn btn-warning"
+                                                        onclick="return confirm('Are you sure you want to finalize the tournament standings? This will complete the tournament.')">
+                                                    <i class="fa fa-trophy"></i> Finalize Tournament Standings
+                                                </button>
+                                            {% else %}
+                                                <button type="submit" name="advance_tournament" value="1" 
+                                                        class="btn btn-success"
+                                                        onclick="return confirm('Are you sure you want to advance the tournament to the next round?')">
+                                                    <i class="fa fa-forward"></i> Advance to Next Round
+                                                </button>
+                                            {% endif %}
+                                        </form>
+                                        {% if knockout_advancement_info.is_final_round %}
+                                            <span class="dashboard-note">Final Round {{ knockout_advancement_info.round_to_advance.number }} complete - Ready to finalize</span>
+                                        {% else %}
+                                            <span class="dashboard-note">Round {{ knockout_advancement_info.round_to_advance.number }} complete</span>
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <div class="dashboard-season-action">
+                                        <div class="alert alert-warning" style="margin: 10px 0;">
+                                            <strong>Cannot Advance:</strong> {{ knockout_advancement_info.reason }}
+                                            {% if knockout_advancement_info.tied_matches %}
+                                                <br><strong>Tied matches requiring resolution:</strong>
+                                                <ul style="margin-top: 5px;">
+                                                    {% for match in knockout_advancement_info.tied_matches %}
+                                                        <li>
+                                                            {{ match.competitor1 }} vs {{ match.competitor2 }} ({{ match.score }}-{{ match.score }})
+                                                            <a href="{% url 'admin:tournament_teampairing_change' match.id %}" class="btn btn-warning btn-xs">Resolve</a>
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            {% endif %}
                         {% else %}
-                            <div class="dashboard-season-action">
-                                <a href="{% url 'admin:review_nominated_games' season.pk %}"
-                                   class="btn btn-default">Review
-                                Nominations</a>
-                            </div>
+                            {% if next_round %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% url 'admin:pre_round_report' season.pk %}"
+                                       class="btn btn-default">Pre-Round
+                                    Report</a>
+                                </div>
+                                <div class="dashboard-season-action">
+                                    <a href="{% url 'admin:round_transition' season.pk %}"
+                                       class="btn btn-default">Start
+                                    Round {{ next_round.number }}</a>
+                                    <span class="dashboard-note">Scheduled time: {{ next_round.start_date | date_el:"m/d H:i" }}</span>
+                                </div>
+                            {% elif last_round %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% url 'admin:round_transition' season.pk %}"
+                                       class="btn btn-default">Close
+                                    Round {{ last_round.number }}</a>
+                                    <span class="dashboard-note">Scheduled time (UTC): {{ last_round.end_date | date_el:"m/d H:i" }}</span>
+                                </div>
+                            {% elif not season.is_completed %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% url 'admin:round_transition' season.pk %}"
+                                       class="btn btn-default">Close
+                                    Season</a>
+                                </div>
+                            {% else %}
+                                <div class="dashboard-season-action">
+                                    <a href="{% url 'admin:review_nominated_games' season.pk %}"
+                                       class="btn btn-default">Review
+                                    Nominations</a>
+                                </div>
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>

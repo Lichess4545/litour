@@ -118,6 +118,9 @@ class Command(BaseCommand):
 
                 # For knockout tournaments, try to advance to next round
                 if is_knockout:
+                    # Force refresh of all team pairing data before advancement check
+                    from django.db import transaction
+                    transaction.commit()  # Ensure all changes are committed
                     self._try_advance_knockout(target_round, season, dry_run)
             else:
                 self.stdout.write(
@@ -241,6 +244,8 @@ class Command(BaseCommand):
                         # Randomly assign tiebreak winner
                         tiebreak_winner = random.choice([1.0, -1.0])
                         team_pairing.manual_tiebreak_value = tiebreak_winner
+                        # Refresh points immediately after setting tiebreak
+                        team_pairing.refresh_points()
                         team_pairing.save()
                         winner_name = "White" if tiebreak_winner > 0 else "Black"
                         self.stdout.write(
@@ -382,7 +387,24 @@ class Command(BaseCommand):
 
     def _try_advance_knockout(self, completed_round, season, dry_run):
         """Try to advance knockout tournament to next round."""
-        from heltour.tournament.models import Round
+        from heltour.tournament.models import Round, KnockoutBracket
+
+        # Check if this is a multi-match knockout tournament
+        try:
+            bracket = KnockoutBracket.objects.get(season=season)
+            is_multi_match = bracket.matches_per_stage > 1
+        except KnockoutBracket.DoesNotExist:
+            is_multi_match = False
+
+        if is_multi_match:
+            self._try_advance_multi_match_knockout(completed_round, season, bracket, dry_run)
+        else:
+            self._try_advance_single_match_knockout(completed_round, season, dry_run)
+
+    def _try_advance_single_match_knockout(self, completed_round, season, dry_run):
+        """Try to advance single-match knockout tournament to next round."""
+        from heltour.tournament.models import Round, TeamPairing
+        from django.db.models import F
 
         # Check if round is complete and can advance
         if not completed_round.is_completed:
@@ -391,6 +413,22 @@ class Command(BaseCommand):
             if not dry_run:
                 completed_round.save()
             self.stdout.write(f"✓ Round {completed_round.number} marked as completed")
+
+        # Debug: Check for tied matches before advancement
+        if season.league.competitor_type == 'team':
+            tied_pairings = TeamPairing.objects.filter(
+                round=completed_round,
+                white_points__isnull=False,
+                black_points__isnull=False,
+                manual_tiebreak_value__isnull=True
+            ).filter(white_points=F('black_points'))
+            
+            if tied_pairings.exists():
+                self.stdout.write(f"DEBUG: Found {tied_pairings.count()} tied pairings:")
+                for pairing in tied_pairings:
+                    self.stdout.write(f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value})")
+            else:
+                self.stdout.write("DEBUG: No tied pairings found - should be able to advance")
 
         # Check if there are more rounds to play
         total_rounds = Round.objects.filter(season=season).count()
@@ -451,3 +489,62 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(f"Failed to advance tournament: {str(e)}")
             )
+
+    def _try_advance_multi_match_knockout(self, completed_round, season, bracket, dry_run):
+        """Try to advance multi-match knockout tournament."""
+        from heltour.tournament.db_to_structure import knockout_bracket_to_structure
+        from heltour.tournament_core.multi_match import can_generate_next_match_set, generate_next_match_set
+        
+        # Convert to tournament structure to check status
+        tournament = knockout_bracket_to_structure(bracket)
+        
+        # Check if we can generate next match set for current round
+        if can_generate_next_match_set(tournament, completed_round.number):
+            if not dry_run:
+                # Use admin logic to generate next match set
+                from heltour.tournament.admin import KnockoutBracketAdmin
+                from django.contrib.admin.sites import AdminSite
+                from django.http import HttpRequest
+                
+                # Mock admin request
+                class MockUser:
+                    def __init__(self):
+                        self.is_authenticated = True
+                        
+                class MockRequest:
+                    def __init__(self):
+                        self.user = MockUser()
+                        self._messages = []
+                        
+                    def _get_messages(self):
+                        return self._messages
+                
+                # Create admin instance and generate next match set
+                admin = KnockoutBracketAdmin(bracket.__class__, AdminSite())
+                request = MockRequest()
+                queryset = bracket.__class__.objects.filter(id=bracket.id)
+                
+                try:
+                    admin.generate_next_match_set_action(request, queryset)
+                    self.stdout.write(self.style.SUCCESS("✓ Generated next match set for current stage"))
+                    
+                    # Count new pairings in current round
+                    if season.league.competitor_type == "team":
+                        from heltour.tournament.models import TeamPairing
+                        new_pairings = TeamPairing.objects.filter(round=completed_round).count()
+                    else:
+                        new_pairings = LonePlayerPairing.objects.filter(round=completed_round).count()
+                    
+                    current_match = tournament.current_match_number + 1 if tournament.current_match_number < bracket.matches_per_stage else bracket.matches_per_stage
+                    self.stdout.write(f"  - Now playing match {current_match} of {bracket.matches_per_stage} for this stage")
+                    self.stdout.write(f"  - {new_pairings} total pairings in round {completed_round.number}")
+                    self.stdout.write(f"  - Use 'generate_random_results {season.id} --round-number {completed_round.number}' to continue")
+                    
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f"Failed to generate next match set: {str(e)}"))
+            else:
+                self.stdout.write("DRY RUN: Would generate next match set for current stage")
+        else:
+            # Try to advance to next round using single-match logic
+            self.stdout.write("Stage complete! Attempting to advance to next round...")
+            self._try_advance_single_match_knockout(completed_round, season, dry_run)

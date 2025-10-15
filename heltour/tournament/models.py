@@ -4138,6 +4138,10 @@ class KnockoutBracket(_BaseModel):
         default=1,
         help_text="Number of games each team pair plays before elimination"
     )
+    matches_per_stage = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of matches each team pair plays per stage (1=single elimination, 2=return matches, etc.)"
+    )
     is_completed = models.BooleanField(default=False)
     
     def clean(self):
@@ -4187,3 +4191,52 @@ class KnockoutAdvancement(_BaseModel):
 
     def __str__(self):
         return f"{self.team.name}: {self.from_stage} → {self.to_stage}"
+
+
+# -------------------------------------------------------------------------------
+class TeamMultiMatchProgress(_BaseModel):
+    """Track progress of teams through multi-match knockout stages"""
+    bracket = models.ForeignKey(KnockoutBracket, on_delete=models.CASCADE)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE)
+    round_number = models.PositiveIntegerField(help_text="Round number in knockout bracket")
+    stage_name = models.CharField(
+        max_length=32,
+        help_text="Stage name (e.g., 'semifinals', 'finals')"
+    )
+    opponent_team = models.ForeignKey(
+        Team, 
+        on_delete=models.CASCADE, 
+        related_name='multi_match_opponent_progress',
+        help_text="The team this team is paired against"
+    )
+    original_pairing_order = models.PositiveIntegerField(
+        help_text="Original pairing order within the stage (1, 2, 3, 4, ...)"
+    )
+    matches_completed = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of matches completed by this team pair"
+    )
+    total_matches_required = models.PositiveIntegerField(
+        help_text="Total matches this team pair must complete before elimination"
+    )
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = [("bracket", "team", "round_number")]
+        indexes = [
+            models.Index(fields=['bracket', 'round_number', 'original_pairing_order']),
+            models.Index(fields=['bracket', 'round_number', 'matches_completed']),
+        ]
+    
+    @property
+    def is_stage_complete_for_pair(self):
+        """Check if this team pair has completed all required matches"""
+        return self.matches_completed >= self.total_matches_required
+    
+    @property
+    def current_match_number(self):
+        """Get the current match number this team pair is on"""
+        return min(self.matches_completed + 1, self.total_matches_required)
+    
+    def __str__(self):
+        return f"{self.team.name} vs {self.opponent_team.name} ({self.stage_name}): {self.matches_completed}/{self.total_matches_required}"
