@@ -279,6 +279,7 @@ def bulk_start_clocks(
 def add_clock_time(
     *,
     gameid: str,
+    token: str,
     seconds: int = 60,
     priority: int = 0,
     max_retries: int = 2,
@@ -287,7 +288,7 @@ def add_clock_time(
     url = (
         f"{settings.API_WORKER_HOST}/lichessapi/api/round/{gameid}/add-time/{seconds}?"
         f"priority={priority}&max_retries={max_retries}&content_type="
-        "application/x-www-form-urlencoded"
+        f"application/x-www-form-urlencoded&token={token}"
     )
     result = _apicall_with_error_parsing(url=url, timeout=timeout, post=True)
     return json.loads(result)

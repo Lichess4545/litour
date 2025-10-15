@@ -981,7 +981,14 @@ def do_start_unscheduled_games(sender, round_id: int, **kwargs) -> None:
 
 @app.task()
 def _add_clock_time(playerpairing_ids: list[int]) -> None:
-
+    for pairing in (
+        PlayerPairing.objects.filter(id__in=playerpairing_ids).nocache()
+    ):
+        lichessapi.add_clock_time(
+            gameid=pairing.game_id(),
+            token=pairing.get_white_access_token(),
+            seconds=60
+        )
 
 @receiver(signals.do_add_clock_time, dispatch_uid="heltour.tournament.tasks")
 def do_add_clock_time(sender, playerpairing_ids: list[int], **kwargs) -> None:
