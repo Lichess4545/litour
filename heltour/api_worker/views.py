@@ -49,11 +49,12 @@ def _do_lichess_api_call(
     max_retries,
     format,
     content_type=None,
-    retry_count=0,
     token = None,
+    retry_count=0,
 ) -> None:
     url = settings.LICHESS_DOMAIN + path
 
+    logger.info("token: {token}")
     if token is None:
         token = settings.LICHESS_API_TOKEN
 
@@ -75,6 +76,8 @@ def _do_lichess_api_call(
         else:
             with disable_ipv6():
                 r = requests.get(url, params, headers=headers)
+
+        logger.info(f"headers: {headers}")
 
         if r.status_code >= 400 and r.status_code < 500 and r.status_code != 429:
             # Unrecoverable error
