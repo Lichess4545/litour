@@ -29,7 +29,7 @@
                                                 {% if not registration_season.is_started %}
                                                     Starts on {{ registration_season.start_date|date:"M d, Y" }}
                                                     at {{ registration_season.start_date|date:"H:i" }} UTC.
-                                                {% elif registration_season.end_date %}
+                                                {% elif registration_season.is_completed %}
                                                     Ends on {{ registration_season.end_date|date:"M d, Y" }}
                                                     at {{ registration_season.end_date|date:"H:i" }} UTC.
                                                 {% else %}
@@ -41,7 +41,7 @@
                                             {% with l.most_recent_season as recent_season %}
                                                 {% if recent_season %}
                                                     <p>
-                                                        {% if recent_season.end_date %}
+                                                        {% if recent_season.is_completed %}
                                                             Most recent tournament ended on {{ recent_season.end_date|date:"M d, Y" }}
                                                             at {{ recent_season.end_date|date:"H:i" }} UTC.
                                                         {% elif recent_season.is_started %}
