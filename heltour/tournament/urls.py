@@ -72,6 +72,11 @@ season_urlpatterns = [
         staff_member_required(views.LeagueDashboardView.as_view()),
         name="league_dashboard",
     ),
+    path(
+        "dashboard/team_composition/",
+        staff_member_required(views.TeamCompositionView.as_view()),
+        name="team_composition",
+    ),
     path("player/", views.UserDashboardView.as_view(), name="user_dashboard"),
     path(
         "player/<str:username>/",

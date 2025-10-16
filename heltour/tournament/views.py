@@ -2602,6 +2602,30 @@ class DocumentView(LeagueView):
         return self.render('tournament/document.html', context)
 
 
+class TeamCompositionView(LeagueView):
+    def view(self):
+        # Check same permissions as dashboard
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+        
+        # Only for team leagues
+        if not self.league.is_team_league():
+            raise Http404()
+        
+        # Get all teams for the current season with their members
+        teams = Team.objects.filter(
+            season=self.season, 
+            is_active=True
+        ).prefetch_related(
+            'teammember_set__player'
+        ).order_by('name')
+        
+        context = {
+            'teams': teams,
+        }
+        return self.render('tournament/team_composition.html', context)
+
+
 class ContactView(LoginRequiredMixin, LeagueView):
     def view(self, post=False):
         leagues = [self.league] + list(
