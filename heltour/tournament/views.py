@@ -2626,6 +2626,101 @@ class TeamCompositionView(LeagueView):
         return self.render('tournament/team_composition.html', context)
 
 
+class GameIdsView(LeagueView):
+    def view(self):
+        # Check same permissions as dashboard
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+        
+        # Get all rounds for the current season
+        rounds = Round.objects.filter(season=self.season).order_by('number')
+        
+        # Organize game IDs by round
+        rounds_data = []
+        
+        for round_obj in rounds:
+            round_data = {
+                'round_number': round_obj.number,
+                'matches': {}
+            }
+            
+            if self.league.is_team_league():
+                # Get the number of matches from the knockout bracket if it exists
+                max_matches = 1
+                try:
+                    from heltour.tournament.models import KnockoutBracket
+                    knockout_bracket = KnockoutBracket.objects.get(season=self.season)
+                    max_matches = knockout_bracket.matches_per_stage
+                except KnockoutBracket.DoesNotExist:
+                    # Fall back to heuristic
+                    is_multi_match = 'return' in self.season.name.lower() or 'multi' in self.season.name.lower()
+                    max_matches = 2 if is_multi_match else 1
+                
+                # Team tournament - group by match number
+                team_pairings = TeamPairing.objects.filter(round=round_obj).order_by('pairing_order')
+                
+                # Initialize all expected matches
+                for match_num in range(1, max_matches + 1):
+                    round_data['matches'][match_num] = []
+                
+                if team_pairings.exists():
+                    # Try to determine how many different team pairs there are
+                    unique_pairs = set()
+                    for p in team_pairings:
+                        unique_pairs.add((min(p.white_team_id, p.black_team_id), max(p.white_team_id, p.black_team_id)))
+                    total_pairs = len(unique_pairs) if unique_pairs else 1
+                    
+                    # Group pairings by match number
+                    for pairing in team_pairings:
+                        if total_pairs > 0:
+                            match_number = ((pairing.pairing_order - 1) // total_pairs) + 1
+                            # Only show matches up to the expected number
+                            if match_number <= max_matches:
+                                # Get all board games for this pairing
+                                board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
+                                game_ids = []
+                                for board_pairing in board_pairings:
+                                    if board_pairing.game_link:
+                                        game_id = board_pairing.game_id()
+                                        if game_id:
+                                            game_ids.append(game_id)
+                                
+                                round_data['matches'][match_number].extend(game_ids)
+            else:
+                # Individual tournament - no match numbers, just round
+                lone_pairings = LonePlayerPairing.objects.filter(round=round_obj).order_by('pairing_order')
+                game_ids = []
+                for pairing in lone_pairings:
+                    if pairing.game_link:
+                        game_id = pairing.game_id()
+                        if game_id:
+                            game_ids.append(game_id)
+                    else:
+                        # Add placeholder for missing game
+                        game_ids.append("")
+                
+                if game_ids:
+                    round_data['matches'][1] = game_ids  # Single "match" for lone tournaments
+                else:
+                    # No pairings exist yet - show expected structure
+                    active_players = SeasonPlayer.objects.filter(season=self.season, is_active=True).count()
+                    if active_players > 0:
+                        if active_players % 2 == 0:
+                            expected_pairings = active_players // 2
+                        else:
+                            expected_pairings = (active_players + 1) // 2  # One bye
+                        round_data['matches'][1] = [""] * expected_pairings
+            
+            # Always add round data, even if empty
+            rounds_data.append(round_data)
+        
+        context = {
+            'rounds_data': rounds_data,
+            'is_team_league': self.league.is_team_league(),
+        }
+        return self.render('tournament/game_ids.html', context)
+
+
 class ContactView(LoginRequiredMixin, LeagueView):
     def view(self, post=False):
         leagues = [self.league] + list(

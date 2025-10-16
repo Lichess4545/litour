@@ -122,6 +122,9 @@
                         <div class="dashboard-season-action">
                             <a href="{% leagueurl 'team_composition' league.tag season.tag %}" class="btn btn-default">Team Composition</a>
                         </div>
+                        <div class="dashboard-season-action">
+                            <a href="{% leagueurl 'game_ids' league.tag season.tag %}" class="btn btn-default">Game IDs</a>
+                        </div>
                         {% if is_knockout_tournament %}
                             {% if knockout_advancement_info %}
                                 <div class="dashboard-season-action">
