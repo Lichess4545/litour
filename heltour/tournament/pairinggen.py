@@ -859,8 +859,19 @@ def _generate_knockout_seedings_only(bracket):
     season = bracket.season
     
     if season.league.competitor_type == "team":
-        # Get active teams
-        teams = Team.objects.filter(season=season, is_active=True).order_by("id")
+        # Get active teams sorted by strength (strongest first)
+        teams = Team.objects.filter(season=season, is_active=True).select_related("teamscore")
+        
+        # Ensure seed_rating is set for all teams
+        for team in teams:
+            if team.seed_rating is None:
+                team.seed_rating = team.average_rating()
+                with reversion.create_revision():
+                    reversion.set_comment("Set seed rating for knockout seeding.")
+                    team.save()
+        
+        # Sort by seed_rating (strongest first)
+        teams = sorted(teams, key=lambda t: t.seed_rating, reverse=True)
         
         # Ensure bracket size is valid
         if not validate_bracket_size(len(teams)):

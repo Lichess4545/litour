@@ -209,17 +209,17 @@ class Command(BaseCommand):
                 # Generate knockout bracket if requested
                 bracket = None
                 if generate_bracket:
-                    from heltour.tournament.pairinggen import generate_knockout_bracket_structure_only
+                    from heltour.tournament.pairinggen import generate_knockout_bracket
 
                     try:
-                        bracket = generate_knockout_bracket_structure_only(season)
+                        bracket = generate_knockout_bracket(season)
                         self.stdout.write(
-                            self.style.SUCCESS("✓ Knockout bracket structure and seedings generated")
+                            self.style.SUCCESS("✓ Knockout bracket and first round pairings generated")
                         )
                         self.stdout.write(f"  - Bracket size: {bracket.bracket_size}")
                         self.stdout.write(f"  - Seeding style: {bracket.seeding_style}")
                         self.stdout.write(f"  - Matches per stage: {bracket.matches_per_stage}")
-                        self.stdout.write("  - NO match pairings created yet (use dashboard to create)")
+                        self.stdout.write("  - First round match pairings created and ready to play")
 
                     except Exception as e:
                         self.stdout.write(

@@ -390,7 +390,7 @@
                                                        style="color: #ffc107; text-decoration: none; font-size: 1.2em;">
                                                         ⚠️
                                                     </a>
-                                                {% elif league.competitor_type == "team" %}
+                                                {% elif league.competitor_type == "team" and match.competitor1 and match.competitor1.number %}
                                                     <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
                                                         View Individual Games
                                                     </a>

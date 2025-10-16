@@ -4606,9 +4606,72 @@ class KnockoutBracketView(SeasonView):
         if not matches:
             return matches
         
-        # For knockout brackets, the bracket structure is determined by pairing_order
-        # This reflects the actual bracket positions where winners flow to specific next matches
-        return sorted(matches, key=lambda m: m.get('pairing_order', 999))
+        # For first round of knockout brackets, we need to arrange matches in proper bracket order
+        # The pairing_order field doesn't reflect bracket positions - it's just sequential
+        # We need to calculate the proper bracket positions based on seeds
+        if round_number == 1:
+            return self._calculate_bracket_positions_for_first_round(matches, bracket_size)
+        else:
+            # For later rounds, use pairing_order as bracket structure is already established
+            return sorted(matches, key=lambda m: m.get('pairing_order', 999))
+    
+    def _calculate_bracket_positions_for_first_round(self, matches, bracket_size):
+        """Calculate proper bracket positions for first round matches based on seeds."""
+        from heltour.tournament_core.knockout import _build_standard_bracket_positions
+        
+        # Separate byes from regular matches
+        byes = [m for m in matches if m.get('is_bye', False)]
+        regular_matches = [m for m in matches if not m.get('is_bye', False)]
+        
+        if not regular_matches:
+            return matches
+            
+        # For matches without seed information, fall back to pairing_order
+        matches_without_seeds = [m for m in regular_matches if m.get('seed1') is None or m.get('seed2') is None]
+        if matches_without_seeds:
+            # Can't calculate bracket positions without seeds, fall back to pairing_order
+            return sorted(matches, key=lambda m: m.get('pairing_order', 999))
+        
+        # Create a mapping of traditional pairings to bracket positions
+        num_matches = len(regular_matches)
+        bracket_positions = _build_standard_bracket_positions(num_matches)
+        
+        # Create traditional seeding pairs (1v32, 2v31, etc.) to find the mapping
+        traditional_pairs = []
+        for i in range(num_matches):
+            # Traditional seeding pairs: seed i+1 with seed n-i
+            seed1 = i + 1
+            seed2 = bracket_size - i
+            traditional_pairs.append((seed1, seed2))
+        
+        # Find each match's position in the traditional order
+        match_positions = []
+        for match in regular_matches:
+            match_seed1 = match.get('seed1', 0)
+            match_seed2 = match.get('seed2', 0)
+            
+            # Find this match in the traditional pairs
+            traditional_index = None
+            for i, (trad_seed1, trad_seed2) in enumerate(traditional_pairs):
+                if ((match_seed1 == trad_seed1 and match_seed2 == trad_seed2) or
+                    (match_seed1 == trad_seed2 and match_seed2 == trad_seed1)):
+                    traditional_index = i
+                    break
+            
+            if traditional_index is not None:
+                # Get the bracket position for this traditional index
+                bracket_position = bracket_positions[traditional_index]
+                match_positions.append((bracket_position, match))
+            else:
+                # Fallback: couldn't find in traditional pairs, use pairing_order
+                match_positions.append((match.get('pairing_order', 999), match))
+        
+        # Sort by bracket position
+        match_positions.sort(key=lambda x: x[0])
+        sorted_matches = [match for _, match in match_positions]
+        
+        # Add byes at the end (they don't have bracket positions)
+        return sorted_matches + byes
     
     def _get_aggregated_team_pair_scores(self, primary_pairing, round_obj):
         """Get aggregated scores across all matches for a team pair in multi-match tournaments."""
