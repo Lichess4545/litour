@@ -1128,6 +1128,13 @@ def _generate_next_knockout_round(round_, bracket):
     # Calculate the target stage based on current round's teams remaining
     current_teams_remaining = bracket.bracket_size // (2 ** (round_.number - 1))
     target_stage = get_knockout_stage_name(current_teams_remaining)
+    
+    # Determine from_stage - use knockout_stage if set, otherwise calculate it
+    from_stage = previous_round.knockout_stage
+    if not from_stage:
+        # Calculate knockout stage based on round number and bracket size
+        teams_remaining = bracket.bracket_size // (2 ** (previous_round.number - 1))
+        from_stage = get_knockout_stage_name(teams_remaining)
 
     if bracket.matches_per_stage > 1:
         # Multi-match tournament: create one advancement record per winner
@@ -1156,7 +1163,7 @@ def _generate_next_knockout_round(round_, bracket):
             KnockoutAdvancement.objects.get_or_create(
                 bracket=bracket,
                 team=winner,
-                from_stage=previous_round.knockout_stage,
+                from_stage=from_stage,
                 to_stage=target_stage,
                 source_pairing=source_pairing,
             )
@@ -1169,7 +1176,7 @@ def _generate_next_knockout_round(round_, bracket):
             KnockoutAdvancement.objects.get_or_create(
                 bracket=bracket,
                 team=winner,
-                from_stage=previous_round.knockout_stage,
+                from_stage=from_stage,
                 to_stage=target_stage,
                 source_pairing=pairing,
             )
@@ -1181,7 +1188,7 @@ def _generate_next_knockout_round(round_, bracket):
             KnockoutAdvancement.objects.get_or_create(
                 bracket=bracket,
                 team=winner,
-                from_stage=previous_round.knockout_stage,
+                from_stage=from_stage,
                 to_stage=target_stage,
                 source_pairing=pairing,
             )

@@ -1657,10 +1657,10 @@ class LeagueDashboardView(LeagueView):
             if rounds_with_pairings.exists():
                 current_round = rounds_with_pairings.first()
             else:
-                # No rounds have pairings yet, use the latest round
+                # No rounds have pairings yet, use Round 1 (first round) for fresh tournaments
                 current_round = Round.objects.filter(
                     season=self.season
-                ).order_by('-number').first()
+                ).order_by('number').first()
             
             # Also track the last truly completed round
             last_completed_round = Round.objects.filter(
@@ -1925,11 +1925,19 @@ class LeagueDashboardView(LeagueView):
                         # For the final round, winners advance to "final" (not to another round)
                         final_stage = "final"
                         
+                        # Determine from_stage - use knockout_stage if set, otherwise calculate it
+                        from_stage = last_completed_round.knockout_stage
+                        if not from_stage:
+                            # Calculate knockout stage based on round number and bracket size
+                            from heltour.tournament_core.knockout import get_knockout_stage_name as calc_stage_name
+                            teams_remaining = bracket.bracket_size // (2 ** (last_completed_round.number - 1))
+                            from_stage = calc_stage_name(teams_remaining)
+                        
                         for winner_team in winners:
                             KnockoutAdvancement.objects.get_or_create(
                                 bracket=bracket,
                                 team=winner_team,
-                                from_stage=last_completed_round.knockout_stage,
+                                from_stage=from_stage,
                                 to_stage=final_stage,
                                 defaults={
                                     'advanced_date': timezone.now(),
