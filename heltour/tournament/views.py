@@ -531,20 +531,8 @@ class PairingsView(SeasonView):
     def view(self, round_number=None, team_number=None):
         # Check if this is a knockout tournament
         if self.season.league.pairing_type.startswith('knockout'):
-            knockout_view = KnockoutPairingsView()
-            knockout_view.request = self.request
-            knockout_view.args = self.args
-            knockout_view.kwargs = self.kwargs
-            knockout_view.league = self.league
-            knockout_view.season = self.season
-            knockout_view.extra_context = getattr(self, 'extra_context', {})
-            # Only set player if this view has it (LoginRequiredMixin)
-            if hasattr(self, 'player'):
-                knockout_view.player = self.player
-            else:
-                knockout_view.player = None
-            knockout_view.user_data = getattr(self, 'user_data', {})
-            return knockout_view.view(round_number, team_number)
+            return redirect('by_league:by_season:knockout_bracket', 
+                          league_tag=self.league.tag, season_tag=self.season.tag)
         
         if self.league.is_team_league():
             return self.team_view(round_number, team_number)
@@ -971,6 +959,11 @@ class ModRequestSuccessView(SeasonView):
 
 class RostersView(SeasonView):
     def view(self):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            return redirect('by_league:by_season:knockout_bracket', 
+                          league_tag=self.league.tag, season_tag=self.season.tag)
+        
         @cached_as(TeamMember, SeasonPlayer, Alternate, AlternateAssignment, AlternateBucket,
                    Player, PlayerAvailability, *common_team_models)
         def _view(league_tag, season_tag, user_data, can_edit):
@@ -1053,6 +1046,11 @@ class RostersView(SeasonView):
 
 class StandingsView(SeasonView):
     def view(self, section=None):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            return redirect('by_league:by_season:knockout_bracket', 
+                          league_tag=self.league.tag, season_tag=self.season.tag)
+        
         if self.league.is_team_league():
             return self.team_view()
         else:
