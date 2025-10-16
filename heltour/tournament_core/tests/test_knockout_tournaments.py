@@ -95,11 +95,13 @@ class TestKnockoutBracketGeneration(unittest.TestCase):
         self.assertEqual(pairings_4, expected_4)
 
     def test_generate_knockout_seedings_traditional(self):
-        """Test traditional seeding (1v32, 2v31, etc.)."""
+        """Test traditional seeding with proper bracket positioning."""
         teams = [1, 2, 3, 4, 5, 6, 7, 8]
         pairings = generate_knockout_seedings_traditional(teams)
 
-        expected = [(1, 8), (2, 7), (3, 6), (4, 5)]
+        # Expected bracket order for 8 teams: 1v8, 4v5, 3v6, 2v7
+        # This ensures proper tournament flow where winners meet correctly
+        expected = [(1, 8), (4, 5), (3, 6), (2, 7)]
         self.assertEqual(pairings, expected)
 
         # Test with 4-team bracket
