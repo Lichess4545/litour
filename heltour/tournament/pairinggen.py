@@ -875,7 +875,9 @@ def _generate_knockout_seedings_only(bracket):
                     bracket=bracket, team=team, seed_number=i + 1, is_manual_seed=False
                 )
     else:
-        # Get active players for individual tournaments
+        # Individual tournaments are not fully supported for knockout seedings yet
+        # The KnockoutSeeding model only supports teams, not individual players
+        # For now, skip seeding creation for individual tournaments
         season_players = SeasonPlayer.objects.filter(season=season, is_active=True).order_by("id")
         
         # Ensure bracket size is valid
@@ -884,12 +886,8 @@ def _generate_knockout_seedings_only(bracket):
                 f"Player count {len(season_players)} is not a power of 2. Knockout requires power of 2."
             )
         
-        # Create seedings if they don't exist
-        if not KnockoutSeeding.objects.filter(bracket=bracket).exists():
-            for i, season_player in enumerate(season_players):
-                KnockoutSeeding.objects.create(
-                    bracket=bracket, player=season_player.player, seed_number=i + 1, is_manual_seed=False
-                )
+        # TODO: Individual knockout seedings need a separate model or KnockoutSeeding needs a player field
+        # For now, individual knockout tournaments will work without seedings
 
 
 def _generate_initial_knockout_bracket(round_, bracket):
