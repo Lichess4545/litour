@@ -3,6 +3,7 @@ name: Docker Build
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -51,7 +52,7 @@ jobs:
         with:
           files: docker/docker-bake.hcl
           targets: verify
-          push: false
+          push: ${{ github.event_name == 'workflow_dispatch' }}
           set: |
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
