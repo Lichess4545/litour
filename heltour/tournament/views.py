@@ -2662,6 +2662,9 @@ class GameIdsView(LeagueView):
                     round_data['matches'][match_num] = []
                 
                 if team_pairings.exists():
+                    # Use the proper multi-match utility functions
+                    from heltour.tournament_core.multi_match import get_match_number_from_pairing_order
+                    
                     # Try to determine how many different team pairs there are
                     unique_pairs = set()
                     for p in team_pairings:
@@ -2670,34 +2673,45 @@ class GameIdsView(LeagueView):
                     
                     # Group pairings by match number
                     for pairing in team_pairings:
-                        if total_pairs > 0:
-                            match_number = ((pairing.pairing_order - 1) // total_pairs) + 1
+                        try:
+                            match_number = get_match_number_from_pairing_order(pairing.pairing_order, total_pairs)
                             # Only show matches up to the expected number
                             if match_number <= max_matches:
                                 # Get all board games for this pairing
                                 board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
                                 game_ids = []
                                 for board_pairing in board_pairings:
-                                    if board_pairing.game_link:
-                                        game_id = board_pairing.game_id()
-                                        if game_id:
-                                            game_ids.append(game_id)
+                                    game_id = board_pairing.game_id()
+                                    if game_id:
+                                        game_ids.append(game_id)
+                                    else:
+                                        game_ids.append("")  # Empty placeholder when no game ID
                                 
                                 round_data['matches'][match_number].extend(game_ids)
+                        except (ValueError, ZeroDivisionError):
+                            # Fall back to simple logic if utility function fails
+                            match_number = 1
+                            board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
+                            game_ids = []
+                            for board_pairing in board_pairings:
+                                game_id = board_pairing.game_id()
+                                if game_id:
+                                    game_ids.append(game_id)
+                                else:
+                                    game_ids.append("")
+                            round_data['matches'][match_number].extend(game_ids)
             else:
                 # Individual tournament - no match numbers, just round
                 lone_pairings = LonePlayerPairing.objects.filter(round=round_obj).order_by('pairing_order')
                 game_ids = []
                 for pairing in lone_pairings:
-                    if pairing.game_link:
-                        game_id = pairing.game_id()
-                        if game_id:
-                            game_ids.append(game_id)
+                    game_id = pairing.game_id()
+                    if game_id:
+                        game_ids.append(game_id)
                     else:
-                        # Add placeholder for missing game
-                        game_ids.append("")
+                        game_ids.append("")  # Empty placeholder when no game ID
                 
-                if game_ids:
+                if lone_pairings.exists():
                     round_data['matches'][1] = game_ids  # Single "match" for lone tournaments
                 else:
                     # No pairings exist yet - show expected structure
