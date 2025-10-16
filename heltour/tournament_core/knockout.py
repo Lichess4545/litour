@@ -160,51 +160,52 @@ def _calculate_bracket_order(num_matches: int) -> List[int]:
 def _build_standard_bracket_positions(num_matches: int) -> List[int]:
     """Build the standard tournament bracket positions.
     
-    This implements the algorithm for creating a standard tournament bracket
-    where teams are positioned to create the proper advancement flow.
+    This implements the specific bracket ordering requested:
+    1v32, 16v17, 3v30, 14v19, 5v28, 12v21, 7v26, 10v23, 2v31, 15v18, 4v29, 13v20, 6v27, 11v22, 8v25, 9v24
     
-    For a 32-team tournament, this creates the order:
-    1v32, 16v17, 8v25, 9v24, 5v28, 12v21, 4v29, 13v20, ...
+    Returns a list where index i contains the bracket position for traditional pairing i.
     """
     if num_matches <= 1:
         return list(range(num_matches))
     
-    # For 32 teams, we want this specific pattern in bracket positions:
-    # Position 0: 1v32    (pairing 0)
-    # Position 1: 16v17   (pairing 15) 
-    # Position 2: 8v25    (pairing 7)
-    # Position 3: 9v24    (pairing 8)
-    # Position 4: 5v28    (pairing 4)
-    # Position 5: 12v21   (pairing 11)
-    # Position 6: 4v29    (pairing 3)
-    # Position 7: 13v20   (pairing 12)
-    # Position 8: 6v27    (pairing 5)
-    # Position 9: 11v22   (pairing 10)
-    # Position 10: 3v30   (pairing 2)
-    # Position 11: 14v19  (pairing 13)
-    # Position 12: 7v26   (pairing 6)
-    # Position 13: 10v23  (pairing 9)
-    # Position 14: 2v31   (pairing 1)
-    # Position 15: 15v18  (pairing 14)
-    
-    # The pattern follows this algorithm:
-    # Build a list where bracket_pos[traditional_pairing_index] = display_position
-    
-    # Use recursive bracket construction
     if num_matches == 2:
+        # 4 teams: 1v4, 2v3 -> 1v4, 2v3 (keep order)
         return [0, 1]
     elif num_matches == 4:
         # 8 teams: traditional order is 1v8, 2v7, 3v6, 4v5 
-        # Bracket order should be: 1v8, 4v5, 3v6, 2v7
+        # Requested bracket order: 1v8, 4v5, 3v6, 2v7
+        # So pairing 0(1v8)->pos 0, pairing 1(2v7)->pos 3, pairing 2(3v6)->pos 2, pairing 3(4v5)->pos 1
         return [0, 3, 2, 1]
     elif num_matches == 8:
-        # 16 teams: build the correct bracket structure
-        return [0, 7, 4, 3, 2, 5, 6, 1]
+        # 16 teams: traditional order is 1v16, 2v15, 3v14, 4v13, 5v12, 6v11, 7v10, 8v9
+        # Apply similar pattern as 32-team but scaled down
+        return [0, 7, 2, 5, 4, 3, 6, 1]
     elif num_matches == 16:
-        # 32 teams: the full pattern
-        return [0, 15, 8, 7, 4, 11, 12, 3, 2, 13, 10, 5, 6, 9, 14, 1]
+        # 32 teams: the exact requested pattern
+        # Traditional pairings: 1v32, 2v31, 3v30, 4v29, 5v28, 6v27, 7v26, 8v25, 9v24, 10v23, 11v22, 12v21, 13v20, 14v19, 15v18, 16v17
+        # Requested order:      1v32, 16v17, 3v30, 14v19, 5v28, 12v21, 7v26, 10v23, 2v31, 15v18, 4v29, 13v20, 6v27, 11v22, 8v25, 9v24
+        
+        # Map traditional pairing index to bracket position:
+        # pairing 0 (1v32) -> position 0
+        # pairing 15 (16v17) -> position 1  
+        # pairing 2 (3v30) -> position 2
+        # pairing 13 (14v19) -> position 3
+        # pairing 4 (5v28) -> position 4
+        # pairing 11 (12v21) -> position 5
+        # pairing 6 (7v26) -> position 6
+        # pairing 9 (10v23) -> position 7
+        # pairing 1 (2v31) -> position 8
+        # pairing 14 (15v18) -> position 9
+        # pairing 3 (4v29) -> position 10
+        # pairing 12 (13v20) -> position 11
+        # pairing 5 (6v27) -> position 12
+        # pairing 10 (11v22) -> position 13
+        # pairing 7 (8v25) -> position 14
+        # pairing 8 (9v24) -> position 15
+        
+        return [0, 8, 2, 10, 4, 12, 6, 14, 15, 7, 13, 5, 11, 3, 9, 1]
     
-    # For other sizes, use recursive construction
+    # For other sizes, use recursive construction  
     half = num_matches // 2
     first_half = _build_standard_bracket_positions(half)
     second_half = _build_standard_bracket_positions(half)
