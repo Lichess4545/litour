@@ -2944,15 +2944,37 @@ class PlayerPresenceInline(admin.TabularInline):
 
 
 # -------------------------------------------------------------------------------
+class PlayerPairingRoundCompletedFilter(admin.SimpleListFilter):
+    title = "Round Completed"
+
+    parameter_name = "round_completed"
+
+    def lookups(self, request, model_admin):
+        return [("incomp", "Incomplete"), ("comp", "Complete")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "incomp":
+            return queryset.filter(
+                Q(loneplayerpairing__round__is_completed=False)
+                | Q(teamplayerpairing__team_pairing__round__is_completed=False)
+            )
+        if self.value() == "comp":
+            return queryset.filter(
+                Q(loneplayerpairing__round__is_completed=True)
+                | Q(teamplayerpairing__team_pairing__round__is_completed=True)
+            )
+
+
 @admin.register(PlayerPairing)
 class PlayerPairingAdmin(_BaseAdmin):
     list_display = ("__str__", "scheduled_time", "game_link_url")
+    list_filter = [PlayerPairingRoundCompletedFilter]
     search_fields = ("white__lichess_username", "black__lichess_username", "game_link")
     raw_id_fields = ("white", "black")
     autocomplete_fields = ("white", "black")
     inlines = [PlayerPresenceInline]
     exclude = ("white_rating", "black_rating", "tv_state")
-    actions = ["send_pairing_notification"]
+    actions = ["send_pairing_notification", "add_clock_time_black"]
 
     def send_pairing_notification(self, request, queryset):
         count = 0
@@ -2965,6 +2987,15 @@ class PlayerPairingAdmin(_BaseAdmin):
                 count += 1
         self.message_user(
             request, "Notifications sent for %d pairings." % count, messages.INFO
+        )
+
+    def add_clock_time_black(self, request, queryset):
+        ids = list(queryset.values_list("id", flat=True))
+        if ids:
+            signals.do_add_clock_time.send(sender=request.user, playerpairing_ids=ids)
+        self.message_user(
+            request=request,
+            message=f"Trying to add time to the black clock in {len(ids)} games.",
         )
 
     def get_queryset(self, request):

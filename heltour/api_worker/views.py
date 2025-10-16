@@ -49,10 +49,13 @@ def _do_lichess_api_call(
     max_retries,
     format,
     content_type=None,
+    token = None,
     retry_count=0,
 ) -> None:
     url = settings.LICHESS_DOMAIN + path
-    token = settings.LICHESS_API_TOKEN
+
+    if token is None:
+        token = settings.LICHESS_API_TOKEN
 
     logger.info("API call: %s" % url)
 
@@ -133,6 +136,7 @@ def lichess_api_call(request, path):
     max_retries = int(params.pop("max_retries", 5))
     format = params.pop("format", None)
     content_type = params.pop("content_type", None)
+    token = params.pop("token", None)
     redis_key = get_random_string(length=16)
 
     # support either a form encoded body or a raw body
@@ -152,6 +156,7 @@ def lichess_api_call(request, path):
         max_retries,
         format,
         content_type,
+        token,
     )
     return HttpResponse(redis_key)
 
