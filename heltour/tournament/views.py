@@ -4100,11 +4100,11 @@ class KnockoutBracketView(SeasonView):
                                     # Fallback to score comparison if no tiebreak found
                                     competitor1_won = competitor1_score > competitor2_score
                                     competitor2_won = competitor2_score > competitor1_score
-                                    is_tie = competitor1_score == competitor2_score and all_completed
+                                    is_tie = competitor1_score == competitor2_score
                             else:
                                 competitor1_won = competitor1_score > competitor2_score
                                 competitor2_won = competitor2_score > competitor1_score
-                                is_tie = competitor1_score == competitor2_score and all_completed
+                                is_tie = competitor1_score == competitor2_score
                             
                             # Get individual match scores for multi-match display
                             match_scores = []

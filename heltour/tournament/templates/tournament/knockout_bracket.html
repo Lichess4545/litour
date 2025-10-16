@@ -188,6 +188,23 @@
     background-color: transparent;
 }
 
+/* Winner/loser styling should override pending styling when there are partial results */
+.pending-match .match-competitor.winner {
+    background-color: #d4edda !important;
+    border-left: 4px solid #28a745 !important;
+    font-weight: bold !important;
+}
+
+.pending-match .match-competitor.loser {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+}
+
+.pending-match .match-competitor.tie {
+    background-color: #fff3cd !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
 .manual-tiebreak {
     background-color: #fff3cd !important;
     border-left: 4px solid #ffc107 !important;
@@ -326,7 +343,7 @@
                                     {% else %}
                                         <div class="bracket-match {% if not match.completed %}pending-match{% endif %} {% if match.is_placeholder %}placeholder-match{% endif %}">
                                             <div class="match-competitors">
-                                                <div class="match-competitor {% if match.completed %}{% if match.competitor1_won %}winner{% elif match.competitor2_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
+                                                <div class="match-competitor {% if match.completed or match.has_partial_results %}{% if match.competitor1_won %}winner{% elif match.competitor2_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
                                                 <span class="competitor-name">
                                                     {% if match.competitor1 %}
                                                         {% if league.competitor_type == "team" %}
@@ -366,23 +383,25 @@
                                                 </span>
                                             </div>
                                             <!-- Place "View Individual Games" link and tiebreak warning between competitors -->
-                                            <div style="padding: 5px 15px; font-size: 0.85em; text-align: center; {% if not match.completed %}color: transparent;{% else %}background-color: #f8f9fa; color: #666;{% endif %}">
+                                            <div style="padding: 5px 15px; font-size: 0.85em; text-align: center; {% if not match.completed and not match.has_partial_results %}color: transparent;{% else %}background-color: #f8f9fa; color: #666;{% endif %}">
                                                 {% if match.needs_tiebreak and user.is_staff %}
                                                     <a href="{% url 'admin:tournament_teampairing_change' match.pairing_id %}" 
                                                        title="⚠️ Tied Match - Requires Manual Resolution" 
                                                        style="color: #ffc107; text-decoration: none; font-size: 1.2em;">
                                                         ⚠️
                                                     </a>
-                                                {% elif league.competitor_type == "team" and match.completed %}
-                                                    <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
-                                                        View Individual Games
-                                                    </a>
+                                                {% elif league.competitor_type == "team" %}
+                                                    {% if match.completed or match.has_partial_results %}
+                                                        <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
+                                                            View Individual Games
+                                                        </a>
+                                                    {% endif %}
                                                 {% else %}
                                                     &nbsp;
                                                 {% endif %}
                                             </div>
                                             
-                                            <div class="match-competitor {% if match.completed %}{% if match.competitor2_won %}winner{% elif match.competitor1_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
+                                            <div class="match-competitor {% if match.completed or match.has_partial_results %}{% if match.competitor2_won %}winner{% elif match.competitor1_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
                                                 <span class="competitor-name">
                                                     {% if match.competitor2 %}
                                                         {% if league.competitor_type == "team" %}
