@@ -12,6 +12,14 @@
                     <p>All game IDs for {{ season.name }}, organized by round{% if is_team_league %} and match{% endif %}:</p>
                     {% for round_data in rounds_data %}
                         <h4>Round {{ round_data.round_number }}</h4>
+                        {% if round_data.debug_info %}
+                            <p><strong>Debug Info:</strong></p>
+                            <ul>
+                            {% for debug_line in round_data.debug_info %}
+                                <li>{{ debug_line }}</li>
+                            {% endfor %}
+                            </ul>
+                        {% endif %}
                         {% for match_number, game_ids in round_data.matches.items %}
                             {% if is_team_league %}
                                 <h5>Match {{ match_number }}</h5>

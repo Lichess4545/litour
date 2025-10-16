@@ -1532,9 +1532,13 @@ class LeagueDashboardView(LeagueView):
             return self.lone_view()
     
     def post(self, request, *args, **kwargs):
-        """Handle POST requests for knockout tournament advancement and match creation."""
+        """Handle POST requests for knockout tournament advancement, match creation, and cache clearing."""
         self.read_context()
         self.read_user_data()
+        
+        # Handle cache clearing
+        if 'clear_cache' in request.POST:
+            return self._handle_cache_clear()
         
         # Handle tournament advancement (knockout tournaments only)
         if ('advance_tournament' in request.POST 
@@ -1547,6 +1551,29 @@ class LeagueDashboardView(LeagueView):
             return self._handle_create_missing_matches()
         
         # If it's not a knockout-related request, fall back to GET behavior
+        return self.view()
+    
+    def _handle_cache_clear(self):
+        """Clear all caches."""
+        try:
+            from django.contrib import messages
+            from django.core.cache import cache
+            
+            # Clear Django cache
+            cache.clear()
+            
+            # Clear cacheops cache if available
+            try:
+                from cacheops import invalidate_all
+                invalidate_all()
+                messages.success(self.request, "All caches cleared successfully (Django cache + cacheops)!")
+            except ImportError:
+                messages.success(self.request, "Django cache cleared successfully!")
+                
+        except Exception as e:
+            from django.contrib import messages
+            messages.error(self.request, f"Error clearing cache: {str(e)}")
+        
         return self.view()
 
     def _common_context(self):
@@ -2683,6 +2710,11 @@ class GameIdsView(LeagueView):
                         unique_pairs.add((min(p.white_team_id, p.black_team_id), max(p.white_team_id, p.black_team_id)))
                     total_pairs = len(unique_pairs) if unique_pairs else 1
                     
+                    # Debug: Let's see what we're working with
+                    debug_info = []
+                    for pairing in team_pairings:
+                        debug_info.append(f"Pairing {pairing.pairing_order}: {pairing.white_team.name} vs {pairing.black_team.name}")
+                    
                     # Group pairings by match number
                     for pairing in team_pairings:
                         try:
@@ -2696,10 +2728,14 @@ class GameIdsView(LeagueView):
                                     game_id = board_pairing.game_id()
                                     if game_id:
                                         game_ids.append(game_id)
-                                    else:
-                                        game_ids.append("")  # Empty placeholder when no game ID
+                                    # Note: Only add game IDs that exist, don't add empty placeholders
+                                    # This ensures we only show actual games, not expected structure
                                 
                                 round_data['matches'][match_number].extend(game_ids)
+                                # Debug: Add pairing info to see what's happening
+                                if 'debug_info' not in round_data:
+                                    round_data['debug_info'] = []
+                                round_data['debug_info'].append(f"Match {match_number}: Pairing {pairing.pairing_order} ({pairing.white_team.name} vs {pairing.black_team.name}) - {len(game_ids)} games")
                         except (ValueError, ZeroDivisionError):
                             # Fall back to simple logic if utility function fails
                             match_number = 1

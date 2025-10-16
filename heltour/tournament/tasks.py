@@ -970,6 +970,7 @@ def _start_unscheduled_games(round_id: int) -> None:
         logger.warning("[FINISHED] Failed starting games.")
     else:
         round_.bulk_id = result["id"]
+        logger.warning(f"[FINISHED] Started games with bulk_id: {round_.bulk_id}.")
         round_.save()
     logger.info("[FINISHED] Done trying to start games.")
 

@@ -107,6 +107,16 @@
                         <div class="dashboard-season-action">
                             <a href="{% leagueurl 'game_ids' league.tag season.tag %}" class="btn btn-default">Game IDs</a>
                         </div>
+                        <div class="dashboard-season-action">
+                            <form method="post" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" name="clear_cache" value="1" 
+                                        class="btn btn-warning"
+                                        onclick="return confirm('Are you sure you want to clear all caches? This may temporarily slow down the site.')">
+                                    <i class="fa fa-refresh"></i> Clear All Caches
+                                </button>
+                            </form>
+                        </div>
                         {% if is_knockout_tournament %}
                             {% if knockout_advancement_info %}
                                 <div class="dashboard-season-action">

@@ -391,11 +391,9 @@
                                                         ⚠️
                                                     </a>
                                                 {% elif league.competitor_type == "team" %}
-                                                    {% if match.completed or match.has_partial_results %}
-                                                        <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
-                                                            View Individual Games
-                                                        </a>
-                                                    {% endif %}
+                                                    <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
+                                                        View Individual Games
+                                                    </a>
                                                 {% else %}
                                                     &nbsp;
                                                 {% endif %}
