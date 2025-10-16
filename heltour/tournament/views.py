@@ -4068,8 +4068,13 @@ class KnockoutBracketView(SeasonView):
                             aggregated_scores = self._get_aggregated_team_pair_scores(pairing, round_obj)
                             competitor1_score = aggregated_scores['white_total']
                             competitor2_score = aggregated_scores['black_total']
-                            all_completed = aggregated_scores['all_completed']
+                            existing_matches_completed = aggregated_scores['all_completed']
                             has_manual_tiebreak = aggregated_scores['has_manual_tiebreak']
+                            
+                            # Check if all expected matches have been created for this team pair
+                            expected_matches = bracket.matches_per_stage
+                            actual_matches = aggregated_scores.get('match_count', 0)
+                            all_completed = existing_matches_completed and actual_matches >= expected_matches
                                     
                             # Determine winner from aggregated scores
                             if has_manual_tiebreak:
@@ -4129,6 +4134,14 @@ class KnockoutBracketView(SeasonView):
                                         'black_score': match_pairing.white_points or 0,
                                     })
                             
+                            # Pad match_scores with zeros for missing matches in multi-match tournaments
+                            expected_matches = bracket.matches_per_stage
+                            while len(match_scores) < expected_matches:
+                                match_scores.append({
+                                    'white_score': 0,
+                                    'black_score': 0,
+                                })
+                            
                             # Check if we have any completed matches (for partial results display)
                             has_any_results = competitor1_score > 0 or competitor2_score > 0
                             
@@ -4144,7 +4157,7 @@ class KnockoutBracketView(SeasonView):
                                 'competitor2_won': competitor2_won,
                                 'is_tie': is_tie,
                                 'completed': all_completed,
-                                'has_partial_results': has_any_results and not all_completed,  # New flag for partial results
+                                'has_partial_results': has_any_results and not all_completed,  # Show partial if we have results but not all matches are completed
                                 'manual_tiebreak': has_manual_tiebreak,
                                 'round_number': round_obj.number,
                                 'pairing_id': pairing.id,  # Add pairing ID for admin links
@@ -4436,6 +4449,7 @@ class KnockoutBracketView(SeasonView):
         black_total = 0.0
         all_completed = True
         has_manual_tiebreak = False
+        match_count = team_pair_pairings.count()
         
         for pairing in team_pair_pairings:
             # Check if this pairing is completed
@@ -4462,6 +4476,7 @@ class KnockoutBracketView(SeasonView):
             'black_total': black_total,
             'all_completed': all_completed,
             'has_manual_tiebreak': has_manual_tiebreak,
+            'match_count': match_count,
         }
 
     def _is_team_match_completed(self, team_pairing):
