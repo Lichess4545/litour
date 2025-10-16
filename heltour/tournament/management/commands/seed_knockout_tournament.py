@@ -209,38 +209,17 @@ class Command(BaseCommand):
                 # Generate knockout bracket if requested
                 bracket = None
                 if generate_bracket:
-                    from heltour.tournament.pairinggen import generate_knockout_bracket
+                    from heltour.tournament.pairinggen import generate_knockout_bracket_structure_only
 
                     try:
-                        bracket = generate_knockout_bracket(season)
+                        bracket = generate_knockout_bracket_structure_only(season)
                         self.stdout.write(
-                            self.style.SUCCESS("✓ Knockout bracket generated")
+                            self.style.SUCCESS("✓ Knockout bracket structure and seedings generated")
                         )
                         self.stdout.write(f"  - Bracket size: {bracket.bracket_size}")
                         self.stdout.write(f"  - Seeding style: {bracket.seeding_style}")
-
-                        # Count first round pairings
-                        from heltour.tournament.models import (
-                            Round,
-                            TeamPairing,
-                            LonePlayerPairing,
-                        )
-
-                        first_round = Round.objects.filter(
-                            season=season, number=1
-                        ).first()
-                        if first_round:
-                            if tournament_type == "team":
-                                pairings_count = TeamPairing.objects.filter(
-                                    round=first_round
-                                ).count()
-                            else:
-                                pairings_count = LonePlayerPairing.objects.filter(
-                                    round=first_round
-                                ).count()
-                            self.stdout.write(
-                                f"  - First round: {pairings_count} matches created"
-                            )
+                        self.stdout.write(f"  - Matches per stage: {bracket.matches_per_stage}")
+                        self.stdout.write("  - NO match pairings created yet (use dashboard to create)")
 
                     except Exception as e:
                         self.stdout.write(

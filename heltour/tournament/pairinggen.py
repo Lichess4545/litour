@@ -795,6 +795,7 @@ def _generate_knockout_team_pairings(round_, overwrite=False):
                 "bracket_size": _calculate_bracket_size(round_.season),
                 "seeding_style": round_.season.league.knockout_seeding_style,
                 "games_per_match": round_.season.league.knockout_games_per_match,
+                "matches_per_stage": 2 if round_.season.league.pairing_type == 'knockout-multi' else 1,
             },
         )
 
@@ -823,6 +824,7 @@ def _generate_knockout_lone_pairings(round_, overwrite=False):
                 "bracket_size": _calculate_bracket_size(round_.season),
                 "seeding_style": round_.season.league.knockout_seeding_style,
                 "games_per_match": round_.season.league.knockout_games_per_match,
+                "matches_per_stage": 2 if round_.season.league.pairing_type == 'knockout-multi' else 1,
             },
         )
 
@@ -850,6 +852,44 @@ def _calculate_bracket_size(season):
         bracket_size *= 2
 
     return bracket_size
+
+
+def _generate_knockout_seedings_only(bracket):
+    """Generate knockout seedings without creating any pairings."""
+    season = bracket.season
+    
+    if season.league.competitor_type == "team":
+        # Get active teams
+        teams = Team.objects.filter(season=season, is_active=True).order_by("id")
+        
+        # Ensure bracket size is valid
+        if not validate_bracket_size(len(teams)):
+            raise PairingGenerationException(
+                f"Team count {len(teams)} is not a power of 2. Knockout requires power of 2."
+            )
+        
+        # Create seedings if they don't exist
+        if not KnockoutSeeding.objects.filter(bracket=bracket).exists():
+            for i, team in enumerate(teams):
+                KnockoutSeeding.objects.create(
+                    bracket=bracket, team=team, seed_number=i + 1, is_manual_seed=False
+                )
+    else:
+        # Get active players for individual tournaments
+        season_players = SeasonPlayer.objects.filter(season=season, is_active=True).order_by("id")
+        
+        # Ensure bracket size is valid
+        if not validate_bracket_size(len(season_players)):
+            raise PairingGenerationException(
+                f"Player count {len(season_players)} is not a power of 2. Knockout requires power of 2."
+            )
+        
+        # Create seedings if they don't exist
+        if not KnockoutSeeding.objects.filter(bracket=bracket).exists():
+            for i, season_player in enumerate(season_players):
+                KnockoutSeeding.objects.create(
+                    bracket=bracket, player=season_player.player, seed_number=i + 1, is_manual_seed=False
+                )
 
 
 def _generate_initial_knockout_bracket(round_, bracket):
@@ -889,22 +929,32 @@ def _generate_initial_knockout_bracket(round_, bracket):
     round_.knockout_stage = stage_name
     round_.save()
 
-    # Create team pairings
+    # Create team pairings - multiple per team pair if matches_per_stage > 1
+    pairing_order = 1
     for i, (team1_id, team2_id) in enumerate(pairings):
         team1 = Team.objects.get(id=team1_id)
         team2 = Team.objects.get(id=team2_id)
 
-        with reversion.create_revision():
-            reversion.set_comment("Generated knockout bracket.")
-            team_pairing = TeamPairing.objects.create(
-                white_team=team1,
-                black_team=team2,
-                round=round_,
-                pairing_order=i + 1,
-            )
+        # Create multiple matches for each team pair
+        for match_num in range(bracket.matches_per_stage):
+            # Alternate colors for multi-match
+            if match_num % 2 == 0:
+                white_team, black_team = team1, team2
+            else:
+                white_team, black_team = team2, team1
 
-        # Create board pairings for team matches
-        _create_board_pairings_for_knockout(team_pairing, round_.season.boards)
+            with reversion.create_revision():
+                reversion.set_comment("Generated knockout bracket.")
+                team_pairing = TeamPairing.objects.create(
+                    white_team=white_team,
+                    black_team=black_team,
+                    round=round_,
+                    pairing_order=pairing_order,
+                )
+            pairing_order += 1
+
+            # Create board pairings for team matches
+            _create_board_pairings_for_knockout(team_pairing, round_.season.boards)
 
 
 def _generate_initial_knockout_bracket_lone(round_, bracket):
@@ -955,6 +1005,88 @@ def _generate_initial_knockout_bracket_lone(round_, bracket):
             lone_pairing.save()
 
 
+def _get_multi_match_winners(round_obj, bracket):
+    """Get winners from multi-match tournament by aggregating scores for each team pair."""
+    from collections import defaultdict
+    from heltour.tournament.models import Team
+    
+    # Group pairings by team pair
+    team_pair_groups = defaultdict(list)
+    all_pairings = TeamPairing.objects.filter(round=round_obj).select_related('white_team', 'black_team')
+    
+    for pairing in all_pairings:
+        if pairing.black_team:  # Skip byes (handle separately)
+            team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+            team_pair_groups[team_key].append(pairing)
+    
+    # Determine winners for each team pair
+    winners = []
+    
+    # Process team pairs in order of first pairing_order to maintain bracket structure
+    team_pair_first_orders = {}
+    for team_key, pairings in team_pair_groups.items():
+        min_order = min(p.pairing_order for p in pairings)
+        team_pair_first_orders[team_key] = min_order
+    
+    # Sort team pairs by their first pairing order
+    sorted_team_pairs = sorted(team_pair_groups.items(), key=lambda x: team_pair_first_orders[x[0]])
+    
+    for team_key, pairings in sorted_team_pairs:
+        team1 = Team.objects.get(id=team_key[0])
+        team2 = Team.objects.get(id=team_key[1])
+        
+        # Aggregate scores for this team pair
+        total_team1_points = 0.0
+        total_team2_points = 0.0
+        has_manual_tiebreak = False
+        manual_tiebreak_winner = None
+        
+        # Check all matches are complete
+        for pairing in pairings:
+            if pairing.white_points is None or pairing.black_points is None:
+                raise PairingGenerationException(
+                    f"Round {round_obj.number} results incomplete for {team1.name} vs {team2.name}"
+                )
+            
+            # Check for manual tiebreak
+            if pairing.manual_tiebreak_value is not None:
+                has_manual_tiebreak = True
+                if pairing.white_team == team1:
+                    manual_tiebreak_winner = team1 if pairing.manual_tiebreak_value > 0 else team2
+                else:
+                    manual_tiebreak_winner = team2 if pairing.manual_tiebreak_value > 0 else team1
+                break  # Manual tiebreak overrides all other considerations
+            
+            # Add to aggregate scores based on team orientation
+            if pairing.white_team.id == team1.id:
+                total_team1_points += pairing.white_points
+                total_team2_points += pairing.black_points
+            else:
+                total_team1_points += pairing.black_points
+                total_team2_points += pairing.white_points
+        
+        # Determine winner
+        if has_manual_tiebreak:
+            winners.append(manual_tiebreak_winner)
+        elif total_team1_points > total_team2_points:
+            winners.append(team1)
+        elif total_team2_points > total_team1_points:
+            winners.append(team2)
+        else:
+            # Aggregate scores are tied - this should be very rare in multi-match
+            raise PairingGenerationException(
+                f"Tied aggregate score between {team1.name} and {team2.name} "
+                f"({total_team1_points}-{total_team2_points}) requires manual tiebreak resolution"
+            )
+    
+    # Handle byes - teams with byes advance automatically
+    bye_pairings = all_pairings.filter(black_team__isnull=True).order_by('pairing_order')
+    for pairing in bye_pairings:
+        winners.append(pairing.white_team)
+    
+    return winners
+
+
 def _generate_next_knockout_round(round_, bracket):
     """Generate next round pairings based on previous round advancement."""
     previous_round = round_.season.round_set.filter(number=round_.number - 1).first()
@@ -962,45 +1094,97 @@ def _generate_next_knockout_round(round_, bracket):
     if not previous_round:
         raise PairingGenerationException("No previous round found for advancement")
 
-    # Get winners from previous round in bracket order (pairing_order)
-    winners = []
-    for pairing in TeamPairing.objects.filter(round=previous_round).order_by('pairing_order'):
-        if pairing.white_points is None or pairing.black_points is None:
-            raise PairingGenerationException(
-                f"Round {previous_round.number} results incomplete"
-            )
-
-        # Determine winner including manual tiebreak
-        if pairing.white_points > pairing.black_points:
-            winners.append(pairing.white_team)
-        elif pairing.black_points > pairing.white_points:
-            winners.append(pairing.black_team)
-        else:
-            # Tied - check manual tiebreak
-            if pairing.manual_tiebreak_value is None:
+    # Get winners from previous round
+    if bracket.matches_per_stage > 1:
+        # Multi-match tournament: aggregate scores by team pair
+        winners = _get_multi_match_winners(previous_round, bracket)
+    else:
+        # Single-match tournament: use individual pairing results
+        winners = []
+        for pairing in TeamPairing.objects.filter(round=previous_round).order_by('pairing_order'):
+            if pairing.white_points is None or pairing.black_points is None:
                 raise PairingGenerationException(
-                    f"Tied pairing between {pairing.white_team} and {pairing.black_team} "
-                    "requires manual tiebreak resolution"
+                    f"Round {previous_round.number} results incomplete"
                 )
-            elif pairing.manual_tiebreak_value > 0:
+
+            # Determine winner including manual tiebreak
+            if pairing.white_points > pairing.black_points:
                 winners.append(pairing.white_team)
-            else:
+            elif pairing.black_points > pairing.white_points:
                 winners.append(pairing.black_team)
+            else:
+                # Tied - check manual tiebreak
+                if pairing.manual_tiebreak_value is None:
+                    raise PairingGenerationException(
+                        f"Tied pairing between {pairing.white_team} and {pairing.black_team} "
+                        "requires manual tiebreak resolution"
+                    )
+                elif pairing.manual_tiebreak_value > 0:
+                    winners.append(pairing.white_team)
+                else:
+                    winners.append(pairing.black_team)
 
     # Create advancement records for all winners
     # Calculate the target stage based on current round's teams remaining
     current_teams_remaining = bracket.bracket_size // (2 ** (round_.number - 1))
     target_stage = get_knockout_stage_name(current_teams_remaining)
 
-    for i, pairing in enumerate(TeamPairing.objects.filter(round=previous_round).order_by('pairing_order')):
-        winner = winners[i]
-        KnockoutAdvancement.objects.get_or_create(
-            bracket=bracket,
-            team=winner,
-            from_stage=previous_round.knockout_stage,
-            to_stage=target_stage,
-            source_pairing=pairing,
-        )
+    if bracket.matches_per_stage > 1:
+        # Multi-match tournament: create one advancement record per winner
+        # Use the first pairing for each team pair as the source pairing
+        from collections import defaultdict
+        team_pair_groups = defaultdict(list)
+        all_pairings = TeamPairing.objects.filter(round=previous_round).select_related('white_team', 'black_team')
+        
+        for pairing in all_pairings:
+            if pairing.black_team:  # Skip byes
+                team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                team_pair_groups[team_key].append(pairing)
+        
+        # Sort team pairs by first pairing order
+        team_pair_first_orders = {}
+        for team_key, pairings in team_pair_groups.items():
+            min_order = min(p.pairing_order for p in pairings)
+            team_pair_first_orders[team_key] = min_order
+        
+        sorted_team_pairs = sorted(team_pair_groups.items(), key=lambda x: team_pair_first_orders[x[0]])
+        
+        for i, (team_key, pairings) in enumerate(sorted_team_pairs):
+            winner = winners[i]
+            # Use the first pairing (lowest pairing_order) as the source
+            source_pairing = min(pairings, key=lambda p: p.pairing_order)
+            KnockoutAdvancement.objects.get_or_create(
+                bracket=bracket,
+                team=winner,
+                from_stage=previous_round.knockout_stage,
+                to_stage=target_stage,
+                source_pairing=source_pairing,
+            )
+        
+        # Handle byes separately
+        bye_pairings = all_pairings.filter(black_team__isnull=True).order_by('pairing_order')
+        bye_winner_index = len(sorted_team_pairs)
+        for pairing in bye_pairings:
+            winner = winners[bye_winner_index]
+            KnockoutAdvancement.objects.get_or_create(
+                bracket=bracket,
+                team=winner,
+                from_stage=previous_round.knockout_stage,
+                to_stage=target_stage,
+                source_pairing=pairing,
+            )
+            bye_winner_index += 1
+    else:
+        # Single-match tournament: one advancement record per pairing
+        for i, pairing in enumerate(TeamPairing.objects.filter(round=previous_round).order_by('pairing_order')):
+            winner = winners[i]
+            KnockoutAdvancement.objects.get_or_create(
+                bracket=bracket,
+                team=winner,
+                from_stage=previous_round.knockout_stage,
+                to_stage=target_stage,
+                source_pairing=pairing,
+            )
 
     # Generate next round pairings
     winner_ids = [team.id for team in winners]
@@ -1116,12 +1300,12 @@ def _create_board_pairings_for_knockout(team_pairing, board_count):
             )
 
 
-def generate_knockout_bracket(season):
+def generate_knockout_bracket_structure_only(season):
     """
-    Generate initial knockout bracket for a season.
-
+    Generate initial knockout bracket structure and seedings for a season.
+    
     This function creates the KnockoutBracket and KnockoutSeeding records,
-    then generates the first round pairings.
+    but does NOT generate any match pairings. Use this for initial seeding.
 
     Args:
         season: Season object to create bracket for
@@ -1153,6 +1337,31 @@ def generate_knockout_bracket(season):
             "matches_per_stage": matches_per_stage,
         },
     )
+    
+    # Only create the seedings, not the pairings
+    if created:
+        _generate_knockout_seedings_only(bracket)
+
+    return bracket
+
+def generate_knockout_bracket(season):
+    """
+    Generate initial knockout bracket for a season.
+
+    This function creates the KnockoutBracket and KnockoutSeeding records,
+    then generates the first round pairings.
+
+    Args:
+        season: Season object to create bracket for
+
+    Returns:
+        KnockoutBracket: The created bracket
+
+    Raises:
+        PairingGenerationException: If bracket generation fails
+    """
+    # First create the bracket structure
+    bracket = generate_knockout_bracket_structure_only(season)
 
     # Generate first round if it exists
     first_round = season.round_set.filter(number=1).first()
@@ -1184,13 +1393,22 @@ def advance_knockout_tournament(round_):
     bracket = KnockoutBracket.objects.get(season=round_.season)
 
     if round_.season.league.competitor_type == "team":
-        remaining_teams = TeamPairing.objects.filter(round=round_).count() * 2
+        # For multi-match tournaments, count unique team pairs, not individual pairings
+        team_pairings = TeamPairing.objects.filter(round=round_).select_related('white_team', 'black_team')
+        unique_team_pairs = set()
+        for pairing in team_pairings:
+            if pairing.black_team:  # Skip byes
+                team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                unique_team_pairs.add(team_key)
+        
+        remaining_teams = len(unique_team_pairs) * 2
         if remaining_teams == 2:
             # Finals completed - tournament is done
             bracket.is_completed = True
             bracket.save()
             return None
     else:
+        # For individual tournaments, similar logic would apply if multi-match is supported
         remaining_players = LonePlayerPairing.objects.filter(round=round_).count() * 2
         if remaining_players == 2:
             # Finals completed - tournament is done

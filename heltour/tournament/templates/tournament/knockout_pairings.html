@@ -63,6 +63,33 @@
                         </div>
                     {% endif %}
                     
+                    {% if opponent_aggregates and is_multi_match %}
+                        {# Show aggregate totals for multi-match tournaments #}
+                        <div class="alert alert-info multi-match-summary">
+                            <h4>Match Totals ({{ matches_per_stage }} matches per stage)</h4>
+                            {% for opponent_id, aggregate in opponent_aggregates.items %}
+                                <div class="aggregate-row">
+                                    <strong>{{ current_team.name }}</strong> vs <strong>{{ aggregate.opponent_team.name }}</strong>:
+                                    <span class="aggregate-score">
+                                        {{ aggregate.current_team_total|floatformat }} - {{ aggregate.opponent_total|floatformat }}
+                                    </span>
+                                    {% if aggregate.all_completed %}
+                                        {% if aggregate.current_team_total > aggregate.opponent_total %}
+                                            <span class="badge badge-success">{{ current_team.name }} Wins</span>
+                                        {% elif aggregate.opponent_total > aggregate.current_team_total %}
+                                            <span class="badge badge-danger">{{ aggregate.opponent_team.name }} Wins</span>
+                                        {% else %}
+                                            <span class="badge badge-warning">Tied</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge badge-secondary">In Progress</span>
+                                    {% endif %}
+                                    <small>({{ aggregate.match_count }} match{{ aggregate.match_count|pluralize:"es" }})</small>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
                     {% if pairing_lists %}
                         <table class="table table-condensed-xs knockout-pairings-table" id="table-knockout-pairings">
                             {% for pairing_list in pairing_lists %}
@@ -72,6 +99,9 @@
                                             {% if team_pairing.black_team_id %}
                                                 <div class="match-title">
                                                     <span class="match-number">Match {{ team_pairing.pairing_order }}</span>
+                                                    {% if is_multi_match %}
+                                                        <span class="match-subtitle">(Individual Match)</span>
+                                                    {% endif %}
                                                     {% if team_pairing.manual_tiebreak_value is not None %}
                                                         <span class="badge badge-warning">Manual Tiebreak</span>
                                                     {% endif %}
@@ -100,10 +130,14 @@
                                             {% endif %}
                                         </td>
                                         <td class="competitor-name">
-                                            <a class="team-link"
-                                               href="{% leagueurl 'team_profile' league.tag season.tag team_pairing.white_team.number %}">
+                                            {% if team_pairing.white_team.number %}
+                                                <a class="team-link"
+                                                   href="{% leagueurl 'team_profile' league.tag season.tag team_pairing.white_team.number %}">
+                                                    {{ team_pairing.white_team_name }}
+                                                </a>
+                                            {% else %}
                                                 {{ team_pairing.white_team_name }}
-                                            </a>
+                                            {% endif %}
                                         </td>
                                         <td class="text-center cell-score {% if team_pairing.black_team_id %}{% resultclass team_pairing.white_points team_pairing.black_points %}{% endif %}">
                                             {% if team_pairing.black_team_id %}
@@ -119,10 +153,14 @@
                                         </td>
                                         <td class="competitor-name text-right">
                                             {% if team_pairing.black_team_id %}
-                                                <a class="team-link"
-                                                   href="{% leagueurl 'team_profile' league.tag season.tag team_pairing.black_team.number %}">
+                                                {% if team_pairing.black_team.number %}
+                                                    <a class="team-link"
+                                                       href="{% leagueurl 'team_profile' league.tag season.tag team_pairing.black_team.number %}">
+                                                        {{ team_pairing.black_team_name }}
+                                                    </a>
+                                                {% else %}
                                                     {{ team_pairing.black_team_name }}
-                                                </a>
+                                                {% endif %}
                                             {% else %}
                                                 <span class="bye-text">receives bye</span>
                                             {% endif %}
@@ -251,6 +289,12 @@
             font-weight: bold;
         }
         
+        .match-subtitle {
+            font-size: 0.8em;
+            color: #666;
+            font-weight: normal;
+        }
+        
         .competitor-row {
             font-weight: bold;
             background-color: #fff;
@@ -287,6 +331,35 @@
             color: #666;
         }
         
+        .multi-match-summary {
+            margin-bottom: 25px;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .multi-match-summary h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #0c5460;
+        }
+        
+        .aggregate-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .aggregate-score {
+            font-size: 1.2em;
+            font-weight: bold;
+            padding: 2px 8px;
+            background-color: #fff;
+            border-radius: 4px;
+            min-width: 80px;
+            text-align: center;
+        }
+        
         .badge {
             font-size: 0.75em;
             padding: 0.25em 0.6em;
@@ -306,6 +379,16 @@
         .badge-warning {
             background-color: #ffc107;
             color: #212529;
+        }
+        
+        .badge-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .badge-secondary {
+            background-color: #6c757d;
+            color: white;
         }
         
     </style>

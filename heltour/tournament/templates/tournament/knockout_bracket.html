@@ -344,8 +344,19 @@
                                                     {% endif %}
                                                 </span>
                                                 <span class="competitor-score">
-                                                    {% if match.completed %}
-                                                        {{ match.competitor1_score|floatformat }}
+                                                    {% if match.completed or match.has_partial_results %}
+                                                        {% if match.is_multi_match and match.match_scores %}
+                                                            <span style="font-size: 0.85em;">
+                                                                {% for score in match.match_scores %}
+                                                                    {{ score.white_score|floatformat }}{% if not forloop.last %} + {% endif %}
+                                                                {% endfor %}
+                                                                = <strong>{{ match.competitor1_score|floatformat }}</strong>
+                                                                {% if match.has_partial_results %}<em style="color: #666;"> (partial)</em>{% endif %}
+                                                            </span>
+                                                        {% else %}
+                                                            {{ match.competitor1_score|floatformat }}
+                                                            {% if match.has_partial_results %}<em style="color: #666;"> (partial)</em>{% endif %}
+                                                        {% endif %}
                                                         {% if match.manual_tiebreak and match.competitor1_won %}
                                                             <span class="tiebreak-indicator">TB</span>
                                                         {% endif %}
@@ -389,8 +400,19 @@
                                                     {% endif %}
                                                 </span>
                                                 <span class="competitor-score">
-                                                    {% if match.completed %}
-                                                        {{ match.competitor2_score|floatformat }}
+                                                    {% if match.completed or match.has_partial_results %}
+                                                        {% if match.is_multi_match and match.match_scores %}
+                                                            <span style="font-size: 0.85em;">
+                                                                {% for score in match.match_scores %}
+                                                                    {{ score.black_score|floatformat }}{% if not forloop.last %} + {% endif %}
+                                                                {% endfor %}
+                                                                = <strong>{{ match.competitor2_score|floatformat }}</strong>
+                                                                {% if match.has_partial_results %}<em style="color: #666;"> (partial)</em>{% endif %}
+                                                            </span>
+                                                        {% else %}
+                                                            {{ match.competitor2_score|floatformat }}
+                                                            {% if match.has_partial_results %}<em style="color: #666;"> (partial)</em>{% endif %}
+                                                        {% endif %}
                                                         {% if match.manual_tiebreak and match.competitor2_won %}
                                                             <span class="tiebreak-indicator">TB</span>
                                                         {% endif %}
