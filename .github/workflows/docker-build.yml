@@ -63,7 +63,7 @@ jobs:
 
       # For master branch: build all images including verify, then push production images
       - name: Build and push all images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
         uses: docker/bake-action@v5
         with:
           files: docker/docker-bake.hcl
