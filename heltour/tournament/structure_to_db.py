@@ -74,47 +74,77 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             "pairing_type": metadata.league_settings.get("pairing_type", "swiss-dutch"),
             "theme": metadata.league_settings.get("theme", "blue"),
             # Knockout-specific settings
-            "knockout_games_per_match": metadata.league_settings.get("knockout_games_per_match", 1),
-            "knockout_seeding_style": metadata.league_settings.get("knockout_seeding_style", "traditional"),
+            "knockout_games_per_match": metadata.league_settings.get(
+                "knockout_games_per_match", 1
+            ),
+            "knockout_seeding_style": metadata.league_settings.get(
+                "knockout_seeding_style", "traditional"
+            ),
         }
-        
+
         # Configure tiebreaks for team tournaments
         if metadata.competitor_type == "team":
             # Default tiebreak order: Game Points, Sonneborn-Berger, Buchholz, Games Won
-            league_data["team_tiebreak_1"] = metadata.league_settings.get("team_tiebreak_1", "game_points")
-            league_data["team_tiebreak_2"] = metadata.league_settings.get("team_tiebreak_2", "sonneborn_berger")
-            league_data["team_tiebreak_3"] = metadata.league_settings.get("team_tiebreak_3", "buchholz")
-            league_data["team_tiebreak_4"] = metadata.league_settings.get("team_tiebreak_4", "games_won")
+            league_data["team_tiebreak_1"] = metadata.league_settings.get(
+                "team_tiebreak_1", "game_points"
+            )
+            league_data["team_tiebreak_2"] = metadata.league_settings.get(
+                "team_tiebreak_2", "sonneborn_berger"
+            )
+            league_data["team_tiebreak_3"] = metadata.league_settings.get(
+                "team_tiebreak_3", "buchholz"
+            )
+            league_data["team_tiebreak_4"] = metadata.league_settings.get(
+                "team_tiebreak_4", "games_won"
+            )
         # Add any additional league settings
         for key, value in metadata.league_settings.items():
             if key not in league_data:
                 league_data[key] = value
 
         league, created = League.objects.get_or_create(
-            tag=league_data["tag"],
-            defaults=league_data
+            tag=league_data["tag"], defaults=league_data
         )
 
     # Import timezone at the top if not already
     from django.utils import timezone
 
+    # Generate a unique season tag from the season name
+    import re
+
+    season_name = metadata.season_name or "Test Season"
+    base_tag = re.sub(r"[^a-zA-Z0-9]", "", season_name.lower())[
+        :20
+    ]  # Clean and truncate
+    if not base_tag:  # If no valid characters, use a default
+        base_tag = "season"
+
+    # Ensure tag is unique within the league
+    tag = base_tag
+    counter = 2
+    while Season.objects.filter(league=league, tag=tag).exists():
+        tag = f"{base_tag}{counter}"
+        counter += 1
+
     # Create Season
     # Generate unique tag based on season name
     season_name = metadata.season_name or "Test Season"
-    base_tag = season_name.lower().replace(" ", "_").replace("-", "_")[:20]  # Limit length
+    base_tag = (
+        season_name.lower().replace(" ", "_").replace("-", "_")[:20]
+    )  # Limit length
     tag = base_tag
     counter = 1
     while Season.objects.filter(league=league, tag=tag).exists():
         tag = f"{base_tag}_{counter}"
         counter += 1
-    
+
     season_data = {
         "league": league,
         "name": season_name,
         "rounds": metadata.season_settings.get("rounds", len(tournament.rounds)) or 1,
         "boards": metadata.boards if metadata.competitor_type == "team" else None,
         "is_active": True,  # Make the season visible
-        "tag": tag,  # Unique season tag
+        "tag": tag,  # Use generated unique tag
         "start_date": timezone.now(),  # Set start date
     }
     # Add any additional season settings
@@ -128,10 +158,12 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
         # Append a number to make it unique
         base_name = season_data["name"]
         counter = 2
-        while Season.objects.filter(league=league, name=f"{base_name} ({counter})").exists():
+        while Season.objects.filter(
+            league=league, name=f"{base_name} ({counter})"
+        ).exists():
             counter += 1
         season_data["name"] = f"{base_name} ({counter})"
-    
+
     season = Season.objects.create(**season_data)
 
     # Track created objects
@@ -170,7 +202,8 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                 if player_name not in db_players:
                     # Check if the player name is already a valid username (alphanumeric, hyphen, underscore)
                     import re
-                    if re.match(r'^[-\w]+$', player_name):
+
+                    if re.match(r"^[-\w]+$", player_name):
                         # Already looks like a valid username, use as-is
                         username = player_name
                     else:
@@ -199,7 +232,7 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                                     },
                                 }
                             },
-                        }
+                        },
                     )
                     if not created:
                         # Update rating if player already exists
@@ -229,7 +262,8 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             if player_name not in db_players:
                 # Check if the player name is already a valid username (alphanumeric, hyphen, underscore)
                 import re
-                if re.match(r'^[-\w]+$', player_name):
+
+                if re.match(r"^[-\w]+$", player_name):
                     # Already looks like a valid username, use as-is
                     username = player_name
                 else:
@@ -296,11 +330,11 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
             "is_completed": False,
             "publish_pairings": True,
         }
-        
+
         # Add knockout stage if tournament is knockout format
-        if hasattr(round_struct, 'knockout_stage') and round_struct.knockout_stage:
+        if hasattr(round_struct, "knockout_stage") and round_struct.knockout_stage:
             round_defaults["knockout_stage"] = round_struct.knockout_stage
-        
+
         round_obj, created = Round.objects.get_or_create(
             season=season,
             number=round_struct.number,
@@ -382,18 +416,31 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                             "black_team": team2,
                             "pairing_order": pairing_order,
                         }
-                        
+
                         # Add manual tiebreak if present
-                        if hasattr(match, 'manual_tiebreak_value') and match.manual_tiebreak_value is not None:
-                            pairing_data["manual_tiebreak_value"] = match.manual_tiebreak_value
-                        
+                        if (
+                            hasattr(match, "manual_tiebreak_value")
+                            and match.manual_tiebreak_value is not None
+                        ):
+                            pairing_data["manual_tiebreak_value"] = (
+                                match.manual_tiebreak_value
+                            )
+
                         team_pairing = TeamPairing.objects.create(**pairing_data)
 
                         # Create board pairings
                         for board_num, game in enumerate(match.games, 1):
                             # Get players (None for forfeit opponent with ID -1)
-                            white_player = player_id_to_db.get(game.player1.player_id) if game.player1.player_id != -1 else None
-                            black_player = player_id_to_db.get(game.player2.player_id) if game.player2.player_id != -1 else None
+                            white_player = (
+                                player_id_to_db.get(game.player1.player_id)
+                                if game.player1.player_id != -1
+                                else None
+                            )
+                            black_player = (
+                                player_id_to_db.get(game.player2.player_id)
+                                if game.player2.player_id != -1
+                                else None
+                            )
 
                             # Create pairing even if one player is missing (forfeit)
                             if white_player or black_player:
