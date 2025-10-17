@@ -2425,12 +2425,8 @@ class LeagueDashboardView(LeagueView):
         """Create board pairings for a knockout team pairing."""
         import reversion
         
-        logger.info(f"Creating board pairings for {team_pairing.white_team.name} vs {team_pairing.black_team.name}, boards={board_count}")
-        
         white_player_list = self._get_player_list_for_team(team_pairing.white_team, team_pairing.round, board_count)
         black_player_list = self._get_player_list_for_team(team_pairing.black_team, team_pairing.round, board_count)
-        
-        logger.info(f"White team players: {len(white_player_list)}, Black team players: {len(black_player_list)}")
         
         for board_number in range(1, board_count + 1):
             white_player = white_player_list[board_number - 1] if board_number <= len(white_player_list) else None
@@ -2439,8 +2435,6 @@ class LeagueDashboardView(LeagueView):
             # Alternate colors on even boards
             if board_number % 2 == 0:
                 white_player, black_player = black_player, white_player
-            
-            logger.info(f"Creating board {board_number}: {white_player.lichess_username if white_player else 'None'} vs {black_player.lichess_username if black_player else 'None'}")
             
             with reversion.create_revision():
                 reversion.set_comment("Created board pairing for multi-match.")
@@ -2468,14 +2462,10 @@ class LeagueDashboardView(LeagueView):
         from django.db import transaction
         import reversion
         
-        logger.info(f"Creating initial knockout pairings for round {round_obj.number}")
-        
         # Get seeded teams
         from heltour.tournament.models import KnockoutSeeding
         seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by('seed_number')
         seeded_teams = [seeding.team for seeding in seedings if seeding.team]
-        
-        logger.info(f"Found {len(seeded_teams)} seeded teams")
         
         if len(seeded_teams) % 2 != 0:
             raise ValueError(f"Cannot create pairings with odd number of teams: {len(seeded_teams)}")
@@ -2502,15 +2492,11 @@ class LeagueDashboardView(LeagueView):
             team2 = next(team for team in seeded_teams if team.id == team2_id)
             team_pairs.append((team1, team2))
         
-        logger.info(f"Generated {len(team_pairs)} team pairs")
-        
         # Create pairings - only first match of each stage for multi-match
         created_count = 0
         pairing_order = 1
         
         for team1, team2 in team_pairs:
-            logger.info(f"Creating first match for {team1.name} vs {team2.name}")
-            
             with reversion.create_revision():
                 reversion.set_comment("Created initial knockout pairing from seedings.")
                 team_pairing = TeamPairing.objects.create(
@@ -2525,15 +2511,12 @@ class LeagueDashboardView(LeagueView):
                 
                 # Verify board pairings were created
                 board_count = team_pairing.teamplayerpairing_set.count()
-                logger.info(f"Created {board_count} board pairings for pairing {team_pairing.id}")
                 
                 if board_count == 0:
                     raise ValueError(f"Failed to create board pairings for {team1.name} vs {team2.name}")
                 
                 created_count += 1
                 pairing_order += 1
-        
-        logger.info(f"Successfully created {created_count} initial pairings")
         return created_count
 
 

@@ -41,7 +41,7 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate knockout bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         bracket = generate_knockout_bracket(season)
         
         # Verify bracket creation
@@ -57,6 +57,9 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         # Verify first round (semifinals)
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "semifinals")
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
         
         # Check pairings were created
         pairings = TeamPairing.objects.filter(round=round1)
@@ -79,7 +82,7 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate knockout bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         bracket = generate_knockout_bracket(season)
         
         # Verify bracket
@@ -88,6 +91,9 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         # Verify first round
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "semifinals")
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
         
         # Check individual pairings
         pairings = LonePlayerPairing.objects.filter(round=round1)
@@ -115,7 +121,7 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         bracket = generate_knockout_bracket(season)
         
         # Verify 8-team bracket
@@ -124,6 +130,9 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         # First round should be quarterfinals
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "quarterfinals")
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
         
         # Should have 4 matches
         round1_pairings = TeamPairing.objects.filter(round=round1)
@@ -168,10 +177,14 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         bracket = generate_knockout_bracket(season)
         
         round1 = Round.objects.get(season=season, number=1)
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
+        
         pairings = TeamPairing.objects.filter(round=round1)
         
         # Create tied match requiring manual tiebreak
@@ -223,10 +236,14 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate knockout bracket  
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         bracket = generate_knockout_bracket(season)
         
         round1 = Round.objects.get(season=season, number=1)
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
+        
         pairings = TeamPairing.objects.filter(round=round1)
         
         # Add board results for all pairings
@@ -395,10 +412,14 @@ class KnockoutAdminSimulationTestCase(TestCase):
         season = tournament.current_season
         
         # Generate bracket and get pairing
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         generate_knockout_bracket(season)
         
         round1 = Round.objects.get(season=season, number=1)
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
+        
         pairing = TeamPairing.objects.filter(round=round1).first()
         
         # Test admin actions
@@ -454,10 +475,14 @@ class KnockoutErrorHandlingTestCase(TransactionTestCase):
         season = tournament.current_season
         
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket
+        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
         generate_knockout_bracket(season)
         
         round1 = Round.objects.get(season=season, number=1)
+        
+        # Create pairings using dashboard functionality
+        create_knockout_pairings(round1)
+        
         pairings = TeamPairing.objects.filter(round=round1)
         
         # Create tied match without manual tiebreak
