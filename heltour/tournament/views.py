@@ -2480,21 +2480,27 @@ class LeagueDashboardView(LeagueView):
         if len(seeded_teams) % 2 != 0:
             raise ValueError(f"Cannot create pairings with odd number of teams: {len(seeded_teams)}")
         
-        # Generate pairings based on seeding style
+        # Generate pairings based on seeding style using proper bracket positioning
+        from heltour.tournament_core.knockout import (
+            generate_knockout_seedings_traditional,
+            generate_knockout_seedings_adjacent,
+        )
+        
+        team_ids = [team.id for team in seeded_teams]
+        
         if bracket.seeding_style == "traditional":
-            # Traditional: 1v16, 2v15, 3v14, etc.
-            team_pairs = []
-            for i in range(len(seeded_teams) // 2):
-                team1 = seeded_teams[i]
-                team2 = seeded_teams[-(i+1)]
-                team_pairs.append((team1, team2))
+            # Traditional seeding with proper bracket positioning
+            pairing_tuples = generate_knockout_seedings_traditional(team_ids)
         else:  # adjacent
-            # Adjacent: 1v2, 3v4, 5v6, etc.
-            team_pairs = []
-            for i in range(0, len(seeded_teams), 2):
-                team1 = seeded_teams[i]
-                team2 = seeded_teams[i+1]
-                team_pairs.append((team1, team2))
+            # Adjacent seeding
+            pairing_tuples = generate_knockout_seedings_adjacent(team_ids)
+        
+        # Convert team IDs back to team objects
+        team_pairs = []
+        for team1_id, team2_id in pairing_tuples:
+            team1 = next(team for team in seeded_teams if team.id == team1_id)
+            team2 = next(team for team in seeded_teams if team.id == team2_id)
+            team_pairs.append((team1, team2))
         
         logger.info(f"Generated {len(team_pairs)} team pairs")
         
@@ -2710,11 +2716,6 @@ class GameIdsView(LeagueView):
                         unique_pairs.add((min(p.white_team_id, p.black_team_id), max(p.white_team_id, p.black_team_id)))
                     total_pairs = len(unique_pairs) if unique_pairs else 1
                     
-                    # Debug: Let's see what we're working with
-                    debug_info = []
-                    for pairing in team_pairings:
-                        debug_info.append(f"Pairing {pairing.pairing_order}: {pairing.white_team.name} vs {pairing.black_team.name}")
-                    
                     # Group pairings sequentially: first total_pairs go to match 1, next total_pairs to match 2, etc.
                     for i, pairing in enumerate(team_pairings):
                         match_number = (i // total_pairs) + 1
@@ -2731,10 +2732,6 @@ class GameIdsView(LeagueView):
                                 # This ensures we only show actual games, not expected structure
                             
                             round_data['matches'][match_number].extend(game_ids)
-                            # Debug: Add pairing info to see what's happening
-                            if 'debug_info' not in round_data:
-                                round_data['debug_info'] = []
-                            round_data['debug_info'].append(f"Match {match_number}: Pairing {pairing.pairing_order} ({pairing.white_team.name} vs {pairing.black_team.name}) - {len(game_ids)} games")
             else:
                 # Individual tournament - no match numbers, just round
                 lone_pairings = LonePlayerPairing.objects.filter(round=round_obj).order_by('pairing_order')
