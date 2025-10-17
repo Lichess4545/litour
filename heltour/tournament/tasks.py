@@ -613,7 +613,7 @@ def _init_start_league_games(
     round_ = Round.objects.filter(
         season__league=league, is_completed=False, publish_pairings=True
     ).first()
-    if round:
+    if round_:
         signals.do_update_broadcast_round.send(sender="start_games", round_id=round_.pk)
     return result
 
