@@ -2358,6 +2358,8 @@ class LeagueDashboardView(LeagueView):
                                 max_order=Max('pairing_order')
                             )['max_order'] or 0
                             
+                            logger.info(f"DEBUG: Current max_pairing_order: {max_pairing_order}, created_count: {created_count}")
+                            
                             for i in range(needed_matches):
                                 # For additional matches, alternate colors based on the first match
                                 # Get the first match's color assignment
@@ -2382,13 +2384,14 @@ class LeagueDashboardView(LeagueView):
                                     with db_transaction.atomic():
                                         with reversion.create_revision():
                                             reversion.set_comment("Created missing multi-match pairing.")
+                                            calculated_pairing_order = max_pairing_order + created_count + 1
                                             team_pairing = TeamPairing.objects.create(
                                                 white_team=white_team,
                                                 black_team=black_team,
                                                 round=round_obj,
-                                                pairing_order=max_pairing_order + created_count + 1,
+                                                pairing_order=calculated_pairing_order,
                                             )
-                                            logger.info(f"Created pairing: {white_team.name} vs {black_team.name}, pairing_order={max_pairing_order + created_count + 1}")
+                                            logger.info(f"DEBUG: Created pairing: {white_team.name} vs {black_team.name}, pairing_order={calculated_pairing_order} (max_pairing_order={max_pairing_order}, created_count={created_count})")
                                             
                                             # Create board pairings immediately in the same transaction
                                             self._create_board_pairings_for_knockout_pairing(team_pairing, round_obj.season.boards)

@@ -933,6 +933,12 @@ def _generate_initial_knockout_bracket(round_, bracket):
             [team.id for team in seeded_teams]
         )
 
+    # DEBUG: Print what we got from seeding function
+    print(f"DEBUG: Seeding style: {bracket.seeding_style}")
+    print(f"DEBUG: Team IDs: {[team.id for team in seeded_teams]}")
+    print(f"DEBUG: Generated pairings: {pairings}")
+    print(f"DEBUG: Matches per stage: {bracket.matches_per_stage}")
+
     # Set round knockout stage
     stage_name = get_knockout_stage_name(len(seeded_teams))
     round_.knockout_stage = stage_name
@@ -944,6 +950,8 @@ def _generate_initial_knockout_bracket(round_, bracket):
         team1 = Team.objects.get(id=team1_id)
         team2 = Team.objects.get(id=team2_id)
 
+        print(f"DEBUG: Processing pairing {i}: {team1.name} vs {team2.name} (IDs: {team1_id}, {team2_id})")
+
         # Create multiple matches for each team pair
         for match_num in range(bracket.matches_per_stage):
             # Alternate colors for multi-match
@@ -951,6 +959,8 @@ def _generate_initial_knockout_bracket(round_, bracket):
                 white_team, black_team = team1, team2
             else:
                 white_team, black_team = team2, team1
+
+            print(f"DEBUG: Creating match {match_num + 1}: {white_team.name} vs {black_team.name}, pairing_order={pairing_order}")
 
             with reversion.create_revision():
                 reversion.set_comment("Generated knockout bracket.")
