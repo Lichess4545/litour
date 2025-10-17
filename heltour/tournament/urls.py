@@ -22,6 +22,7 @@ from django.urls import include, path
 from django.views.decorators.cache import cache_control
 
 season_urlpatterns = [
+    path("", views.SeasonLandingView.as_view(), name="season_root"),
     path("summary/", views.SeasonLandingView.as_view(), name="season_landing"),
     path("register/", views.RegisterView.as_view(), name="register"),
     path(
@@ -44,6 +45,7 @@ season_urlpatterns = [
         views.ICalPairingsView.as_view(),
         name="pairings_icalendar",
     ),
+    path("bracket/", views.KnockoutBracketView.as_view(), name="knockout_bracket"),
     path(
         "pairings/team/<int:team_number>/",
         views.PairingsView.as_view(),
@@ -69,6 +71,16 @@ season_urlpatterns = [
         "dashboard/",
         staff_member_required(views.LeagueDashboardView.as_view()),
         name="league_dashboard",
+    ),
+    path(
+        "dashboard/team_composition/",
+        staff_member_required(views.TeamCompositionView.as_view()),
+        name="team_composition",
+    ),
+    path(
+        "dashboard/game_ids/",
+        staff_member_required(views.GameIdsView.as_view()),
+        name="game_ids",
     ),
     path("player/", views.UserDashboardView.as_view(), name="user_dashboard"),
     path(

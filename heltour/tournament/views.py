@@ -13,7 +13,8 @@ from django.core.cache import cache
 from django.core.exceptions import SuspiciousOperation
 from django.core.mail.message import EmailMessage
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db import models
+from django.db.models import Count, F, Max
 from django.db.models.query import Prefetch
 from django.http.response import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -348,6 +349,23 @@ class LeagueHomeView(LeagueView):
 
 class SeasonLandingView(SeasonView):
     def view(self):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            knockout_view = KnockoutSeasonLandingView()
+            knockout_view.request = self.request
+            knockout_view.args = self.args
+            knockout_view.kwargs = self.kwargs
+            knockout_view.league = self.league
+            knockout_view.season = self.season
+            knockout_view.extra_context = getattr(self, 'extra_context', {})
+            # Only set player if this view has it (LoginRequiredMixin)
+            if hasattr(self, 'player'):
+                knockout_view.player = self.player
+            else:
+                knockout_view.player = None
+            knockout_view.user_data = getattr(self, 'user_data', {})
+            return knockout_view.view()
+        
         if self.league.is_team_league():
             return self.team_view()
         else:
@@ -511,6 +529,23 @@ class SeasonLandingView(SeasonView):
 
 class PairingsView(SeasonView):
     def view(self, round_number=None, team_number=None):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            knockout_view = KnockoutPairingsView()
+            knockout_view.request = self.request
+            knockout_view.args = self.args
+            knockout_view.kwargs = self.kwargs
+            knockout_view.league = self.league
+            knockout_view.season = self.season
+            knockout_view.extra_context = getattr(self, 'extra_context', {})
+            # Only set player if this view has it (LoginRequiredMixin)
+            if hasattr(self, 'player'):
+                knockout_view.player = self.player
+            else:
+                knockout_view.player = None
+            knockout_view.user_data = getattr(self, 'user_data', {})
+            return knockout_view.view(round_number, team_number)
+        
         if self.league.is_team_league():
             return self.team_view(round_number, team_number)
         else:
@@ -936,6 +971,11 @@ class ModRequestSuccessView(SeasonView):
 
 class RostersView(SeasonView):
     def view(self):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            return redirect('by_league:by_season:knockout_bracket', 
+                          league_tag=self.league.tag, season_tag=self.season.tag)
+        
         @cached_as(TeamMember, SeasonPlayer, Alternate, AlternateAssignment, AlternateBucket,
                    Player, PlayerAvailability, *common_team_models)
         def _view(league_tag, season_tag, user_data, can_edit):
@@ -1018,6 +1058,11 @@ class RostersView(SeasonView):
 
 class StandingsView(SeasonView):
     def view(self, section=None):
+        # Check if this is a knockout tournament
+        if self.season.league.pairing_type.startswith('knockout'):
+            return redirect('by_league:by_season:knockout_bracket', 
+                          league_tag=self.league.tag, season_tag=self.season.tag)
+        
         if self.league.is_team_league():
             return self.team_view()
         else:
@@ -1485,6 +1530,51 @@ class LeagueDashboardView(LeagueView):
             return self.team_view()
         else:
             return self.lone_view()
+    
+    def post(self, request, *args, **kwargs):
+        """Handle POST requests for knockout tournament advancement, match creation, and cache clearing."""
+        self.read_context()
+        self.read_user_data()
+        
+        # Handle cache clearing
+        if 'clear_cache' in request.POST:
+            return self._handle_cache_clear()
+        
+        # Handle tournament advancement (knockout tournaments only)
+        if ('advance_tournament' in request.POST 
+            and self.season.league.pairing_type.startswith('knockout')):
+            return self._handle_knockout_advancement()
+        
+        # Handle creating missing matches for multi-match knockouts
+        if ('create_missing_matches' in request.POST 
+            and self.season.league.pairing_type.startswith('knockout')):
+            return self._handle_create_missing_matches()
+        
+        # If it's not a knockout-related request, fall back to GET behavior
+        return self.view()
+    
+    def _handle_cache_clear(self):
+        """Clear all caches."""
+        try:
+            from django.contrib import messages
+            from django.core.cache import cache
+            
+            # Clear Django cache
+            cache.clear()
+            
+            # Clear cacheops cache if available
+            try:
+                from cacheops import invalidate_all
+                invalidate_all()
+                messages.success(self.request, "All caches cleared successfully (Django cache + cacheops)!")
+            except ImportError:
+                messages.success(self.request, "Django cache cleared successfully!")
+                
+        except Exception as e:
+            from django.contrib import messages
+            messages.error(self.request, f"Error clearing cache: {str(e)}")
+        
+        return self.view()
 
     def _common_context(self):
         current_season_list, completed_season_list = _get_season_lists(self.league,
@@ -1520,6 +1610,13 @@ class LeagueDashboardView(LeagueView):
         next_round = Round.objects.filter(season=self.season, publish_pairings=False,
                                           is_completed=False).order_by('number').first()
 
+        # Check if this is a knockout tournament
+        is_knockout = self.season.league.pairing_type.startswith('knockout')
+        knockout_advancement_info = None
+        
+        if is_knockout and self.request.user.is_staff:
+            knockout_advancement_info = self._get_knockout_advancement_info()
+
         return {
             'current_season_list': current_season_list,
             'completed_season_list': completed_season_list,
@@ -1534,6 +1631,8 @@ class LeagueDashboardView(LeagueView):
             'can_view_dashboard': self.request.user.has_perm('tournament.view_dashboard',
                                                              self.league),
             'can_admin_users': self.request.user.has_module_perms('auth'),
+            'is_knockout_tournament': is_knockout,
+            'knockout_advancement_info': knockout_advancement_info,
         }
 
     def team_view(self):
@@ -1543,6 +1642,882 @@ class LeagueDashboardView(LeagueView):
     def lone_view(self):
         context = self._common_context()
         return self.render('tournament/lone_league_dashboard.html', context)
+    
+    def _get_knockout_advancement_info(self):
+        """Get information about knockout tournament advancement status for admin."""
+        if not self.request.user.is_staff:
+            return None
+            
+        # If season is already completed, no advancement options should be available
+        if self.season.is_completed:
+            return {
+                'can_advance': False,
+                'reason': 'Tournament already completed',
+                'round_to_advance': None,
+                'tied_matches': [],
+                'multi_match_info': None,
+                'can_generate_next_match_set': False,
+                'is_final_round': False,
+            }
+        
+        try:
+            from heltour.tournament.models import KnockoutBracket
+            bracket = KnockoutBracket.objects.get(season=self.season)
+        except KnockoutBracket.DoesNotExist:
+            return {
+                'can_advance': False,
+                'reason': 'No knockout bracket found',
+                'round_to_advance': None,
+                'tied_matches': [],
+                'multi_match_info': None,
+                'can_generate_next_match_set': False,
+            }
+            
+        # Check for multi-match tournament logic first
+        is_multi_match = bracket.matches_per_stage > 1
+        
+        # Find the current round to work with
+        # For multi-match tournaments, we might need to work with incomplete rounds
+        current_round = None
+        last_completed_round = None
+        
+        if is_multi_match:
+            # For multi-match, look for the most recent round with any pairings
+            from heltour.tournament.models import TeamPairing
+            
+            # Find rounds that have pairings, ordered by round number descending
+            rounds_with_pairings = Round.objects.filter(
+                season=self.season,
+                teampairing__isnull=False
+            ).distinct().order_by('-number')
+            
+            if rounds_with_pairings.exists():
+                current_round = rounds_with_pairings.first()
+            else:
+                # No rounds have pairings yet, use Round 1 (first round) for fresh tournaments
+                current_round = Round.objects.filter(
+                    season=self.season
+                ).order_by('number').first()
+            
+            # Also track the last truly completed round
+            last_completed_round = Round.objects.filter(
+                season=self.season, 
+                is_completed=True
+            ).order_by('-number').first()
+        else:
+            # For single-match, use the last completed round
+            last_completed_round = Round.objects.filter(
+                season=self.season, 
+                is_completed=True
+            ).order_by('-number').first()
+            current_round = last_completed_round
+        
+        if not current_round:
+            return {
+                'can_advance': False,
+                'reason': 'No rounds found',
+                'round_to_advance': None,
+                'tied_matches': [],
+                'multi_match_info': None,
+                'can_generate_next_match_set': False,
+            }
+        
+        # Special case: if this is a fresh tournament with no pairings yet,
+        # show the "Create Missing Matches" option
+        if is_multi_match:
+            from heltour.tournament.models import TeamPairing
+            existing_pairings = TeamPairing.objects.filter(round=current_round).count()
+            if existing_pairings == 0:
+                # Calculate expected team pairs from active teams
+                try:
+                    from heltour.tournament.models import Team
+                    active_teams = Team.objects.filter(season=current_round.season, is_active=True).count()
+                    expected_team_pairs = active_teams // 2
+                    total_matches_expected = expected_team_pairs * bracket.matches_per_stage
+                except Exception:
+                    expected_team_pairs = 0
+                    total_matches_expected = 0
+                
+                return {
+                    'can_advance': False,
+                    'reason': 'No matches created yet for this round',
+                    'round_to_advance': current_round,
+                    'tied_matches': [],
+                    'multi_match_info': {
+                        'is_complete': False,
+                        'reason': 'No matches created yet. Use "Create Missing Matches" to generate initial match set.',
+                        'expected_team_pairs': expected_team_pairs,
+                        'completed_team_pairs': 0,
+                        'total_matches_expected': total_matches_expected,
+                        'total_matches_actual': 0,
+                        'total_matches_completed': 0,
+                        'incomplete_pairs': [],
+                        'matches_per_stage': bracket.matches_per_stage,
+                        'status_message': f'Ready to create match 1 of {bracket.matches_per_stage}',
+                    },
+                    'can_generate_next_match_set': True,  # Allow creating first match set
+                }
+        
+        # Get multi-match completion info
+        multi_match_info = None
+        if is_multi_match:
+            try:
+                multi_match_info = self._get_multi_match_completion_info(current_round, bracket)
+            except Exception as e:
+                # If we can't get multi-match info (e.g., no pairings exist), create a minimal info object
+                logger.error(f"ERROR: Could not get multi-match info for round {current_round.number}: {str(e)}")
+                import traceback
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+                logger.error("This should NOT happen if pairings exist!")
+                # Calculate expected team pairs from active teams
+                try:
+                    from heltour.tournament.models import Team
+                    active_teams = Team.objects.filter(season=current_round.season, is_active=True).count()
+                    expected_team_pairs = active_teams // 2
+                    total_matches_expected = expected_team_pairs * bracket.matches_per_stage
+                except Exception:
+                    expected_team_pairs = 0
+                    total_matches_expected = 0
+                
+                multi_match_info = {
+                    'is_complete': False,
+                    'reason': 'No pairings found for this round',
+                    'expected_team_pairs': expected_team_pairs,
+                    'completed_team_pairs': 0,
+                    'total_matches_expected': total_matches_expected,
+                    'total_matches_actual': 0,
+                    'total_matches_completed': 0,
+                    'incomplete_pairs': [],
+                    'matches_per_stage': bracket.matches_per_stage,
+                    'status_message': f'Ready to create match 1 of {bracket.matches_per_stage}',
+                }
+        
+        # For multi-match tournaments, check if we can generate next match set
+        can_generate_next_match_set = False
+        if is_multi_match and multi_match_info:
+            # Can generate next match set if:
+            # 1. All existing matches are complete (have results)
+            # 2. We haven't reached the total expected matches for this stage
+            # 3. We have some matches created (not a fresh tournament)
+            
+            all_existing_complete = (
+                multi_match_info['total_matches_actual'] > 0 and  # Have some matches
+                multi_match_info['total_matches_completed'] == multi_match_info['total_matches_actual']  # All complete
+            )
+            has_missing_matches = (
+                multi_match_info['total_matches_actual'] < multi_match_info['total_matches_expected']
+            )
+            
+            # Determine if we can generate next match set:
+            if multi_match_info['total_matches_actual'] == 0:
+                # Fresh tournament - can create initial matches
+                can_generate_next_match_set = True
+            elif has_missing_matches and all_existing_complete:
+                # Current match set is complete, can create next set
+                can_generate_next_match_set = True
+            else:
+                # Either all matches created OR current matches not complete yet
+                can_generate_next_match_set = False
+            
+            # Check if we're ready to advance to next round
+            if multi_match_info['is_complete']:
+                # All matches for this stage are complete, can check for advancement
+                pass
+            else:
+                # Not all matches complete/created yet
+                return {
+                    'can_advance': False,
+                    'reason': multi_match_info['reason'],
+                    'round_to_advance': current_round,
+                    'tied_matches': [],
+                    'multi_match_info': multi_match_info,
+                    'can_generate_next_match_set': can_generate_next_match_set,
+                }
+        
+        # Check the round to advance from (for single-match or completed multi-match)
+        round_to_advance = last_completed_round if last_completed_round else current_round
+        
+        # Check for tied matches that need manual tiebreak resolution
+        tied_matches = []
+        if self.league.competitor_type == 'team':
+            if is_multi_match:
+                # For multi-match, check aggregate ties
+                tied_matches = self._get_multi_match_tied_pairs(round_to_advance, bracket)
+            else:
+                # For single-match, check individual pairing ties
+                tied_pairings = TeamPairing.objects.filter(
+                    round=round_to_advance,
+                    white_points__isnull=False,
+                    black_points__isnull=False,
+                    manual_tiebreak_value__isnull=True
+                ).filter(
+                    white_points=F('black_points')
+                ).select_related('white_team', 'black_team')
+                
+                for pairing in tied_pairings:
+                    tied_matches.append({
+                        'id': pairing.id,
+                        'competitor1': pairing.white_team.name,
+                        'competitor2': pairing.black_team.name,
+                        'score': pairing.white_points,
+                    })
+        else:
+            # Individual tournaments - handle ties differently
+            # For now, assume individual tournaments don't need manual tiebreak resolution
+            pass
+        
+        # Determine if we can advance
+        can_advance = len(tied_matches) == 0
+        reason = None
+        if not can_advance:
+            reason = f"{len(tied_matches)} tied match(es) require manual tiebreak resolution"
+        
+        # Check if this is the final scheduled round
+        is_final_round = False
+        if hasattr(self.season, 'rounds') and self.season.rounds and round_to_advance:
+            is_final_round = round_to_advance.number >= self.season.rounds
+        
+        return {
+            'can_advance': can_advance,
+            'reason': reason,
+            'round_to_advance': round_to_advance,
+            'tied_matches': tied_matches,
+            'is_final_round': is_final_round,
+            'multi_match_info': multi_match_info,
+            'can_generate_next_match_set': can_generate_next_match_set,
+        }
+    
+    def _handle_knockout_advancement(self):
+        """Handle POST request to advance the knockout tournament."""
+        if not self.request.user.is_staff:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Only staff can advance tournaments")
+        
+        try:
+            from heltour.tournament.pairinggen import advance_knockout_tournament
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            
+            # Find the round to advance from
+            # For multi-match tournaments, we need to use the advancement info logic
+            # since rounds may not be formally marked complete even when all matches are done
+            advancement_info = self._get_knockout_advancement_info()
+            round_to_advance = advancement_info.get('round_to_advance')
+            
+            if not round_to_advance:
+                messages.error(self.request, "No rounds ready to advance from")
+                return redirect(self.request.path)
+            
+            # For compatibility, set last_completed_round for the rest of the logic
+            last_completed_round = round_to_advance
+            
+            # Check for unresolved tied matches
+            if not advancement_info['can_advance']:
+                messages.error(self.request, f"Cannot advance tournament: {advancement_info['reason']}")
+                return redirect(self.request.path)
+            
+            # Check if this is the final round - if so, finalize the tournament
+            if advancement_info['is_final_round']:
+                # Finalize tournament standings instead of creating new round
+                self.season.is_completed = True
+                self.season.save()
+                
+                # Calculate final standings and create advancement records
+                from heltour.tournament.models import KnockoutBracket, KnockoutAdvancement
+                try:
+                    bracket = KnockoutBracket.objects.get(season=self.season)
+                    
+                    # Get winners from the final round
+                    if self.league.competitor_type == 'team':
+                        # Use the same multi-match logic as advancement
+                        if bracket.matches_per_stage > 1:
+                            # Multi-match tournament: aggregate scores by team pair
+                            from heltour.tournament.pairinggen import _get_multi_match_winners
+                            winners = _get_multi_match_winners(last_completed_round, bracket)
+                        else:
+                            # Single-match tournament: use individual pairing results
+                            winners = []
+                            team_pairings = TeamPairing.objects.filter(round=last_completed_round).order_by('pairing_order')
+                            
+                            for pairing in team_pairings:
+                                if pairing.black_team_id is None:
+                                    # Bye situation - white team advances
+                                    winners.append(pairing.white_team)
+                                else:
+                                    # Determine winner based on points and manual tiebreak
+                                    if pairing.manual_tiebreak_value is not None:
+                                        if pairing.manual_tiebreak_value > 0:
+                                            winners.append(pairing.white_team)
+                                        elif pairing.manual_tiebreak_value < 0:
+                                            winners.append(pairing.black_team)
+                                        # If tiebreak is 0, it's still a tie - this shouldn't happen
+                                    elif pairing.white_points is not None and pairing.black_points is not None:
+                                        if pairing.white_points > pairing.black_points:
+                                            winners.append(pairing.white_team)
+                                        elif pairing.black_points > pairing.white_points:
+                                            winners.append(pairing.black_team)
+                                        # If points are equal and no manual tiebreak, this shouldn't happen
+                        
+                        # Create advancement records for the final winners
+                        # For the final round, winners advance to "final" (not to another round)
+                        final_stage = "final"
+                        
+                        # Determine from_stage - use knockout_stage if set, otherwise calculate it
+                        from_stage = last_completed_round.knockout_stage
+                        if not from_stage:
+                            # Calculate knockout stage based on round number and bracket size
+                            from heltour.tournament_core.knockout import get_knockout_stage_name as calc_stage_name
+                            teams_remaining = bracket.bracket_size // (2 ** (last_completed_round.number - 1))
+                            from_stage = calc_stage_name(teams_remaining)
+                        
+                        for winner_team in winners:
+                            KnockoutAdvancement.objects.get_or_create(
+                                bracket=bracket,
+                                team=winner_team,
+                                from_stage=from_stage,
+                                to_stage=final_stage,
+                                defaults={
+                                    'advanced_date': timezone.now(),
+                                }
+                            )
+                        
+                        winner_count = len(winners)
+                        messages.success(
+                            self.request, 
+                            f"Tournament standings finalized! {winner_count} winners determined."
+                        )
+                    else:
+                        # Handle individual tournaments similarly
+                        messages.success(self.request, "Tournament standings finalized!")
+                        
+                except KnockoutBracket.DoesNotExist:
+                    messages.success(self.request, "Tournament standings finalized!")
+            else:
+                # Perform normal advancement to next round
+                next_round = advance_knockout_tournament(last_completed_round)
+                
+                if next_round:
+                    messages.success(
+                        self.request, 
+                        f"Successfully advanced tournament to Round {next_round.number}"
+                    )
+                else:
+                    messages.success(self.request, "Tournament has been completed - all rounds finished")
+            
+            return redirect(self.request.path)
+            
+        except Exception as e:
+            from django.contrib import messages
+            messages.error(self.request, f"Error advancing tournament: {str(e)}")
+            return redirect(self.request.path)
+    
+    def _get_multi_match_completion_info(self, round_obj, bracket):
+        """Get detailed completion info for multi-match knockout rounds."""
+        from collections import defaultdict
+        
+        matches_per_stage = bracket.matches_per_stage
+        
+        # Group team pairings by team pairs
+        team_pair_groups = defaultdict(list)
+        team_pairings = TeamPairing.objects.filter(round=round_obj).select_related('white_team', 'black_team')
+        
+        for pairing in team_pairings:
+            if pairing.black_team:  # Skip byes
+                # Create consistent key for team pair
+                team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                team_pair_groups[team_key].append(pairing)
+        
+        # Analyze completion status
+        expected_team_pairs = len(team_pair_groups)
+        
+        # If no pairings exist yet, calculate expected team pairs from seedings
+        if expected_team_pairs == 0:
+            try:
+                from heltour.tournament.models import KnockoutSeeding
+                active_teams = Team.objects.filter(season=round_obj.season, is_active=True).count()
+                expected_team_pairs = active_teams // 2  # Each pair plays against each other
+            except Exception:
+                expected_team_pairs = 0
+        
+        completed_team_pairs = 0
+        incomplete_pairs = []
+        total_matches_expected = expected_team_pairs * matches_per_stage
+        total_matches_actual = len(team_pairings)
+        total_matches_completed = 0
+        
+        for team_key, pairings in team_pair_groups.items():
+            team1 = Team.objects.get(id=team_key[0])
+            team2 = Team.objects.get(id=team_key[1])
+            
+            completed_matches = 0
+            for pairing in pairings:
+                board_pairings = pairing.teamplayerpairing_set.all()
+                board_count = board_pairings.count()
+                
+                # Skip pairings without board pairings - they can't be complete
+                if board_count == 0:
+                    logger.warning(f"TeamPairing {pairing.id} has no board pairings")
+                    continue
+                    
+                completed_boards = board_pairings.filter(result__isnull=False).exclude(result='').count()
+                is_match_completed = completed_boards > 0 and completed_boards == board_count
+                if is_match_completed:
+                    completed_matches += 1
+                    total_matches_completed += 1
+            
+            if completed_matches == len(pairings) and len(pairings) == matches_per_stage:
+                completed_team_pairs += 1
+            else:
+                incomplete_pairs.append({
+                    'team1': team1.name,
+                    'team2': team2.name,
+                    'completed_matches': completed_matches,
+                    'expected_matches': matches_per_stage,
+                    'actual_matches': len(pairings),
+                })
+        
+        is_complete = completed_team_pairs == expected_team_pairs and total_matches_actual == total_matches_expected
+        
+        if not is_complete:
+            if total_matches_actual < total_matches_expected:
+                reason = f"Only {total_matches_actual}/{total_matches_expected} matches created. Missing {total_matches_expected - total_matches_actual} matches."
+            else:
+                reason = f"Only {total_matches_completed}/{total_matches_expected} matches completed. {total_matches_expected - total_matches_completed} matches still in progress."
+        else:
+            reason = "All matches complete"
+        
+        # Calculate status message
+        if total_matches_actual == 0:
+            status_message = f'Ready to create match 1 of {matches_per_stage}'
+        elif is_complete:
+            # All matches are complete
+            status_message = f'All {matches_per_stage} matches complete - ready to advance'
+        elif expected_team_pairs > 0:
+            # Calculate which match we're currently on based on completed matches
+            completed_match_sets = total_matches_completed // expected_team_pairs
+            current_match_number = completed_match_sets + 1
+            
+            if total_matches_actual % expected_team_pairs == 0:
+                # Complete set of matches created
+                if completed_match_sets == matches_per_stage:
+                    # All matches complete
+                    status_message = f'All {matches_per_stage} matches complete - ready to advance'
+                elif completed_match_sets > 0:
+                    # Some matches complete, need next set
+                    status_message = f'Match {completed_match_sets} of {matches_per_stage} complete'
+                else:
+                    # First set created but not complete
+                    completed_in_current = total_matches_completed % expected_team_pairs
+                    status_message = f'Match 1 in progress ({completed_in_current}/{expected_team_pairs} matches completed)'
+            else:
+                # Partial set of matches created
+                actual_in_current = total_matches_actual % expected_team_pairs
+                status_message = f'Match {current_match_number} in progress ({actual_in_current}/{expected_team_pairs} matches created)'
+        else:
+            status_message = f'Ready to create initial matches'
+        
+        return {
+            'is_complete': is_complete,
+            'reason': reason,
+            'expected_team_pairs': expected_team_pairs,
+            'completed_team_pairs': completed_team_pairs,
+            'total_matches_expected': total_matches_expected,
+            'total_matches_actual': total_matches_actual,
+            'total_matches_completed': total_matches_completed,
+            'incomplete_pairs': incomplete_pairs,
+            'matches_per_stage': matches_per_stage,
+            'status_message': status_message,
+        }
+    
+    def _get_multi_match_tied_pairs(self, round_obj, bracket):
+        """Get team pairs with tied aggregate scores in multi-match tournaments."""
+        from collections import defaultdict
+        
+        tied_matches = []
+        team_pair_groups = defaultdict(list)
+        team_pairings = TeamPairing.objects.filter(round=round_obj).select_related('white_team', 'black_team')
+        
+        for pairing in team_pairings:
+            if pairing.black_team:  # Skip byes
+                team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                team_pair_groups[team_key].append(pairing)
+        
+        for team_key, pairings in team_pair_groups.items():
+            team1 = Team.objects.get(id=team_key[0])
+            team2 = Team.objects.get(id=team_key[1])
+            
+            # Calculate aggregate scores
+            total_team1_points = 0.0
+            total_team2_points = 0.0
+            all_matches_completed = True
+            has_manual_tiebreak = False
+            
+            for pairing in pairings:
+                # Check if this match is completed
+                board_pairings = pairing.teamplayerpairing_set.all()
+                board_count = board_pairings.count()
+                
+                # Skip pairings without board pairings
+                if board_count == 0:
+                    all_matches_completed = False
+                    break
+                    
+                completed_boards = board_pairings.filter(result__isnull=False).exclude(result='').count()
+                is_match_completed = completed_boards > 0 and completed_boards == board_count
+                
+                if not is_match_completed:
+                    all_matches_completed = False
+                    break
+                
+                # Check for manual tiebreak
+                if pairing.manual_tiebreak_value is not None:
+                    has_manual_tiebreak = True
+                    break
+                
+                # Add to aggregate scores
+                if pairing.white_team.id == team1.id:
+                    total_team1_points += pairing.white_points or 0.0
+                    total_team2_points += pairing.black_points or 0.0
+                else:
+                    total_team1_points += pairing.black_points or 0.0
+                    total_team2_points += pairing.white_points or 0.0
+            
+            # Check if this pair is tied and needs manual resolution
+            if (all_matches_completed and not has_manual_tiebreak and 
+                len(pairings) == bracket.matches_per_stage and
+                abs(total_team1_points - total_team2_points) < 0.001):  # Float comparison
+                
+                tied_matches.append({
+                    'id': pairings[0].id,  # Use first pairing ID for link
+                    'competitor1': team1.name,
+                    'competitor2': team2.name,
+                    'score': total_team1_points,
+                })
+        
+        return tied_matches
+    
+    def _handle_create_missing_matches(self):
+        """Handle POST request to create missing matches for multi-match knockout."""
+        if not self.request.user.is_staff:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Only staff can create matches")
+        
+        try:
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            from heltour.tournament.models import KnockoutBracket
+            
+            messages.info(self.request, "Processing create missing matches request...")
+            
+            bracket = KnockoutBracket.objects.get(season=self.season)
+            
+            # Get the round that the dashboard is showing info about
+            # Use the SAME logic as _get_knockout_advancement_info to avoid inconsistency
+            advancement_info = self._get_knockout_advancement_info()
+            active_round = advancement_info.get('round_to_advance')
+            
+            if not active_round:
+                messages.error(self.request, "No active round found for match creation")
+                return redirect(self.request.path)
+            
+            try:
+                multi_match_info = self._get_multi_match_completion_info(active_round, bracket)
+            except Exception as e:
+                logger.error(f"Error getting multi-match info: {str(e)}")
+                # Try to handle the specific case of pairings without board pairings
+                from heltour.tournament.models import TeamPlayerPairing
+                
+                # Find and fix any pairings without board pairings
+                problem_pairings = TeamPairing.objects.filter(
+                    round=active_round
+                ).exclude(black_team__isnull=True)  # Exclude byes
+                
+                fixed_count = 0
+                for pairing in problem_pairings:
+                    if pairing.teamplayerpairing_set.count() == 0:
+                        logger.warning(f"Found pairing without board pairings: {pairing.white_team.name} vs {pairing.black_team.name}")
+                        # Create board pairings for this pairing
+                        self._create_board_pairings_for_knockout_pairing(pairing, active_round.season.boards)
+                        fixed_count += 1
+                
+                if fixed_count > 0:
+                    logger.info(f"Fixed {fixed_count} pairings with missing board pairings")
+                    # Try again
+                    try:
+                        multi_match_info = self._get_multi_match_completion_info(active_round, bracket)
+                    except:
+                        messages.error(self.request, "Unable to analyze round status. Please check for pairings without board results.")
+                        return redirect(self.request.path)
+                else:
+                    messages.error(self.request, f"Error analyzing round: {str(e)}")
+                    return redirect(self.request.path)
+            
+            # Debug logging
+            logger.info(f"Creating missing matches for round {active_round.number}")
+            logger.info(f"Expected: {multi_match_info['total_matches_expected']}, Actual: {multi_match_info['total_matches_actual']}")
+            logger.info(f"Expected team pairs: {multi_match_info['expected_team_pairs']}")
+            logger.info(f"Matches per stage: {multi_match_info['matches_per_stage']}")
+            logger.info(f"Multi-match info: {multi_match_info}")
+            
+            if multi_match_info['total_matches_actual'] >= multi_match_info['total_matches_expected']:
+                logger.warning(f"Condition failed: {multi_match_info['total_matches_actual']} >= {multi_match_info['total_matches_expected']}")
+                messages.info(self.request, f"All required matches already exist ({multi_match_info['total_matches_actual']}/{multi_match_info['total_matches_expected']})")
+                return redirect(self.request.path)
+            
+            # Create missing matches
+            created_count = self._create_missing_knockout_matches(active_round, bracket, multi_match_info)
+            
+            if created_count > 0:
+                messages.success(
+                    self.request, 
+                    f"Successfully created {created_count} missing matches"
+                )
+            else:
+                messages.info(self.request, "No matches needed to be created")
+            
+            return redirect(self.request.path)
+            
+        except ValueError as ve:
+            # This is likely the db_to_structure error
+            from django.contrib import messages
+            import traceback
+            logger.error(f"ValueError creating matches: {str(ve)}")
+            logger.error(traceback.format_exc())
+            
+            # Check if this is happening AFTER we created pairings
+            logger.info("Checking for recently created pairings without board pairings...")
+            recent_pairings = TeamPairing.objects.filter(
+                round__season=self.season
+            ).order_by('-id')[:10]  # Check last 10 created pairings
+            
+            for p in recent_pairings:
+                board_count = p.teamplayerpairing_set.count()
+                if board_count == 0:
+                    logger.error(f"Found recent pairing without boards: ID {p.id}, {p.white_team.name} vs {p.black_team.name if p.black_team else 'BYE'}")
+            
+            messages.error(self.request, f"Error creating matches: {str(ve)}")
+            return redirect(self.request.path)
+        except Exception as e:
+            from django.contrib import messages
+            import traceback
+            logger.error(f"Error creating matches: {str(e)}")
+            logger.error(traceback.format_exc())
+            messages.error(self.request, f"Error creating matches: {str(e)}")
+            return redirect(self.request.path)
+    
+    def _create_missing_knockout_matches(self, round_obj, bracket, multi_match_info):
+        """Create the missing matches for a multi-match knockout round."""
+        from collections import defaultdict
+        from django.db import transaction
+        import reversion
+        
+        created_count = 0
+        matches_per_stage = bracket.matches_per_stage
+        
+        # Group existing pairings by team pairs
+        team_pair_groups = defaultdict(list)
+        existing_pairings = TeamPairing.objects.filter(round=round_obj).select_related('white_team', 'black_team')
+        
+        logger.info(f"Found {existing_pairings.count()} existing pairings in round {round_obj.number}")
+        logger.info(f"Round {round_obj.number} is_completed: {round_obj.is_completed}")
+        
+        # IMPORTANT: Temporarily mark round as not completed to avoid calculate_scores being called
+        # when TeamPairing.save() is executed, before board pairings are created
+        original_is_completed = round_obj.is_completed
+        if original_is_completed:
+            logger.info("Temporarily marking round as incomplete to prevent calculate_scores during pairing creation")
+            round_obj.is_completed = False
+            round_obj.save()
+        
+        try:
+            for pairing in existing_pairings:
+                if pairing.black_team:  # Skip byes
+                    team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                    team_pair_groups[team_key].append(pairing)
+                    logger.info(f"Added pairing {pairing.white_team.name} vs {pairing.black_team.name} to group {team_key}")
+            
+            # Create missing matches for each team pair
+            with transaction.atomic():
+                # If no existing pairings, we need to create initial pairings from seedings
+                if len(team_pair_groups) == 0:
+                    logger.info("No existing pairings found - creating initial tournament pairings from seedings")
+                    created_count = self._create_initial_knockout_pairings(round_obj, bracket)
+                else:
+                    # Handle existing team pairs that need more matches
+                    for team_key, existing_pairings_list in team_pair_groups.items():
+                        needed_matches = matches_per_stage - len(existing_pairings_list)
+                        
+                        if needed_matches > 0:
+                            team1 = Team.objects.get(id=team_key[0])
+                            team2 = Team.objects.get(id=team_key[1])
+                            
+                            logger.info(f"Creating {needed_matches} matches for {team1.name} vs {team2.name}")
+                        
+                            # Determine next pairing order
+                            max_pairing_order = TeamPairing.objects.filter(round=round_obj).aggregate(
+                                max_order=Max('pairing_order')
+                            )['max_order'] or 0
+                            
+                            logger.info(f"DEBUG: Current max_pairing_order: {max_pairing_order}, created_count: {created_count}")
+                            
+                            for i in range(needed_matches):
+                                # For additional matches, alternate colors based on the first match
+                                # Get the first match's color assignment
+                                first_pairing = existing_pairings_list[0]
+                                match_number_in_series = len(existing_pairings_list) + i + 1  # 1-based
+                                
+                                if match_number_in_series % 2 == 1:
+                                    # Odd matches: use same colors as first match
+                                    white_team = first_pairing.white_team
+                                    black_team = first_pairing.black_team
+                                else:
+                                    # Even matches: swap colors from first match
+                                    white_team = first_pairing.black_team
+                                    black_team = first_pairing.white_team
+                                
+                                logger.info(f"Creating match {match_number_in_series}: {white_team.name} (white) vs {black_team.name} (black)")
+                                
+                                try:
+                                    # Use a nested transaction to ensure atomicity
+                                    from django.db import transaction as db_transaction
+                                    
+                                    with db_transaction.atomic():
+                                        with reversion.create_revision():
+                                            reversion.set_comment("Created missing multi-match pairing.")
+                                            calculated_pairing_order = max_pairing_order + created_count + 1
+                                            team_pairing = TeamPairing.objects.create(
+                                                white_team=white_team,
+                                                black_team=black_team,
+                                                round=round_obj,
+                                                pairing_order=calculated_pairing_order,
+                                            )
+                                            logger.info(f"DEBUG: Created pairing: {white_team.name} vs {black_team.name}, pairing_order={calculated_pairing_order} (max_pairing_order={max_pairing_order}, created_count={created_count})")
+                                            
+                                            # Create board pairings immediately in the same transaction
+                                            self._create_board_pairings_for_knockout_pairing(team_pairing, round_obj.season.boards)
+                                            
+                                            # Verify board pairings were created
+                                            board_count = team_pairing.teamplayerpairing_set.count()
+                                            logger.info(f"Created {board_count} board pairings for pairing {team_pairing.id}")
+                                            
+                                            if board_count == 0:
+                                                raise ValueError(f"Failed to create board pairings for {white_team.name} vs {black_team.name}")
+                                            
+                                            created_count += 1
+                                except Exception as e:
+                                    logger.error(f"Failed to create pairing for {white_team.name} vs {black_team.name}: {str(e)}")
+                                    raise
+        finally:
+            # Restore original is_completed state
+            if original_is_completed:
+                logger.info("Restoring round completed status")
+                round_obj.is_completed = True
+                round_obj.save()
+                
+                # Now it's safe to recalculate scores if needed
+                if created_count > 0:
+                    logger.info("Recalculating scores after creating all pairings with board pairings")
+                    round_obj.season.calculate_scores()
+        
+        return created_count
+    
+    def _create_board_pairings_for_knockout_pairing(self, team_pairing, board_count):
+        """Create board pairings for a knockout team pairing."""
+        import reversion
+        
+        white_player_list = self._get_player_list_for_team(team_pairing.white_team, team_pairing.round, board_count)
+        black_player_list = self._get_player_list_for_team(team_pairing.black_team, team_pairing.round, board_count)
+        
+        for board_number in range(1, board_count + 1):
+            white_player = white_player_list[board_number - 1] if board_number <= len(white_player_list) else None
+            black_player = black_player_list[board_number - 1] if board_number <= len(black_player_list) else None
+            
+            # Alternate colors on even boards
+            if board_number % 2 == 0:
+                white_player, black_player = black_player, white_player
+            
+            with reversion.create_revision():
+                reversion.set_comment("Created board pairing for multi-match.")
+                TeamPlayerPairing.objects.create(
+                    team_pairing=team_pairing,
+                    board_number=board_number,
+                    white=white_player,
+                    black=black_player,
+                )
+    
+    def _get_player_list_for_team(self, team, round_obj, board_count):
+        """Get list of players for a team in a specific round."""
+        # Simplified version - get team members by board order
+        team_members = []
+        for board_number in range(1, board_count + 1):
+            member = TeamMember.objects.filter(team=team, board_number=board_number).first()
+            if member:
+                team_members.append(member.player)
+            else:
+                team_members.append(None)
+        return team_members
+    
+    def _create_initial_knockout_pairings(self, round_obj, bracket):
+        """Create initial knockout pairings from seedings."""
+        from django.db import transaction
+        import reversion
+        
+        # Get seeded teams
+        from heltour.tournament.models import KnockoutSeeding
+        seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by('seed_number')
+        seeded_teams = [seeding.team for seeding in seedings if seeding.team]
+        
+        if len(seeded_teams) % 2 != 0:
+            raise ValueError(f"Cannot create pairings with odd number of teams: {len(seeded_teams)}")
+        
+        # Generate pairings based on seeding style using proper bracket positioning
+        from heltour.tournament_core.knockout import (
+            generate_knockout_seedings_traditional,
+            generate_knockout_seedings_adjacent,
+        )
+        
+        team_ids = [team.id for team in seeded_teams]
+        
+        if bracket.seeding_style == "traditional":
+            # Traditional seeding with proper bracket positioning
+            pairing_tuples = generate_knockout_seedings_traditional(team_ids)
+        else:  # adjacent
+            # Adjacent seeding
+            pairing_tuples = generate_knockout_seedings_adjacent(team_ids)
+        
+        # Convert team IDs back to team objects
+        team_pairs = []
+        for team1_id, team2_id in pairing_tuples:
+            team1 = next(team for team in seeded_teams if team.id == team1_id)
+            team2 = next(team for team in seeded_teams if team.id == team2_id)
+            team_pairs.append((team1, team2))
+        
+        # Create pairings - only first match of each stage for multi-match
+        created_count = 0
+        pairing_order = 1
+        
+        for team1, team2 in team_pairs:
+            with reversion.create_revision():
+                reversion.set_comment("Created initial knockout pairing from seedings.")
+                team_pairing = TeamPairing.objects.create(
+                    white_team=team1,
+                    black_team=team2,
+                    round=round_obj,
+                    pairing_order=pairing_order,
+                )
+                
+                # Create board pairings immediately
+                self._create_board_pairings_for_knockout_pairing(team_pairing, round_obj.season.boards)
+                
+                # Verify board pairings were created
+                board_count = team_pairing.teamplayerpairing_set.count()
+                
+                if board_count == 0:
+                    raise ValueError(f"Failed to create board pairings for {team1.name} vs {team2.name}")
+                
+                created_count += 1
+                pairing_order += 1
+        return created_count
 
 
 class UserDashboardView(LeagueView):
@@ -1654,6 +2629,123 @@ class DocumentView(LeagueView):
             'can_edit': self.request.user.has_perm('tournament.change_document', self.league)
         }
         return self.render('tournament/document.html', context)
+
+
+class TeamCompositionView(LeagueView):
+    def view(self):
+        # Check same permissions as dashboard
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+        
+        # Only for team leagues
+        if not self.league.is_team_league():
+            raise Http404()
+        
+        # Get all teams for the current season with their members
+        teams = Team.objects.filter(
+            season=self.season, 
+            is_active=True
+        ).prefetch_related(
+            'teammember_set__player'
+        ).order_by('name')
+        
+        context = {
+            'teams': teams,
+        }
+        return self.render('tournament/team_composition.html', context)
+
+
+class GameIdsView(LeagueView):
+    def view(self):
+        # Check same permissions as dashboard
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+        
+        # Get all rounds for the current season
+        rounds = Round.objects.filter(season=self.season).order_by('number')
+        
+        # Organize game IDs by round
+        rounds_data = []
+        
+        for round_obj in rounds:
+            round_data = {
+                'round_number': round_obj.number,
+                'matches': {}
+            }
+            
+            if self.league.is_team_league():
+                # Get the number of matches from the knockout bracket if it exists
+                max_matches = 1
+                try:
+                    from heltour.tournament.models import KnockoutBracket
+                    knockout_bracket = KnockoutBracket.objects.get(season=self.season)
+                    max_matches = knockout_bracket.matches_per_stage
+                except KnockoutBracket.DoesNotExist:
+                    # Fall back to heuristic
+                    is_multi_match = 'return' in self.season.name.lower() or 'multi' in self.season.name.lower()
+                    max_matches = 2 if is_multi_match else 1
+                
+                # Team tournament - group by match number
+                team_pairings = TeamPairing.objects.filter(round=round_obj).order_by('pairing_order')
+                
+                # Initialize all expected matches
+                for match_num in range(1, max_matches + 1):
+                    round_data['matches'][match_num] = []
+                
+                if team_pairings.exists():
+                    # Simple sequential grouping: first X pairings = match 1, next X = match 2, etc.
+                    unique_pairs = set()
+                    for p in team_pairings:
+                        unique_pairs.add((min(p.white_team_id, p.black_team_id), max(p.white_team_id, p.black_team_id)))
+                    total_pairs = len(unique_pairs) if unique_pairs else 1
+                    
+                    # Group pairings sequentially: first total_pairs go to match 1, next total_pairs to match 2, etc.
+                    for i, pairing in enumerate(team_pairings):
+                        match_number = (i // total_pairs) + 1
+                        # Only show matches up to the expected number
+                        if match_number <= max_matches:
+                            # Get all board games for this pairing
+                            board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
+                            game_ids = []
+                            for board_pairing in board_pairings:
+                                game_id = board_pairing.game_id()
+                                if game_id:
+                                    game_ids.append(game_id)
+                                # Note: Only add game IDs that exist, don't add empty placeholders
+                                # This ensures we only show actual games, not expected structure
+                            
+                            round_data['matches'][match_number].extend(game_ids)
+            else:
+                # Individual tournament - no match numbers, just round
+                lone_pairings = LonePlayerPairing.objects.filter(round=round_obj).order_by('pairing_order')
+                game_ids = []
+                for pairing in lone_pairings:
+                    game_id = pairing.game_id()
+                    if game_id:
+                        game_ids.append(game_id)
+                    else:
+                        game_ids.append("")  # Empty placeholder when no game ID
+                
+                if lone_pairings.exists():
+                    round_data['matches'][1] = game_ids  # Single "match" for lone tournaments
+                else:
+                    # No pairings exist yet - show expected structure
+                    active_players = SeasonPlayer.objects.filter(season=self.season, is_active=True).count()
+                    if active_players > 0:
+                        if active_players % 2 == 0:
+                            expected_pairings = active_players // 2
+                        else:
+                            expected_pairings = (active_players + 1) // 2  # One bye
+                        round_data['matches'][1] = [""] * expected_pairings
+            
+            # Always add round data, even if empty
+            rounds_data.append(round_data)
+        
+        context = {
+            'rounds_data': rounds_data,
+            'is_team_league': self.league.is_team_league(),
+        }
+        return self.render('tournament/game_ids.html', context)
 
 
 class ContactView(LoginRequiredMixin, LeagueView):
@@ -2964,3 +4056,1266 @@ def _get_nav_tree(league_tag, season_tag):
         return (text, url, children, append_separator)
 
     return [transform(item) for item in root_items]
+
+
+# -------------------------------------------------------------------------------
+# Knockout Tournament Views
+
+class KnockoutBracketView(SeasonView):
+    """View for displaying knockout tournament brackets."""
+    
+    @property 
+    def player(self):
+        """Get player if available, otherwise return None."""
+        if hasattr(self, '_player'):
+            return self._player
+        return None
+    
+    @player.setter
+    def player(self, value):
+        self._player = value
+    
+    def view(self):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            raise Http404("This season is not a knockout tournament")
+            
+        from heltour.tournament.models import KnockoutBracket, KnockoutSeeding, KnockoutAdvancement
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        # Get the knockout bracket
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+        except KnockoutBracket.DoesNotExist:
+            # No bracket exists yet
+            context = {
+                'bracket_rounds': None,
+                'bracket': None,
+                'bracket_info': None,
+                'advancements': None,
+            }
+            return self.render('tournament/knockout_bracket.html', context)
+        
+        # Get all rounds for this season
+        all_rounds = Round.objects.filter(season=self.season).order_by('number')
+        
+        # Build bracket visualization data - show all rounds even if not created yet
+        bracket_rounds = []
+        
+        # Calculate total rounds needed for complete tournament
+        if bracket:
+            total_tournament_rounds = int(math.log2(bracket.bracket_size))
+        else:
+            total_tournament_rounds = all_rounds.count() if all_rounds else 1
+        
+        # Show scheduled rounds + 1 additional round (to see where winners would go)
+        scheduled_rounds = total_tournament_rounds
+        if hasattr(self.season, 'rounds') and self.season.rounds:
+            scheduled_rounds = self.season.rounds
+            # Show one additional round past the scheduled ones (but not more than total possible)
+            display_rounds = min(scheduled_rounds + 1, total_tournament_rounds)
+        else:
+            display_rounds = total_tournament_rounds
+        
+        for round_num in range(1, display_rounds + 1):
+            # Try to get existing round, or create placeholder
+            round_obj = all_rounds.filter(number=round_num).first()
+            
+            # Calculate teams remaining in this round
+            teams_remaining = bracket.bracket_size // (2 ** (round_num - 1)) if bracket else 2
+            
+            # Special handling for the final displayed round when showing individual winners
+            if round_num == scheduled_rounds + 1 and round_num <= display_rounds:
+                # This is the winner display round
+                if teams_remaining == 1:
+                    stage_name = "Winner"
+                else:
+                    stage_name = f"Winners (Top {teams_remaining})"
+            else:
+                stage_name = get_knockout_stage_name(teams_remaining)
+            
+            if round_obj:
+                # Existing round - process normally
+                if self.league.competitor_type == 'team':
+                    pairings = TeamPairing.objects.filter(round=round_obj).select_related(
+                        'white_team', 'black_team'
+                    ).prefetch_related(
+                        'white_team__knockoutseeding_set',
+                        'black_team__knockoutseeding_set'
+                    )
+                else:
+                    pairings = LonePlayerPairing.objects.filter(round=round_obj).select_related(
+                        'white', 'black'
+                    )
+                
+                # Convert pairings to match data and calculate bracket positions
+                matches = []
+                
+                # If no pairings exist for this round, create placeholder matches
+                if not pairings.exists():
+                    expected_matches = teams_remaining // 2
+                    for i in range(expected_matches):
+                        matches.append({
+                            'is_bye': False,
+                            'is_winner_slot': False,
+                            'competitor1': None,
+                            'competitor2': None,
+                            'seed1': None,
+                            'seed2': None,
+                            'competitor1_score': None,
+                            'competitor2_score': None,
+                            'competitor1_won': False,
+                            'competitor2_won': False,
+                            'is_tie': False,
+                            'completed': False,
+                            'manual_tiebreak': False,
+                            'round_number': round_num,
+                            'pairing_id': None,
+                            'needs_tiebreak': False,
+                            'pairing_order': i + 1,
+                            'is_placeholder': True,
+                        })
+                else:
+                    # Process actual pairings
+                    # For multi-match tournaments, group by team pair to show each pair only once
+                    if self.league.competitor_type == 'team' and bracket and bracket.matches_per_stage > 1:
+                        # Group pairings by team pair
+                        from collections import defaultdict
+                        team_pair_groups = defaultdict(list)
+                        team_pair_primary = {}  # Track the primary pairing for each team pair
+                        
+                        for pairing in pairings:
+                            if pairing.black_team:  # Skip byes (handle separately)
+                                team_key = tuple(sorted([pairing.white_team.id, pairing.black_team.id]))
+                                team_pair_groups[team_key].append(pairing)
+                                # Use the first pairing as primary (lowest pairing_order)
+                                if team_key not in team_pair_primary or pairing.pairing_order < team_pair_primary[team_key].pairing_order:
+                                    team_pair_primary[team_key] = pairing
+                        
+                        # Process byes first
+                        for pairing in pairings:
+                            if pairing.black_team_id is None:
+                                seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                                matches.append({
+                                    'is_bye': True,
+                                    'competitor': pairing.white_team,
+                                    'seed': seeding.seed_number if seeding else None,
+                                    'pairing_order': pairing.pairing_order,
+                                })
+                        
+                        # Then process team pairs using only the primary pairing
+                        logger.info(f"Processing {len(team_pair_primary)} unique team pairs for multi-match bracket")
+                        for team_key, primary_pairing in team_pair_primary.items():
+                            pairing = primary_pairing
+                            # Regular match - check if this is multi-match tournament
+                            white_seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                            black_seeding = pairing.black_team.knockoutseeding_set.filter(bracket=bracket).first()
+                            
+                            # For multi-match tournaments, aggregate scores across all matches for this team pair
+                            aggregated_scores = self._get_aggregated_team_pair_scores(pairing, round_obj)
+                            competitor1_score = aggregated_scores['white_total']
+                            competitor2_score = aggregated_scores['black_total']
+                            existing_matches_completed = aggregated_scores['all_completed']
+                            has_manual_tiebreak = aggregated_scores['has_manual_tiebreak']
+                            
+                            # Check if all expected matches have been created for this team pair
+                            expected_matches = bracket.matches_per_stage
+                            actual_matches = aggregated_scores.get('match_count', 0)
+                            all_completed = existing_matches_completed and actual_matches >= expected_matches
+                                    
+                            # Determine winner from aggregated scores
+                            if has_manual_tiebreak:
+                                # Find the pairing with the manual tiebreak value
+                                manual_tiebreak_val = None
+                                team_pair_pairings = TeamPairing.objects.filter(
+                                    round=round_obj
+                                ).filter(
+                                    models.Q(white_team=pairing.white_team, black_team=pairing.black_team) |
+                                    models.Q(white_team=pairing.black_team, black_team=pairing.white_team)
+                                ).exclude(black_team__isnull=True)
+                                
+                                for tp in team_pair_pairings:
+                                    if tp.manual_tiebreak_value is not None:
+                                        # Adjust tiebreak value based on team orientation
+                                        if tp.white_team == pairing.white_team:
+                                            manual_tiebreak_val = tp.manual_tiebreak_value
+                                        else:
+                                            # Teams are flipped, so flip the tiebreak value
+                                            manual_tiebreak_val = -tp.manual_tiebreak_value
+                                        break
+                                
+                                if manual_tiebreak_val is not None:
+                                    competitor1_won = manual_tiebreak_val > 0
+                                    competitor2_won = manual_tiebreak_val < 0
+                                    is_tie = manual_tiebreak_val == 0
+                                else:
+                                    # Fallback to score comparison if no tiebreak found
+                                    competitor1_won = competitor1_score > competitor2_score
+                                    competitor2_won = competitor2_score > competitor1_score
+                                    is_tie = competitor1_score == competitor2_score
+                            else:
+                                competitor1_won = competitor1_score > competitor2_score
+                                competitor2_won = competitor2_score > competitor1_score
+                                is_tie = competitor1_score == competitor2_score
+                            
+                            # Get individual match scores for multi-match display
+                            match_scores = []
+                            team_pair_pairings = TeamPairing.objects.filter(
+                                round=round_obj
+                            ).filter(
+                                models.Q(white_team=pairing.white_team, black_team=pairing.black_team) |
+                                models.Q(white_team=pairing.black_team, black_team=pairing.white_team)
+                            ).exclude(black_team__isnull=True).order_by('pairing_order')
+                            
+                            for match_pairing in team_pair_pairings:
+                                # Normalize scores based on team orientation
+                                if match_pairing.white_team == pairing.white_team:
+                                    match_scores.append({
+                                        'white_score': match_pairing.white_points or 0,
+                                        'black_score': match_pairing.black_points or 0,
+                                    })
+                                else:
+                                    # Teams are flipped
+                                    match_scores.append({
+                                        'white_score': match_pairing.black_points or 0,
+                                        'black_score': match_pairing.white_points or 0,
+                                    })
+                            
+                            # Pad match_scores with zeros for missing matches in multi-match tournaments
+                            expected_matches = bracket.matches_per_stage
+                            while len(match_scores) < expected_matches:
+                                match_scores.append({
+                                    'white_score': 0,
+                                    'black_score': 0,
+                                })
+                            
+                            # Check if we have any completed matches (for partial results display)
+                            has_any_results = competitor1_score > 0 or competitor2_score > 0
+                            
+                            matches.append({
+                                'is_bye': False,
+                                'competitor1': pairing.white_team,
+                                'competitor2': pairing.black_team,
+                                'seed1': white_seeding.seed_number if white_seeding else None,
+                                'seed2': black_seeding.seed_number if black_seeding else None,
+                                'competitor1_score': competitor1_score,
+                                'competitor2_score': competitor2_score,
+                                'competitor1_won': competitor1_won,
+                                'competitor2_won': competitor2_won,
+                                'is_tie': is_tie,
+                                'completed': all_completed,
+                                'has_partial_results': has_any_results and not all_completed,  # Show partial if we have results but not all matches are completed
+                                'manual_tiebreak': has_manual_tiebreak,
+                                'round_number': round_obj.number,
+                                'pairing_id': pairing.id,  # Add pairing ID for admin links
+                                'needs_tiebreak': is_tie and not has_manual_tiebreak and all_completed,
+                                'pairing_order': pairing.pairing_order,
+                                'match_scores': match_scores,  # Individual match scores
+                                'is_multi_match': bracket.matches_per_stage > 1,
+                            })
+                    else:
+                        # Single match tournament or individual tournament - process all pairings
+                        logger.info(f"Processing ALL {pairings.count()} pairings for single-match tournament")
+                        for pairing in pairings:
+                            if self.league.competitor_type == 'team':
+                                if pairing.black_team_id is None:
+                                    # Bye
+                                    seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                                    matches.append({
+                                        'is_bye': True,
+                                        'competitor': pairing.white_team,
+                                        'seed': seeding.seed_number if seeding else None,
+                                        'pairing_order': pairing.pairing_order,
+                                    })
+                                else:
+                                    # Regular match
+                                    white_seeding = pairing.white_team.knockoutseeding_set.filter(bracket=bracket).first()
+                                    black_seeding = pairing.black_team.knockoutseeding_set.filter(bracket=bracket).first()
+                                    
+                                    competitor1_score = pairing.white_points
+                                    competitor2_score = pairing.black_points
+                                    all_completed = self._is_team_match_completed(pairing)
+                                    has_manual_tiebreak = pairing.manual_tiebreak_value is not None
+                                    
+                                    # Determine winner (considering manual tiebreak)
+                                    if pairing.manual_tiebreak_value is not None:
+                                        # Manual tiebreak overrides point-based winner
+                                        competitor1_won = pairing.manual_tiebreak_value > 0
+                                        competitor2_won = pairing.manual_tiebreak_value < 0
+                                        is_tie = pairing.manual_tiebreak_value == 0
+                                    else:
+                                        # Standard point-based winner determination
+                                        competitor1_won = pairing.white_points > pairing.black_points
+                                        competitor2_won = pairing.black_points > pairing.white_points
+                                        is_tie = pairing.white_points == pairing.black_points and pairing.white_points is not None
+                                    
+                                    matches.append({
+                                        'is_bye': False,
+                                        'competitor1': pairing.white_team,
+                                        'competitor2': pairing.black_team,
+                                        'seed1': white_seeding.seed_number if white_seeding else None,
+                                        'seed2': black_seeding.seed_number if black_seeding else None,
+                                        'competitor1_score': competitor1_score,
+                                        'competitor2_score': competitor2_score,
+                                        'competitor1_won': competitor1_won,
+                                        'competitor2_won': competitor2_won,
+                                        'is_tie': is_tie,
+                                        'completed': all_completed,
+                                        'manual_tiebreak': has_manual_tiebreak,
+                                        'round_number': round_obj.number,
+                                        'pairing_id': pairing.id,  # Add pairing ID for admin links
+                                        'needs_tiebreak': is_tie and not has_manual_tiebreak and all_completed,
+                                        'pairing_order': pairing.pairing_order,
+                                    })
+                            else:
+                                # Individual tournament logic (no seeding model for players yet)
+                                if pairing.black_id is None:
+                                    # Bye
+                                    matches.append({
+                                        'is_bye': True,
+                                        'competitor': pairing.white,
+                                        'seed': None,  # No seeding for individual tournaments yet
+                                    })
+                                else:
+                                    # Regular match
+                                    # Determine winner based on result
+                                    if pairing.result in ['1-0', '1X-0F']:
+                                        competitor1_won, competitor2_won = True, False
+                                    elif pairing.result in ['0-1', '0F-1X']:
+                                        competitor1_won, competitor2_won = False, True
+                                    elif pairing.result == '1/2-1/2':
+                                        competitor1_won, competitor2_won = False, False
+                                    else:
+                                        competitor1_won = competitor2_won = False
+                                
+                                    matches.append({
+                                        'is_bye': False,
+                                        'competitor1': pairing.white,
+                                        'competitor2': pairing.black,
+                                        'seed1': None,  # No seeding for individual tournaments yet
+                                        'seed2': None,  # No seeding for individual tournaments yet
+                                        'competitor1_score': 1.0 if competitor1_won else (0.5 if pairing.result == '1/2-1/2' else 0.0),
+                                        'competitor2_score': 1.0 if competitor2_won else (0.5 if pairing.result == '1/2-1/2' else 0.0),
+                                        'competitor1_won': competitor1_won,
+                                        'competitor2_won': competitor2_won,
+                                        'is_tie': pairing.result == '1/2-1/2',
+                                        'completed': pairing.result != '',
+                                        'manual_tiebreak': False,  # Individual tournaments don't have manual tiebreaks per pairing
+                                        'round_number': round_obj.number,
+                                    })
+            
+                # Sort matches for proper bracket visualization
+                # For knockout tournaments, we need to arrange matches so that winners flow logically
+                if bracket and matches:
+                    matches = self._sort_matches_for_bracket_display(matches, round_num, bracket.bracket_size)
+            else:
+                # Placeholder round - create empty matches or winner slots
+                matches = []
+                
+                # Check if this is the round after the last scheduled round (showing individual winners)
+                if round_num == scheduled_rounds + 1:
+                    # This round shows individual winners, not pairings
+                    # Get actual winners from advancement records if tournament is completed
+                    from heltour.tournament.models import KnockoutAdvancement
+                    actual_winners = []
+                    
+                    if bracket and self.season.is_completed:
+                        # Get winners from advancement records or from the last round
+                        # First try to get winners from advancement records (more reliable for completed tournaments)
+                        final_advancement_records = KnockoutAdvancement.objects.filter(
+                            bracket=bracket, 
+                            to_stage='final'
+                        ).order_by('date_created')
+                        
+                        if final_advancement_records.exists():
+                            # Use advancement records (preferred for completed tournaments)
+                            for adv in final_advancement_records:
+                                actual_winners.append(adv.team)
+                        else:
+                            # Fallback: calculate winners from the last round
+                            last_round = Round.objects.filter(season=self.season).order_by('-number').first()
+                            if last_round and self.league.competitor_type == 'team':
+                                if bracket.matches_per_stage > 1:
+                                    # Multi-match tournament: use proper aggregation
+                                    from heltour.tournament.pairinggen import _get_multi_match_winners
+                                    actual_winners = _get_multi_match_winners(last_round, bracket)
+                                else:
+                                    # Single-match tournament: use individual pairing results
+                                    team_pairings = TeamPairing.objects.filter(round=last_round).order_by('pairing_order')
+                                    
+                                    for pairing in team_pairings:
+                                        winner = None
+                                        if pairing.black_team_id is None:
+                                            # Bye situation - white team advances
+                                            winner = pairing.white_team
+                                        else:
+                                            # Determine winner based on points and manual tiebreak
+                                            if pairing.manual_tiebreak_value is not None:
+                                                if pairing.manual_tiebreak_value > 0:
+                                                    winner = pairing.white_team
+                                                elif pairing.manual_tiebreak_value < 0:
+                                                    winner = pairing.black_team
+                                            elif pairing.white_points is not None and pairing.black_points is not None:
+                                                if pairing.white_points > pairing.black_points:
+                                                    winner = pairing.white_team
+                                                elif pairing.black_points > pairing.white_points:
+                                                    winner = pairing.black_team
+                                        
+                                        if winner:
+                                            actual_winners.append(winner)
+                    
+                    for i in range(teams_remaining):
+                        # Use actual winner if available, otherwise show placeholder
+                        winner = actual_winners[i] if i < len(actual_winners) else None
+                        
+                        matches.append({
+                            'is_bye': False,
+                            'is_winner_slot': True,  # New flag for individual winner display
+                            'competitor1': winner,  # Actual winner or None for placeholder
+                            'competitor2': None,
+                            'seed1': None,
+                            'seed2': None,
+                            'competitor1_score': None,
+                            'competitor2_score': None,
+                            'competitor1_won': False,
+                            'competitor2_won': False,
+                            'is_tie': False,
+                            'completed': winner is not None,  # Completed if we have a winner
+                            'manual_tiebreak': False,
+                            'round_number': round_num,
+                            'pairing_id': None,
+                            'needs_tiebreak': False,
+                            'pairing_order': i + 1,
+                            'is_placeholder': winner is None,  # Only placeholder if no winner
+                            'winner_position': i + 1,  # Position number for this winner
+                        })
+                else:
+                    # Regular placeholder matches for future rounds
+                    expected_matches = teams_remaining // 2
+                    for i in range(expected_matches):
+                        matches.append({
+                            'is_bye': False,
+                            'is_winner_slot': False,
+                            'competitor1': None,
+                            'competitor2': None,
+                            'seed1': None,
+                            'seed2': None,
+                            'competitor1_score': None,
+                            'competitor2_score': None,
+                            'competitor1_won': False,
+                            'competitor2_won': False,
+                            'is_tie': False,
+                            'completed': False,
+                            'manual_tiebreak': False,
+                            'round_number': round_num,
+                            'pairing_id': None,
+                            'needs_tiebreak': False,
+                            'pairing_order': i + 1,
+                            'is_placeholder': True,
+                        })
+            
+            # Determine if this round is scheduled
+            is_scheduled = round_num <= scheduled_rounds
+            
+            bracket_rounds.append({
+                'stage_name': stage_name,
+                'round': round_obj,
+                'matches': matches,
+                'round_number': round_num,
+                'is_placeholder': round_obj is None,
+                'is_scheduled': is_scheduled,
+            })
+        
+        # Get recent advancements
+        advancements = KnockoutAdvancement.objects.filter(bracket=bracket).select_related(
+            'team' if self.league.competitor_type == 'team' else 'player'
+        ).order_by('-advanced_date')[:10]
+        
+        # Add competitor info to advancements
+        advancement_list = []
+        for advancement in advancements:
+            competitor = advancement.team if self.league.competitor_type == 'team' else advancement.player
+            
+            # Get seed number from seeding data
+            seed_number = None
+            if self.league.competitor_type == 'team':
+                seeding = competitor.knockoutseeding_set.filter(bracket=bracket).first()
+                if seeding:
+                    seed_number = seeding.seed_number
+            # TODO: Add individual player seeding when implemented
+            
+            advancement_list.append({
+                'competitor': competitor,
+                'to_stage': advancement.to_stage,
+                'seed_number': seed_number,
+            })
+        
+        # Debug logging
+        logger.info(f"Bracket view: {len(bracket_rounds)} rounds")
+        for i, round_data in enumerate(bracket_rounds):
+            logger.info(f"Round {i+1}: {len(round_data['matches'])} matches")
+            
+        context = {
+            'bracket_rounds': bracket_rounds,
+            'bracket': bracket,  # Template expects this object
+            'bracket_info': {
+                'bracket_size': bracket.bracket_size,
+                'seeding_style': bracket.seeding_style,
+                'games_per_match': bracket.games_per_match,
+                'total_rounds': len(bracket_rounds),
+            },
+            'advancements': advancement_list,
+        }
+        
+        return self.render('tournament/knockout_bracket.html', context)
+    
+    def _sort_matches_for_bracket_display(self, matches, round_number, bracket_size):
+        """Sort matches for proper bracket visualization order."""
+        if not matches:
+            return matches
+        
+        # For first round of knockout brackets, we need to arrange matches in proper bracket order
+        # The pairing_order field doesn't reflect bracket positions - it's just sequential
+        # We need to calculate the proper bracket positions based on seeds
+        if round_number == 1:
+            return self._calculate_bracket_positions_for_first_round(matches, bracket_size)
+        else:
+            # For later rounds, use pairing_order as bracket structure is already established
+            return sorted(matches, key=lambda m: m.get('pairing_order', 999))
+    
+    def _calculate_bracket_positions_for_first_round(self, matches, bracket_size):
+        """Calculate proper bracket positions for first round matches based on seeds."""
+        from heltour.tournament_core.knockout import _build_standard_bracket_positions
+        
+        # Separate byes from regular matches
+        byes = [m for m in matches if m.get('is_bye', False)]
+        regular_matches = [m for m in matches if not m.get('is_bye', False)]
+        
+        if not regular_matches:
+            return matches
+            
+        # For matches without seed information, fall back to pairing_order
+        matches_without_seeds = [m for m in regular_matches if m.get('seed1') is None or m.get('seed2') is None]
+        if matches_without_seeds:
+            # Can't calculate bracket positions without seeds, fall back to pairing_order
+            return sorted(matches, key=lambda m: m.get('pairing_order', 999))
+        
+        # Create a mapping of traditional pairings to bracket positions
+        num_matches = len(regular_matches)
+        bracket_positions = _build_standard_bracket_positions(num_matches)
+        
+        # Create traditional seeding pairs (1v32, 2v31, etc.) to find the mapping
+        traditional_pairs = []
+        for i in range(num_matches):
+            # Traditional seeding pairs: seed i+1 with seed n-i
+            seed1 = i + 1
+            seed2 = bracket_size - i
+            traditional_pairs.append((seed1, seed2))
+        
+        # Find each match's position in the traditional order
+        match_positions = []
+        for match in regular_matches:
+            match_seed1 = match.get('seed1', 0)
+            match_seed2 = match.get('seed2', 0)
+            
+            # Find this match in the traditional pairs
+            traditional_index = None
+            for i, (trad_seed1, trad_seed2) in enumerate(traditional_pairs):
+                if ((match_seed1 == trad_seed1 and match_seed2 == trad_seed2) or
+                    (match_seed1 == trad_seed2 and match_seed2 == trad_seed1)):
+                    traditional_index = i
+                    break
+            
+            if traditional_index is not None:
+                # Get the bracket position for this traditional index
+                bracket_position = bracket_positions[traditional_index]
+                match_positions.append((bracket_position, match))
+            else:
+                # Fallback: couldn't find in traditional pairs, use pairing_order
+                match_positions.append((match.get('pairing_order', 999), match))
+        
+        # Sort by bracket position
+        match_positions.sort(key=lambda x: x[0])
+        sorted_matches = [match for _, match in match_positions]
+        
+        # Add byes at the end (they don't have bracket positions)
+        return sorted_matches + byes
+    
+    def _get_aggregated_team_pair_scores(self, primary_pairing, round_obj):
+        """Get aggregated scores across all matches for a team pair in multi-match tournaments."""
+        from django.db.models import Q
+        
+        # Find all pairings for this specific team pair in this round
+        # We need to find pairings where the two teams are the same as in primary_pairing,
+        # but they might be in either white/black position due to color alternation
+        team_pair_pairings = TeamPairing.objects.filter(
+            round=round_obj
+        ).filter(
+            (Q(white_team=primary_pairing.white_team) & Q(black_team=primary_pairing.black_team)) |
+            (Q(white_team=primary_pairing.black_team) & Q(black_team=primary_pairing.white_team))
+        ).exclude(black_team__isnull=True)  # Exclude byes
+        
+        white_total = 0.0
+        black_total = 0.0
+        all_completed = True
+        has_manual_tiebreak = False
+        match_count = team_pair_pairings.count()
+        
+        for pairing in team_pair_pairings:
+            # Check if this pairing is completed
+            if not self._is_team_match_completed(pairing):
+                all_completed = False
+                continue
+            
+            # Add scores based on team orientation
+            if pairing.white_team == primary_pairing.white_team:
+                # Same orientation as primary pairing
+                white_total += pairing.white_points or 0.0
+                black_total += pairing.black_points or 0.0
+            else:
+                # Flipped orientation (teams switched white/black)
+                white_total += pairing.black_points or 0.0
+                black_total += pairing.white_points or 0.0
+            
+            # Check for manual tiebreaks
+            if pairing.manual_tiebreak_value is not None:
+                has_manual_tiebreak = True
+        
+        return {
+            'white_total': white_total,
+            'black_total': black_total,
+            'all_completed': all_completed,
+            'has_manual_tiebreak': has_manual_tiebreak,
+            'match_count': match_count,
+        }
+
+    def _is_team_match_completed(self, team_pairing):
+        """Check if all board pairings for a team match have results."""
+        board_pairings = team_pairing.teamplayerpairing_set.all()
+        if not board_pairings.exists():
+            return False
+        return all(board_pairing.result != '' for board_pairing in board_pairings)
+
+
+class KnockoutSeasonLandingView(SeasonView):
+    """Modified season landing view for knockout tournaments."""
+    
+    @property 
+    def player(self):
+        """Get player if available, otherwise return None."""
+        if hasattr(self, '_player'):
+            return self._player
+        return None
+    
+    @player.setter
+    def player(self, value):
+        self._player = value
+    
+    def view(self):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            # Fall back to regular season landing
+            return SeasonLandingView.view(self)
+        
+        # Handle POST request for tournament advancement
+        if self.request.method == 'POST' and 'advance_tournament' in self.request.POST:
+            return self._handle_advancement()
+            
+        from heltour.tournament.models import KnockoutBracket, KnockoutAdvancement
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        current_seasons, completed_seasons = _get_season_lists(self.league)
+        has_more_seasons = len(current_seasons) + len(completed_seasons) > 1
+        
+        # Get active round
+        active_round = Round.objects.filter(
+            season=self.season, 
+            publish_pairings=True,
+            is_completed=False, 
+            start_date__lt=timezone.now(),
+            end_date__gt=timezone.now()
+        ).order_by('-number').first()
+        
+        # Get bracket status
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+            bracket_status = self._get_bracket_status(bracket)
+        except KnockoutBracket.DoesNotExist:
+            bracket_status = None
+        
+        # Get recent results
+        recent_results = self._get_recent_results()
+        
+        # Get finalist preview or elimination summary
+        finalist_preview = self._get_finalist_preview(bracket_status)
+        elimination_summary = self._get_elimination_summary() if not finalist_preview else None
+        
+        # Get advancement status for admin users
+        advancement_info = self._get_advancement_info() if self.request.user.is_staff else None
+        
+        links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
+        
+        context = {
+            'has_more_seasons': has_more_seasons,
+            'current_seasons': current_seasons,
+            'completed_seasons': completed_seasons,
+            'active_round': active_round,
+            'bracket_status': bracket_status,
+            'recent_results': recent_results,
+            'finalist_preview': finalist_preview,
+            'elimination_summary': elimination_summary,
+            'advancement_info': advancement_info,
+            'links_doc': links_doc,
+            'can_edit_document': self.request.user.has_perm('tournament.change_document', self.league),
+        }
+        
+        return self.render('tournament/knockout_season_landing.html', context)
+    
+    def _get_bracket_status(self, bracket):
+        """Get current status of the knockout bracket."""
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        rounds = Round.objects.filter(season=self.season).order_by('number')
+        total_rounds = len(rounds)
+        completed_rounds = rounds.filter(is_completed=True).count()
+        
+        # Calculate progress
+        progress_percentage = int((completed_rounds / max(total_rounds, 1)) * 100)
+        
+        # Get current stage
+        if completed_rounds >= total_rounds:
+            # Tournament complete
+            current_stage = "completed"
+            next_stage = None
+            remaining_count = 1
+            
+            # Get champion
+            if self.league.competitor_type == 'team':
+                last_pairing = TeamPairing.objects.filter(
+                    round__season=self.season
+                ).order_by('-round__number').first()
+                if last_pairing and last_pairing.result:
+                    champion = last_pairing.white_team if last_pairing.white_points > last_pairing.black_points else last_pairing.black_team
+                else:
+                    champion = None
+            else:
+                last_pairing = LonePlayerPairing.objects.filter(
+                    round__season=self.season
+                ).order_by('-round__number').first()
+                if last_pairing and last_pairing.result:
+                    champion = last_pairing.white if last_pairing.result in ['1-0', '1X-0F'] else last_pairing.black
+                else:
+                    champion = None
+        else:
+            # Tournament in progress
+            current_round = completed_rounds + 1
+            current_teams_remaining = bracket.bracket_size // (2 ** (current_round - 1))
+            current_stage = get_knockout_stage_name(current_teams_remaining)
+            if current_round < total_rounds:
+                next_teams_remaining = bracket.bracket_size // (2 ** current_round)
+                next_stage = get_knockout_stage_name(next_teams_remaining)
+            else:
+                next_stage = None
+            remaining_count = bracket.bracket_size // (2 ** completed_rounds)
+            champion = None
+        
+        return {
+            'is_completed': completed_rounds >= total_rounds,
+            'current_stage': current_stage,
+            'next_stage': next_stage,
+            'remaining_count': remaining_count,
+            'progress_percentage': progress_percentage,
+            'champion': champion,
+        }
+    
+    def _get_recent_results(self):
+        """Get recent match results."""
+        if self.league.competitor_type == 'team':
+            recent_pairings = TeamPairing.objects.filter(
+                round__season=self.season,
+                round__is_completed=True
+            ).select_related(
+                'white_team', 'black_team'
+            ).prefetch_related(
+                'teamplayerpairing_set'
+            ).order_by('-round__number', '-pairing_order')[:20]  # Get more records to filter from
+            
+            results = []
+            for pairing in recent_pairings:
+                if pairing.black_team_id and self._is_team_match_completed(pairing):  # Not a bye and completed
+                    results.append({
+                        'competitor1': pairing.white_team,
+                        'competitor2': pairing.black_team,
+                        'competitor1_score': pairing.white_points,
+                        'competitor2_score': pairing.black_points,
+                        'competitor1_won': pairing.white_points > pairing.black_points,
+                        'competitor2_won': pairing.black_points > pairing.white_points,
+                        'manual_tiebreak': pairing.manual_tiebreak_value is not None,
+                    })
+                    if len(results) >= 5:  # Limit to 5 recent results for display
+                        break
+            return results
+        else:
+            # Individual tournament results
+            recent_pairings = LonePlayerPairing.objects.filter(
+                round__season=self.season,
+                round__is_completed=True
+            ).exclude(result='').select_related(
+                'white', 'black'
+            ).order_by('-round__number', '-pairing_order')[:5]
+            
+            results = []
+            for pairing in recent_pairings:
+                if pairing.black_id:  # Not a bye
+                    if pairing.result in ['1-0', '1X-0F']:
+                        comp1_score, comp2_score = 1.0, 0.0
+                        comp1_won, comp2_won = True, False
+                    elif pairing.result in ['0-1', '0F-1X']:
+                        comp1_score, comp2_score = 0.0, 1.0
+                        comp1_won, comp2_won = False, True
+                    else:  # Draw
+                        comp1_score, comp2_score = 0.5, 0.5
+                        comp1_won, comp2_won = False, False
+                    
+                    results.append({
+                        'competitor1': pairing.white,
+                        'competitor2': pairing.black,
+                        'competitor1_score': comp1_score,
+                        'competitor2_score': comp2_score,
+                        'competitor1_won': comp1_won,
+                        'competitor2_won': comp2_won,
+                        'manual_tiebreak': False,
+                    })
+            return results
+    
+    def _get_finalist_preview(self, bracket_status):
+        """Get preview of finalists or next stage competitors."""
+        if not bracket_status or bracket_status['remaining_count'] > 4:
+            return None
+            
+        # Get competitors in current stage (semifinals or finals)
+        current_round = Round.objects.filter(
+            season=self.season,
+            is_completed=False
+        ).order_by('number').first()
+        
+        if not current_round:
+            return None
+            
+        competitors = []
+        if self.league.competitor_type == 'team':
+            pairings = TeamPairing.objects.filter(round=current_round).select_related(
+                'white_team', 'black_team'
+            ).prefetch_related('white_team__knockoutseeding_set', 'black_team__knockoutseeding_set')
+            
+            for pairing in pairings:
+                if pairing.white_team:
+                    seeding = pairing.white_team.knockoutseeding_set.first()
+                    competitors.append({
+                        'name': pairing.white_team.name,
+                        'number': pairing.white_team.number,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+                if pairing.black_team:
+                    seeding = pairing.black_team.knockoutseeding_set.first()
+                    competitors.append({
+                        'name': pairing.black_team.name, 
+                        'number': pairing.black_team.number,
+                        'seed': seeding.seed_number if seeding else None,
+                    })
+        else:
+            pairings = LonePlayerPairing.objects.filter(round=current_round).select_related(
+                'white', 'black'
+            )
+            
+            for pairing in pairings:
+                if pairing.white:
+                    competitors.append({
+                        'lichess_username': pairing.white.lichess_username,
+                        'seed': None,  # No seeding for individual tournaments yet
+                    })
+                if pairing.black:
+                    competitors.append({
+                        'lichess_username': pairing.black.lichess_username,
+                        'seed': None,  # No seeding for individual tournaments yet
+                    })
+        
+        return competitors
+    
+    def _get_elimination_summary(self):
+        """Get summary of recent eliminations."""
+        # This would require tracking eliminations, which we can implement later
+        # For now, return empty list
+        return []
+    
+    def _get_advancement_info(self):
+        """Get information about tournament advancement status for admin."""
+        if not self.request.user.is_staff:
+            return None
+            
+        # Find the most recent completed round
+        last_completed_round = Round.objects.filter(
+            season=self.season, 
+            is_completed=True
+        ).order_by('-number').first()
+        
+        if not last_completed_round:
+            return {
+                'can_advance': False,
+                'reason': 'No completed rounds found',
+                'round_to_advance': None,
+                'tied_matches': [],
+            }
+        
+        # Check for tied matches that need manual tiebreak resolution
+        tied_matches = []
+        if self.league.competitor_type == 'team':
+            tied_pairings = TeamPairing.objects.filter(
+                round=last_completed_round,
+                white_points__isnull=False,
+                black_points__isnull=False,
+                manual_tiebreak_value__isnull=True
+            ).filter(
+                white_points=F('black_points')
+            ).select_related('white_team', 'black_team')
+            
+            for pairing in tied_pairings:
+                tied_matches.append({
+                    'id': pairing.id,
+                    'competitor1': pairing.white_team.name,
+                    'competitor2': pairing.black_team.name,
+                    'score': pairing.white_points,
+                })
+        else:
+            # Individual tournaments - handle ties differently
+            # For now, assume individual tournaments don't need manual tiebreak resolution
+            pass
+        
+        # Determine if we can advance
+        can_advance = len(tied_matches) == 0
+        reason = None
+        if not can_advance:
+            reason = f"{len(tied_matches)} tied match(es) require manual tiebreak resolution"
+        
+        return {
+            'can_advance': can_advance,
+            'reason': reason,
+            'round_to_advance': last_completed_round,
+            'tied_matches': tied_matches,
+        }
+    
+    def _handle_advancement(self):
+        """Handle POST request to advance the knockout tournament."""
+        if not self.request.user.is_staff:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Only staff can advance tournaments")
+        
+        try:
+            from heltour.tournament.pairinggen import advance_knockout_tournament
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            
+            # Find the round to advance from
+            last_completed_round = Round.objects.filter(
+                season=self.season, 
+                is_completed=True
+            ).order_by('-number').first()
+            
+            if not last_completed_round:
+                messages.error(self.request, "No completed rounds found to advance from")
+                return redirect(self.request.path)
+            
+            # Check for unresolved tied matches
+            advancement_info = self._get_advancement_info()
+            if not advancement_info['can_advance']:
+                messages.error(self.request, f"Cannot advance tournament: {advancement_info['reason']}")
+                return redirect(self.request.path)
+            
+            # Perform the advancement
+            next_round = advance_knockout_tournament(last_completed_round)
+            
+            if next_round:
+                messages.success(
+                    self.request, 
+                    f"Successfully advanced tournament to Round {next_round.number}"
+                )
+            else:
+                messages.success(self.request, "Tournament has been completed - all rounds finished")
+            
+            return redirect(self.request.path)
+            
+        except Exception as e:
+            from django.contrib import messages
+            messages.error(self.request, f"Error advancing tournament: {str(e)}")
+            return redirect(self.request.path)
+
+    def _is_team_match_completed(self, team_pairing):
+        """Check if all board pairings for a team match have results."""
+        board_pairings = team_pairing.teamplayerpairing_set.all()
+        if not board_pairings.exists():
+            return False
+        return all(board_pairing.result != '' for board_pairing in board_pairings)
+
+
+class KnockoutPairingsView(PairingsView):
+    """Modified pairings view for knockout tournaments."""
+    
+    @property 
+    def player(self):
+        """Get player if available, otherwise return None."""
+        if hasattr(self, '_player'):
+            return self._player
+        return None
+    
+    @player.setter
+    def player(self, value):
+        self._player = value
+    
+    def view(self, round_number=None, team_number=None):
+        if not self.season.league.pairing_type.startswith('knockout'):
+            # Fall back to regular pairings view
+            return super().view(round_number, team_number)
+        
+        if self.league.is_team_league():
+            return self.knockout_team_view(round_number, team_number)
+        else:
+            return self.knockout_lone_view(round_number, team_number)
+    
+    def knockout_team_view(self, round_number=None, team_number=None):
+        """Knockout-specific team pairings view."""
+        from heltour.tournament.models import KnockoutBracket
+        from heltour.tournament_core.knockout import get_knockout_stage_name
+        
+        # Get the knockout bracket
+        try:
+            bracket = KnockoutBracket.objects.get(season=self.season)
+        except KnockoutBracket.DoesNotExist:
+            bracket = None
+        
+        # For multi-match tournaments, use custom context to show all matches between teams
+        if bracket and bracket.matches_per_stage > 1 and team_number:
+            context = self.get_knockout_multi_match_context(
+                self.league.tag, self.season.tag, round_number, team_number, bracket,
+                self.request.user.has_perm('tournament.change_pairing', self.league)
+            )
+        else:
+            # Get context from parent class but modify for knockout
+            context = self.get_team_context(
+                self.league.tag, self.season.tag, round_number, team_number,
+                self.request.user.has_perm('tournament.change_pairing', self.league)
+            )
+        
+        # Add knockout-specific information
+        if bracket and context['round_number']:
+            teams_remaining = bracket.bracket_size // (2 ** (context['round_number'] - 1))
+            current_stage = get_knockout_stage_name(teams_remaining)
+            context['current_stage'] = current_stage
+            
+            # Convert round number list to include stage names
+            stage_rounds = []
+            for rnum in context['round_number_list']:
+                rnum_teams_remaining = bracket.bracket_size // (2 ** (rnum - 1))
+                stage_name = get_knockout_stage_name(rnum_teams_remaining)
+                stage_rounds.append({
+                    'round_number': rnum,
+                    'stage_name': stage_name,
+                })
+            context['round_number_list'] = stage_rounds
+            
+            # Add stage info
+            total_pairings = len(context['pairing_lists']) if context['pairing_lists'] else 0
+            total_competitors = total_pairings * 2
+            context['stage_info'] = {
+                'stage_name': current_stage,
+                'total_matches': total_pairings,
+                'total_competitors': total_competitors,
+                'games_per_match': bracket.games_per_match,
+            }
+        
+        return self.render('tournament/knockout_pairings.html', context)
+    
+    def get_knockout_multi_match_context(self, league_tag, season_tag, round_number, team_number, bracket, can_change_pairing):
+        """Get context for multi-match knockout tournaments showing all matches between two teams."""
+        specified_round = round_number is not None
+        round_number_list = [round_.number for round_ in Round.objects.filter(season=self.season,
+                                                                              publish_pairings=True).order_by('-number')]
+        if round_number is None:
+            try:
+                round_number = round_number_list[0]
+            except IndexError:
+                pass
+        
+        team_list = self.season.team_set.order_by('name')
+        current_team = get_object_or_404(team_list, number=team_number)
+        
+        # Find ALL pairings involving this team in this round
+        from django.db.models import Q
+        team_pairings = TeamPairing.objects.filter(
+            round__number=round_number,
+            round__season=self.season
+        ).filter(
+            Q(white_team=current_team) | Q(black_team=current_team)
+        ).order_by('pairing_order').select_related('white_team', 'black_team').nocache()
+        
+        # For multi-match, group pairings by opponent team
+        from collections import defaultdict
+        opponent_pairings = defaultdict(list)
+        
+        for pairing in team_pairings:
+            if pairing.black_team is None:  # Bye
+                opponent_pairings['BYE'].append(pairing)
+            else:
+                # Determine opponent
+                opponent = pairing.black_team if pairing.white_team == current_team else pairing.white_team
+                # Use opponent ID as key to ensure consistency
+                opponent_pairings[opponent.id].append(pairing)
+        
+        # Convert to list format expected by template with aggregation info
+        pairing_lists = []
+        opponent_aggregates = {}
+        
+        for opponent_id, pairings in opponent_pairings.items():
+            if opponent_id == 'BYE':
+                # Handle bye case
+                for pairing in pairings:
+                    board_pairings = list(
+                        pairing.teamplayerpairing_set.order_by('board_number')
+                        .select_related('white', 'black')
+                        .nocache()
+                    )
+                    pairing_lists.append(board_pairings)
+            else:
+                # Calculate aggregate scores for this opponent
+                total_current_team_points = 0.0
+                total_opponent_points = 0.0
+                all_completed = True
+                
+                for pairing in pairings:
+                    if not self._is_team_match_completed(pairing):
+                        all_completed = False
+                        continue
+                    
+                    # Add scores based on team orientation
+                    if pairing.white_team == current_team:
+                        total_current_team_points += pairing.white_points or 0.0
+                        total_opponent_points += pairing.black_points or 0.0
+                    else:
+                        total_current_team_points += pairing.black_points or 0.0
+                        total_opponent_points += pairing.white_points or 0.0
+                
+                # Store aggregate info for this opponent
+                opponent_team = pairings[0].white_team if pairings[0].white_team != current_team else pairings[0].black_team
+                opponent_aggregates[opponent_id] = {
+                    'opponent_team': opponent_team,
+                    'current_team_total': total_current_team_points,
+                    'opponent_total': total_opponent_points,
+                    'all_completed': all_completed,
+                    'match_count': len(pairings),
+                }
+                
+                # Show all matches against this opponent
+                for pairing in pairings:
+                    board_pairings = list(
+                        pairing.teamplayerpairing_set.order_by('board_number')
+                        .select_related('white', 'black')
+                        .nocache()
+                    )
+                    pairing_lists.append(board_pairings)
+        
+        # Get team byes for this round
+        team_byes = list(TeamBye.objects.filter(
+            round__number=round_number,
+            round__season=self.season,
+            team=current_team
+        ).select_related('team').nocache())
+        
+        round_ = Round.objects.filter(number=round_number, season=self.season).first()
+        presences = {(pp.player_id, pp.pairing_id): pp for pp in
+                     PlayerPresence.objects.filter(round=round_)}
+        
+        if pairing_lists:
+            contact_deadline = round_.start_date + self.league.get_leaguesetting().contact_period
+            in_contact_period = timezone.now() < contact_deadline
+        else:
+            contact_deadline = None
+            in_contact_period = False
+        
+        def status(player, pairing):
+            return self._player_status(
+                player, pairing, presences, in_contact_period, contact_deadline
+            ) if pairing_lists else (None, '')
+        
+        # Add presences to match the format expected by the template
+        pairing_lists = [
+            [((p,) + status(p.white_team_player(), p) + status(p.black_team_player(), p)) for p in
+             p_list]
+            for p_list in pairing_lists
+        ]
+        
+        # Get unavailable players
+        unavailable_players = {pa.player for pa in
+                               PlayerAvailability.objects.filter(round__season=self.season,
+                                                                 round__number=round_number,
+                                                                 is_available=False) \
+                                   .select_related('player')
+                                   .nocache()}
+        
+        # Get captains
+        captains = {tm.player for tm in
+                    TeamMember.objects.filter(team__season=self.season, is_captain=True)}
+        
+        context = {
+            'round_number': round_number,
+            'round_number_list': round_number_list,
+            'specified_round': specified_round,
+            'pairing_lists': pairing_lists,
+            'team_list': team_list,
+            'current_team': current_team,
+            'status': status,
+            'team_byes': team_byes,
+            'can_change_pairing': can_change_pairing,
+            'captains': captains,
+            'unavailable_players': unavailable_players,
+            'show_legend': len(unavailable_players) > 0,
+            'specified_team': True,
+            'can_edit': can_change_pairing,
+            'is_multi_match': True,
+            'matches_per_stage': bracket.matches_per_stage,
+            'opponent_aggregates': opponent_aggregates,  # Add aggregate data for template
+        }
+        
+        return context
+    
+    def _is_team_match_completed(self, team_pairing):
+        """Check if all board pairings for a team match have results."""
+        board_pairings = team_pairing.teamplayerpairing_set.all()
+        if not board_pairings.exists():
+            return False
+        return all(board_pairing.result != '' for board_pairing in board_pairings)
+    
+    def _player_status(self, player, pairing, presences, in_contact_period, contact_deadline):
+        """Get player status for pairings display."""
+        if player is None:
+            return (None, 'no player')
+        if (player is pairing.white and pairing.white_confirmed) or (player is pairing.black and pairing.black_confirmed):
+            return ('confirmed', 'confirmed')
+        pres = presences.get((player.pk, pairing.pk))
+        if in_contact_period:
+            if not pres or not pres.first_msg_time:
+                return (None, 'no contact yet')
+            else:
+                return ('yes', 'in contact')
+        else:
+            if not pres or not pres.first_msg_time:
+                return ('no', 'unresponsive')
+            elif pres.first_msg_time > contact_deadline:
+                return ('alert', 'late contact')
+            else:
+                return ('yes', 'in contact')
+    
+    def knockout_lone_view(self, round_number=None, team_number=None):
+        """Knockout-specific individual pairings view."""
+        # Similar to team view but for individual tournaments
+        context = self.get_lone_context(round_number, team_number)
+        
+        # Add knockout-specific modifications here if needed
+        # For now, use regular lone pairings template
+        return self.render('tournament/lone_pairings.html', context)

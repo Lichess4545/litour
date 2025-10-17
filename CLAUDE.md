@@ -153,6 +153,12 @@ Follow `.editorconfig` settings:
 - JavaScript: 2 spaces for files under lib/
 - UTF-8 encoding, LF line endings
 
+## Code Formatting
+
+- **Ruff**: We use ruff for formatting this project
+  - Ensure all code changes are formatted using ruff
+  - This helps maintain consistent code style and readability
+
 ## Testing
 
 Tests are located in `heltour/tournament/tests/`. The project uses Django's unittest framework. Run specific test categories:

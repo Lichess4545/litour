@@ -613,7 +613,8 @@ def _init_start_league_games(
     round_ = Round.objects.filter(
         season__league=league, is_completed=False, publish_pairings=True
     ).first()
-    signals.do_update_broadcast_round.send(sender="start_games", round_id=round_.pk)
+    if round_:
+        signals.do_update_broadcast_round.send(sender="start_games", round_id=round_.pk)
     return result
 
 
@@ -970,6 +971,7 @@ def _start_unscheduled_games(round_id: int) -> None:
         logger.warning("[FINISHED] Failed starting games.")
     else:
         round_.bulk_id = result["id"]
+        logger.info(f"[FINISHED] Started games with bulk_id: {round_.bulk_id}.")
         round_.save()
     logger.info("[FINISHED] Done trying to start games.")
 

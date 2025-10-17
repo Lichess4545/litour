@@ -88,6 +88,28 @@ class TournamentBuilder:
             self.core_builder.league(name, tag, type, **kwargs)
         return self
 
+    def knockout_format(
+        self, seeding_style: str = "traditional", games_per_match: int = 1, matches_per_stage: int = 1
+    ) -> "TournamentBuilder":
+        """Configure league for knockout format with additional settings."""
+        # Set tournament format
+        if matches_per_stage > 1:
+            self.core_builder.multi_match_knockout(matches_per_stage)
+        else:
+            self.core_builder.knockout_format()
+        self.core_builder.games_per_match(games_per_match)
+        
+        # Store knockout-specific settings
+        pairing_type = "knockout-multi" if matches_per_stage > 1 else "knockout-single"
+        knockout_settings = {
+            "knockout_seeding_style": seeding_style,
+            "knockout_games_per_match": games_per_match,
+            "pairing_type": pairing_type,
+        }
+            
+        self.core_builder.metadata.league_settings.update(knockout_settings)
+        return self
+
     def season(
         self, league_tag: str, name: str, rounds: int = 3, boards: int = None, **kwargs
     ) -> "TournamentBuilder":
