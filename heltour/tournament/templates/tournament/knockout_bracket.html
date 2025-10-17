@@ -301,10 +301,12 @@
                                         <div class="bracket-match bye-match">
                                             <div class="match-competitor">
                                                 <span class="competitor-name">
-                                                    {% if league.competitor_type == "team" %}
+                                                    {% if league.competitor_type == "team" and match.competitor.number and match.competitor.number > 0 %}
                                                         <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor.number %}">
                                                             {{ match.competitor.name }}
                                                         </a>
+                                                    {% elif league.competitor_type == "team" %}
+                                                        {{ match.competitor.name }}
                                                     {% else %}
                                                         <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor.lichess_username %}">
                                                             {{ match.competitor.lichess_username }}
@@ -321,10 +323,12 @@
                                                 <span class="competitor-name">
                                                     {% if match.competitor1 %}
                                                         <!-- Actual winner -->
-                                                        {% if league.competitor_type == "team" %}
+                                                        {% if league.competitor_type == "team" and match.competitor1.number and match.competitor1.number > 0 %}
                                                             <strong><a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor1.number %}">
                                                                 {{ match.competitor1.name }}
                                                             </a></strong>
+                                                        {% elif league.competitor_type == "team" %}
+                                                            <strong>{{ match.competitor1.name }}</strong>
                                                         {% else %}
                                                             <strong><a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor1.lichess_username %}">
                                                                 {{ match.competitor1.lichess_username }}
@@ -346,10 +350,12 @@
                                                 <div class="match-competitor {% if match.completed or match.has_partial_results %}{% if match.competitor1_won %}winner{% elif match.competitor2_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
                                                 <span class="competitor-name">
                                                     {% if match.competitor1 %}
-                                                        {% if league.competitor_type == "team" %}
+                                                        {% if league.competitor_type == "team" and match.competitor1.number and match.competitor1.number > 0 %}
                                                             <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor1.number %}">
                                                                 {{ match.competitor1.name }}
                                                             </a>
+                                                        {% elif league.competitor_type == "team" %}
+                                                            {{ match.competitor1.name }}
                                                         {% else %}
                                                             <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor1.lichess_username %}">
                                                                 {{ match.competitor1.lichess_username }}
@@ -390,7 +396,7 @@
                                                        style="color: #ffc107; text-decoration: none; font-size: 1.2em;">
                                                         ⚠️
                                                     </a>
-                                                {% elif league.competitor_type == "team" and match.competitor1 and match.competitor1.number %}
+                                                {% elif league.competitor_type == "team" and match.competitor1 and match.competitor1.number and match.competitor1.number > 0 %}
                                                     <a href="{% leagueurl 'pairings_by_round_team' league.tag season.tag match.round_number match.competitor1.number %}">
                                                         View Individual Games
                                                     </a>
@@ -402,10 +408,12 @@
                                             <div class="match-competitor {% if match.completed or match.has_partial_results %}{% if match.competitor2_won %}winner{% elif match.competitor1_won %}loser{% elif match.is_tie %}tie{% endif %}{% endif %} {% if match.manual_tiebreak %}manual-tiebreak{% endif %}">
                                                 <span class="competitor-name">
                                                     {% if match.competitor2 %}
-                                                        {% if league.competitor_type == "team" %}
+                                                        {% if league.competitor_type == "team" and match.competitor2.number and match.competitor2.number > 0 %}
                                                             <a class="team-link" href="{% leagueurl 'team_profile' league.tag season.tag match.competitor2.number %}">
                                                                 {{ match.competitor2.name }}
                                                             </a>
+                                                        {% elif league.competitor_type == "team" %}
+                                                            {{ match.competitor2.name }}
                                                         {% else %}
                                                             <a href="{% leagueurl 'player_profile' league.tag season.tag match.competitor2.lichess_username %}">
                                                                 {{ match.competitor2.lichess_username }}
