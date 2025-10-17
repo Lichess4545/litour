@@ -2704,10 +2704,7 @@ class GameIdsView(LeagueView):
                     round_data['matches'][match_num] = []
                 
                 if team_pairings.exists():
-                    # Use the proper multi-match utility functions
-                    from heltour.tournament_core.multi_match import get_match_number_from_pairing_order
-                    
-                    # Try to determine how many different team pairs there are
+                    # Simple sequential grouping: first X pairings = match 1, next X = match 2, etc.
                     unique_pairs = set()
                     for p in team_pairings:
                         unique_pairs.add((min(p.white_team_id, p.black_team_id), max(p.white_team_id, p.black_team_id)))
@@ -2718,39 +2715,26 @@ class GameIdsView(LeagueView):
                     for pairing in team_pairings:
                         debug_info.append(f"Pairing {pairing.pairing_order}: {pairing.white_team.name} vs {pairing.black_team.name}")
                     
-                    # Group pairings by match number
-                    for pairing in team_pairings:
-                        try:
-                            match_number = get_match_number_from_pairing_order(pairing.pairing_order, total_pairs)
-                            # Only show matches up to the expected number
-                            if match_number <= max_matches:
-                                # Get all board games for this pairing
-                                board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
-                                game_ids = []
-                                for board_pairing in board_pairings:
-                                    game_id = board_pairing.game_id()
-                                    if game_id:
-                                        game_ids.append(game_id)
-                                    # Note: Only add game IDs that exist, don't add empty placeholders
-                                    # This ensures we only show actual games, not expected structure
-                                
-                                round_data['matches'][match_number].extend(game_ids)
-                                # Debug: Add pairing info to see what's happening
-                                if 'debug_info' not in round_data:
-                                    round_data['debug_info'] = []
-                                round_data['debug_info'].append(f"Match {match_number}: Pairing {pairing.pairing_order} ({pairing.white_team.name} vs {pairing.black_team.name}) - {len(game_ids)} games")
-                        except (ValueError, ZeroDivisionError):
-                            # Fall back to simple logic if utility function fails
-                            match_number = 1
+                    # Group pairings sequentially: first total_pairs go to match 1, next total_pairs to match 2, etc.
+                    for i, pairing in enumerate(team_pairings):
+                        match_number = (i // total_pairs) + 1
+                        # Only show matches up to the expected number
+                        if match_number <= max_matches:
+                            # Get all board games for this pairing
                             board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing).order_by('board_number')
                             game_ids = []
                             for board_pairing in board_pairings:
                                 game_id = board_pairing.game_id()
                                 if game_id:
                                     game_ids.append(game_id)
-                                else:
-                                    game_ids.append("")
+                                # Note: Only add game IDs that exist, don't add empty placeholders
+                                # This ensures we only show actual games, not expected structure
+                            
                             round_data['matches'][match_number].extend(game_ids)
+                            # Debug: Add pairing info to see what's happening
+                            if 'debug_info' not in round_data:
+                                round_data['debug_info'] = []
+                            round_data['debug_info'].append(f"Match {match_number}: Pairing {pairing.pairing_order} ({pairing.white_team.name} vs {pairing.black_team.name}) - {len(game_ids)} games")
             else:
                 # Individual tournament - no match numbers, just round
                 lone_pairings = LonePlayerPairing.objects.filter(round=round_obj).order_by('pairing_order')
