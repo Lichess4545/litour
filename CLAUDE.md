@@ -20,6 +20,7 @@ This is Litour (formerly heltour), a Django-based tournament management web appl
 ## Development Setup
 
 ### Getting Started
+
 ```bash
 # Start the required services (PostgreSQL, Redis, MailHog)
 invoke docker-up
@@ -39,6 +40,7 @@ invoke runserver
 ```
 
 The nix environment automatically:
+
 - Sets up Python 3.11 virtual environment
 - Installs all Python dependencies via Poetry
 - Installs Ruby and the sass gem for SCSS compilation
@@ -69,7 +71,7 @@ poetry add <package>    # Add new dependency
 
 # Testing
 invoke test             # Run all tests
-invoke test heltour.tournament.tests.test_models # Run specific test module
+invoke test -t heltour.tournament.tests.test_models # Run specific test module
 
 # Static files
 invoke compilestatic    # Compile SCSS files
@@ -80,7 +82,6 @@ invoke shell            # Start Django shell
 invoke createsuperuser  # Create a Django superuser
 invoke status           # Check git status (alias: st)
 ```
-
 
 ## Architecture & Code Structure
 
@@ -189,6 +190,7 @@ This project was originally called heltour and served lichess4545. It has been r
 ## Important Instructions for Claude
 
 ### Command Execution Policy
+
 - **DO NOT** run any commands - the user will run all commands themselves
 - **DO NOT** use `nix develop`, `invoke`, `poetry`, or any other shell commands
 - **DO NOT** attempt to start servers, run tests, or execute any development tasks
@@ -199,17 +201,20 @@ This project was originally called heltour and served lichess4545. It has been r
   - Explain what commands would do
 
 ### Testing Policy
+
 - **NEVER** run tests - the user will run tests themselves
 - When test-related changes are made, you may suggest which test commands the user could run
 - Do not assume tests need to be run after code changes
 
 ### Git Policy
+
 - **NEVER** execute any git commands whatsoever
 - **DO NOT** make commits, pushes, or any git operations
 - Only use read-only git information that is provided in the environment
 - If git information is needed, ask the user to provide it
 
 ### General Guidelines
+
 - Focus solely on code reading, writing, and analysis
 - The user will handle all command execution and environment setup
 - Ask for clarification if needed before making assumptions
@@ -217,6 +222,7 @@ This project was originally called heltour and served lichess4545. It has been r
 - Do not create new files unless absolutely necessary
 
 ### Migration Policy
+
 - **NEVER** create Django migration files manually
 - **DO NOT** run makemigrations or migrate commands
 - **DO NOT** create any files in migration directories
@@ -226,6 +232,7 @@ This project was originally called heltour and served lichess4545. It has been r
 ## Tournament Core Module and Testing
 
 ### Tournament Core Architecture
+
 The `tournament_core` module provides a clean, database-independent representation of tournaments:
 
 - **Pure Python Implementation**: No Django dependencies, just dataclasses and calculation logic
@@ -240,6 +247,7 @@ The `tournament_core` module provides a clean, database-independent representati
 ### Testing Best Practices
 
 #### Use Tournament Builder for Tests
+
 The `tournament_core/builder.py` provides a fluent `TournamentBuilder` class for creating tournament structures easily:
 
 ```python
@@ -267,6 +275,7 @@ tournament = builder.build()
 ```
 
 #### Fluent Assertion Interface
+
 The `tournament_core/assertions.py` provides a fluent interface for testing tournament standings:
 
 ```python
@@ -279,7 +288,7 @@ assert_tournament(tournament).team("Dragons").assert_()
     .games_won(3)  # For team tournaments
     .position(1)
 
-# Assert individual tournament standings  
+# Assert individual tournament standings
 assert_tournament(tournament).player("Alice").assert_()
     .wins(2).losses(1).draws(0)
     .match_points(4).game_points(2.0)
@@ -293,17 +302,20 @@ assert_tournament(tournament).player("Alice").assert_()
 ```
 
 **Important Notes for Team Tournament Assertions**:
+
 - Match results are provided from the first team's perspective
 - `"1-0"` means the first team's player wins on that board
 - On alternating boards (odd-numbered), colors are swapped automatically
 - Example: `.match("Dragons", "Knights", "1-0", "1-0")` means Dragons win both boards
 
 #### Database Test Requirements
+
 - **Team Tournaments MUST Have Board Pairings**: The system will error if TeamPairing objects lack TeamPlayerPairing children
 - **Avoid Circular Dependencies**: Create rounds as `is_completed=False`, add all pairings and board results, then mark as completed
 - **No Synthetic Data**: The system does not support aggregate-only scores; all results must come from actual games
 
 #### Testing Workflow
+
 1. For pure logic tests, use `tournament_core` structures directly
 2. For integration tests, create complete database structures with board pairings
 3. Use `season_to_tournament_structure()` to convert database models to tournament_core
@@ -320,7 +332,8 @@ assert_tournament(tournament).player("Alice").assert_()
 ### Future Testing Improvements
 
 The goal is to make tournament testing simple and reliable:
+
 - Expand `TournamentBuilder` with more convenience methods
-- Create fixture generators for common tournament scenarios  
+- Create fixture generators for common tournament scenarios
 - Add property-based testing for tiebreak calculations
 - Ensure all edge cases (byes, forfeits, odd player counts) are well-tested
