@@ -386,6 +386,9 @@ class LeagueAdmin(_BaseAdmin):
                     "email_required",
                     "show_provisional_warning",
                     "ask_availability",
+                    "require_personal_info",
+                    "require_corporate_info",
+                    "require_fide_id",
                 )
             },
         ),

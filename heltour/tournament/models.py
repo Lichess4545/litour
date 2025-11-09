@@ -69,7 +69,13 @@ def format_score(score, game_played=None):
     elif str(score) == "0.75":
         score_str = "\u00be"
     else:
-        score_str = str(score).replace(".0", "").replace(".25", "\u00bc").replace(".5", "\u00bd").replace(".75", "\u00be")
+        score_str = (
+            str(score)
+            .replace(".0", "")
+            .replace(".25", "\u00bc")
+            .replace(".5", "\u00bd")
+            .replace(".75", "\u00be")
+        )
 
     if game_played is False:
         if score == 1:
@@ -206,6 +212,18 @@ class League(_BaseModel):
         default=True,
         help_text="If true, ask players about their availability during registration. Default is true.",
     )
+    require_personal_info = models.BooleanField(
+        default=False,
+        help_text="If true, require personal info fields (first_name, last_name, gender, date_of_birth, nationality) during registration. Default is false.",
+    )
+    require_corporate_info = models.BooleanField(
+        default=False,
+        help_text="If true, require corporate info fields (corporate_email, personal_email, contact_number) during registration. Default is false.",
+    )
+    require_fide_id = models.BooleanField(
+        default=False,
+        help_text="If true, require FIDE ID during registration. Default is false.",
+    )
 
     # Team league tiebreak configuration
     team_tiebreak_1 = models.CharField(
@@ -240,13 +258,13 @@ class League(_BaseModel):
     # Knockout tournament settings
     knockout_games_per_match = models.PositiveIntegerField(
         default=1,
-        help_text="Number of games per knockout match (1 for single, 2+ for multi-game)"
+        help_text="Number of games per knockout match (1 for single, 2+ for multi-game)",
     )
     knockout_seeding_style = models.CharField(
         max_length=16,
         choices=KNOCKOUT_SEEDING_OPTIONS,
         default="traditional",
-        help_text="Knockout bracket seeding pattern"
+        help_text="Knockout bracket seeding pattern",
     )
 
     class Meta:
@@ -258,7 +276,7 @@ class League(_BaseModel):
 
     @property
     def most_recent_season(self):
-        return self.season_set.order_by('-start_date').first()
+        return self.season_set.order_by("-start_date").first()
 
     def time_control_initial(self):
         parts = self.time_control.split("+")
@@ -676,14 +694,14 @@ class Season(_BaseModel):
 
                 # Set tiebreak values
                 tiebreak_values = tiebreak_results.get(score.team_id, {})
-                # Use any of the Extended Sonneborn-Berger variants if configured, 
+                # Use any of the Extended Sonneborn-Berger variants if configured,
                 # otherwise fall back to regular Sonneborn-Berger
                 score.sb_score = (
-                    tiebreak_values.get("eggsb", 0) or
-                    tiebreak_values.get("emmsb", 0) or
-                    tiebreak_values.get("emgsb", 0) or
-                    tiebreak_values.get("egmsb", 0) or
-                    tiebreak_values.get("sonneborn_berger", 0)
+                    tiebreak_values.get("eggsb", 0)
+                    or tiebreak_values.get("emmsb", 0)
+                    or tiebreak_values.get("emgsb", 0)
+                    or tiebreak_values.get("egmsb", 0)
+                    or tiebreak_values.get("sonneborn_berger", 0)
                 )
                 score.buchholz = tiebreak_values.get("buchholz", 0)
                 score.head_to_head = tiebreak_values.get("head_to_head", 0)
@@ -1061,19 +1079,19 @@ class Round(_BaseModel):
         blank=True,
         null=True,
         choices=KNOCKOUT_STAGE_OPTIONS,
-        help_text="Knockout tournament stage name"
+        help_text="Knockout tournament stage name",
     )
-    
+
     # For multi-match knockouts using multiple rounds approach
     is_knockout_multi_round = models.BooleanField(
         default=False,
-        help_text="True if this round is part of a multi-game knockout match"
+        help_text="True if this round is part of a multi-game knockout match",
     )
     knockout_multi_round_group = models.CharField(
         max_length=64,
         blank=True,
         null=True,
-        help_text="Identifier grouping multiple rounds that form one knockout match"
+        help_text="Identifier grouping multiple rounds that form one knockout match",
     )
 
     class Meta:
@@ -1996,9 +2014,9 @@ class TeamPairing(_BaseModel):
     manual_tiebreak_value = models.FloatField(
         blank=True,
         null=True,
-        help_text="Manual tiebreak value set by arbiter (+ve = white wins, -ve = black wins)"
+        help_text="Manual tiebreak value set by arbiter (+ve = white wins, -ve = black wins)",
     )
-    
+
     # For knockout advancement tracking
     advances_winner_to_round = models.ForeignKey(
         "Round",
@@ -2006,7 +2024,7 @@ class TeamPairing(_BaseModel):
         null=True,
         on_delete=models.SET_NULL,
         related_name="advancement_sources",
-        help_text="Round that the winner of this pairing advances to"
+        help_text="Round that the winner of this pairing advances to",
     )
 
     class Meta:
@@ -2038,12 +2056,14 @@ class TeamPairing(_BaseModel):
 
     def refresh_points(self):
         """Refresh team points using the same logic as tournament_core calculations.
-        
+
         Uses the single source of truth for team pairing score calculation.
         """
         from heltour.tournament.db_to_structure import calculate_team_pairing_scores
-        
-        self.white_points, self.black_points, self.white_wins, self.black_wins = calculate_team_pairing_scores(self)
+
+        self.white_points, self.black_points, self.white_wins, self.black_wins = (
+            calculate_team_pairing_scores(self)
+        )
 
     def white_points_display(self):
         return "%g" % self.white_points
@@ -4029,10 +4049,10 @@ class Announcement(_BaseModel):
     """Site-wide announcements that can be shown on specific paths"""
 
     ANNOUNCEMENT_STATUS_CHOICES = [
-        ('info', 'Info'),
-        ('warning', 'Warning'),
-        ('danger', 'Danger'),
-        ('success', 'Success'),
+        ("info", "Info"),
+        ("warning", "Warning"),
+        ("danger", "Danger"),
+        ("success", "Success"),
     ]
 
     text = RichTextUploadingField(
@@ -4043,7 +4063,7 @@ class Announcement(_BaseModel):
     status = models.CharField(
         max_length=10,
         choices=ANNOUNCEMENT_STATUS_CHOICES,
-        default='info',
+        default="info",
         help_text="Bootstrap alert style for the announcement",
         verbose_name="Status",
     )
@@ -4064,7 +4084,7 @@ class Announcement(_BaseModel):
 
     path_prefix = models.CharField(
         max_length=255,
-        default='/',
+        default="/",
         help_text="Path prefix to show announcement on. '/' means all pages. '/tournament/' would show on tournament pages only.",
         verbose_name="Path Prefix",
     )
@@ -4076,7 +4096,7 @@ class Announcement(_BaseModel):
     )
 
     class Meta:
-        ordering = ['-start_date']
+        ordering = ["-start_date"]
         verbose_name = "Announcement"
         verbose_name_plural = "Announcements"
 
@@ -4090,28 +4110,28 @@ class Announcement(_BaseModel):
         """Return truncated plain text version of the announcement"""
         from django.utils.html import strip_tags
         from django.utils.text import Truncator
+
         plain_text = strip_tags(self.text)
-        return Truncator(plain_text).chars(80, truncate='...')
+        return Truncator(plain_text).chars(80, truncate="...")
+
     get_text_preview.short_description = "Message Preview"
 
     @classmethod
     def get_active_for_path(cls, path):
         """Get all active announcements for a given path"""
         from django.utils import timezone
+
         now = timezone.now()
 
         # Build date filters: start_date is null OR start_date <= now
         # AND end_date is null OR end_date >= now
         from django.db.models import Q
-        date_filter = Q(
-            Q(start_date__isnull=True) | Q(start_date__lte=now)
-        ) & Q(
+
+        date_filter = Q(Q(start_date__isnull=True) | Q(start_date__lte=now)) & Q(
             Q(end_date__isnull=True) | Q(end_date__gte=now)
         )
 
-        announcements = cls.objects.filter(
-            is_active=True
-        ).filter(date_filter).nocache()
+        announcements = cls.objects.filter(is_active=True).filter(date_filter).nocache()
 
         # Filter by path prefix
         matching_announcements = []
@@ -4130,24 +4150,24 @@ class KnockoutBracket(_BaseModel):
         help_text="Total number of teams in knockout bracket (must be power of 2)"
     )
     seeding_style = models.CharField(
-        max_length=16,
-        choices=KNOCKOUT_SEEDING_OPTIONS,
-        default="traditional"
+        max_length=16, choices=KNOCKOUT_SEEDING_OPTIONS, default="traditional"
     )
     games_per_match = models.PositiveIntegerField(
-        default=1,
-        help_text="Number of games each team pair plays before elimination"
+        default=1, help_text="Number of games each team pair plays before elimination"
     )
     matches_per_stage = models.PositiveIntegerField(
         default=1,
-        help_text="Number of matches each team pair plays per stage (1=single elimination, 2=return matches, etc.)"
+        help_text="Number of matches each team pair plays per stage (1=single elimination, 2=return matches, etc.)",
     )
     is_completed = models.BooleanField(default=False)
-    
+
     def clean(self):
         from django.core.exceptions import ValidationError
+
         # Validate power of 2
-        if self.bracket_size and not (self.bracket_size > 1 and (self.bracket_size & (self.bracket_size - 1)) == 0):
+        if self.bracket_size and not (
+            self.bracket_size > 1 and (self.bracket_size & (self.bracket_size - 1)) == 0
+        ):
             raise ValidationError("Bracket size must be a power of 2")
 
     def __str__(self):
@@ -4160,10 +4180,9 @@ class KnockoutSeeding(_BaseModel):
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
     seed_number = models.PositiveIntegerField(help_text="1-indexed seed position")
     is_manual_seed = models.BooleanField(
-        default=False,
-        help_text="True if seeding was set manually vs automatically"
+        default=False, help_text="True if seeding was set manually vs automatically"
     )
-    
+
     class Meta:
         unique_together = [("bracket", "team"), ("bracket", "seed_number")]
         ordering = ["seed_number"]
@@ -4172,20 +4191,21 @@ class KnockoutSeeding(_BaseModel):
         return f"Seed #{self.seed_number}: {self.team.name}"
 
 
-# -------------------------------------------------------------------------------  
+# -------------------------------------------------------------------------------
 class KnockoutAdvancement(_BaseModel):
     """Track team advancement through knockout rounds"""
+
     bracket = models.ForeignKey(KnockoutBracket, on_delete=models.CASCADE)
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
     from_stage = models.CharField(max_length=32)  # e.g., "semifinals"
-    to_stage = models.CharField(max_length=32)    # e.g., "finals"
+    to_stage = models.CharField(max_length=32)  # e.g., "finals"
     source_pairing = models.ForeignKey(
-        TeamPairing, 
+        TeamPairing,
         on_delete=models.CASCADE,
-        help_text="The pairing that determined this advancement"
+        help_text="The pairing that determined this advancement",
     )
     advanced_date = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         unique_together = [("bracket", "team", "to_stage")]
 
@@ -4196,47 +4216,48 @@ class KnockoutAdvancement(_BaseModel):
 # -------------------------------------------------------------------------------
 class TeamMultiMatchProgress(_BaseModel):
     """Track progress of teams through multi-match knockout stages"""
+
     bracket = models.ForeignKey(KnockoutBracket, on_delete=models.CASCADE)
     team = models.ForeignKey(Team, on_delete=models.CASCADE)
-    round_number = models.PositiveIntegerField(help_text="Round number in knockout bracket")
+    round_number = models.PositiveIntegerField(
+        help_text="Round number in knockout bracket"
+    )
     stage_name = models.CharField(
-        max_length=32,
-        help_text="Stage name (e.g., 'semifinals', 'finals')"
+        max_length=32, help_text="Stage name (e.g., 'semifinals', 'finals')"
     )
     opponent_team = models.ForeignKey(
-        Team, 
-        on_delete=models.CASCADE, 
-        related_name='multi_match_opponent_progress',
-        help_text="The team this team is paired against"
+        Team,
+        on_delete=models.CASCADE,
+        related_name="multi_match_opponent_progress",
+        help_text="The team this team is paired against",
     )
     original_pairing_order = models.PositiveIntegerField(
         help_text="Original pairing order within the stage (1, 2, 3, 4, ...)"
     )
     matches_completed = models.PositiveIntegerField(
-        default=0,
-        help_text="Number of matches completed by this team pair"
+        default=0, help_text="Number of matches completed by this team pair"
     )
     total_matches_required = models.PositiveIntegerField(
         help_text="Total matches this team pair must complete before elimination"
     )
     last_updated = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         unique_together = [("bracket", "team", "round_number")]
         indexes = [
-            models.Index(fields=['bracket', 'round_number', 'original_pairing_order']),
-            models.Index(fields=['bracket', 'round_number', 'matches_completed']),
+            models.Index(fields=["bracket", "round_number", "original_pairing_order"]),
+            models.Index(fields=["bracket", "round_number", "matches_completed"]),
         ]
-    
+
     @property
     def is_stage_complete_for_pair(self):
         """Check if this team pair has completed all required matches"""
         return self.matches_completed >= self.total_matches_required
-    
+
     @property
     def current_match_number(self):
         """Get the current match number this team pair is on"""
         return min(self.matches_completed + 1, self.total_matches_required)
-    
+
     def __str__(self):
         return f"{self.team.name} vs {self.opponent_team.name} ({self.stage_name}): {self.matches_completed}/{self.total_matches_required}"
