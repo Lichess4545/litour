@@ -172,7 +172,9 @@ class RegistrationForm(forms.ModelForm):
             self.fields["regional_rating"].required = True
             # Update the label with the specific regional rating name if provided
             if league.regional_rating_name:
-                self.fields["regional_rating"].label = _(f"{league.regional_rating_name} Rating")
+                self.fields["regional_rating"].label = _(
+                    f"{league.regional_rating_name} Rating"
+                )
         else:
             del self.fields["regional_rating"]
 

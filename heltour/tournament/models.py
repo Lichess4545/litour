@@ -2785,7 +2785,9 @@ class Registration(_BaseModel):
 
     # Additional registration information
     fide_id = models.CharField(max_length=20, blank=True, verbose_name="FIDE ID")
-    regional_rating = models.CharField(max_length=20, blank=True, verbose_name="Regional Rating")
+    regional_rating = models.CharField(
+        max_length=20, blank=True, verbose_name="Regional Rating"
+    )
     first_name = models.CharField(max_length=100, blank=True, verbose_name="First Name")
     last_name = models.CharField(max_length=100, blank=True, verbose_name="Family Name")
 
