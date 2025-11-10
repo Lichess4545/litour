@@ -595,7 +595,7 @@ class TeamAssignmentTestCase(TestCase):
 
 
 class FieldVisibilitySettingsTestCase(TestCase):
-    """Test new field visibility settings (require_personal_info, require_corporate_info, require_fide_id)."""
+    """Test granular field visibility settings for registration."""
 
     def setUp(self):
         """Set up test data."""
@@ -630,33 +630,52 @@ class FieldVisibilitySettingsTestCase(TestCase):
     def test_field_visibility_matrix(self):
         """Test all combinations of field visibility settings."""
         test_cases = [
-            # (personal, corporate, fide_id, expected_fields_present, expected_fields_absent)
-            (False, False, False, [], ["first_name", "corporate_email", "fide_id"]),
+            # (settings_dict, expected_fields_present, expected_fields_absent)
+            ({}, [], ["first_name", "corporate_email", "fide_id", "regional_rating"]),
             (
-                True,
-                False,
-                False,
-                ["first_name", "last_name", "gender"],
-                ["corporate_email", "fide_id"],
+                {"require_name": True},
+                ["first_name", "last_name"],
+                ["gender", "corporate_email", "fide_id"],
             ),
             (
-                False,
-                True,
-                False,
+                {"require_gender": True, "require_nationality": True},
+                ["gender", "nationality"],
+                ["first_name", "corporate_email", "fide_id"],
+            ),
+            (
+                {"require_corporate_email": True, "require_personal_email": True},
                 ["corporate_email", "personal_email"],
                 ["first_name", "fide_id"],
             ),
-            (False, False, True, ["fide_id"], ["first_name", "corporate_email"]),
-            (True, True, True, ["first_name", "corporate_email", "fide_id"], []),
+            (
+                {"require_contact_number": True},
+                ["contact_number"],
+                ["first_name", "corporate_email", "fide_id"],
+            ),
+            (
+                {"require_fide_id": True},
+                ["fide_id"],
+                ["first_name", "corporate_email", "regional_rating"],
+            ),
+            (
+                {"require_regional_rating": True, "regional_rating_name": "USCF"},
+                ["regional_rating"],
+                ["first_name", "corporate_email", "fide_id"],
+            ),
+            (
+                {
+                    "require_name": True,
+                    "require_corporate_email": True,
+                    "require_fide_id": True,
+                    "require_regional_rating": True,
+                },
+                ["first_name", "corporate_email", "fide_id", "regional_rating"],
+                [],
+            ),
         ]
 
-        for i, (personal, corporate, fide, present, absent) in enumerate(test_cases):
-            _, season = self._create_league_and_season(
-                f"matrix-{i}",
-                require_personal_info=personal,
-                require_corporate_info=corporate,
-                require_fide_id=fide,
-            )
+        for i, (settings, present, absent) in enumerate(test_cases):
+            _, season = self._create_league_and_season(f"matrix-{i}", **settings)
             form = RegistrationForm(season=season, player=self.player)
 
             for field in present:
@@ -672,9 +691,11 @@ class FieldVisibilitySettingsTestCase(TestCase):
         """Test that enabled fields are actually required."""
         _, season = self._create_league_and_season(
             "required",
-            require_personal_info=True,
-            require_corporate_info=True,
+            require_name=True,
+            require_corporate_email=True,
             require_fide_id=True,
+            require_regional_rating=True,
+            regional_rating_name="USCF",
         )
 
         form = RegistrationForm(
@@ -691,16 +712,28 @@ class FieldVisibilitySettingsTestCase(TestCase):
         )
 
         self.assertFalse(form.is_valid())
-        for field in ["first_name", "last_name", "corporate_email", "fide_id"]:
+        for field in [
+            "first_name",
+            "last_name",
+            "corporate_email",
+            "fide_id",
+            "regional_rating",
+        ]:
             self.assertIn(field, form.errors)
 
     def test_minimal_registration_saves_successfully(self):
         """Test that minimal registration (no optional fields) can be saved."""
         _, season = self._create_league_and_season(
             "minimal",
-            require_personal_info=False,
-            require_corporate_info=False,
+            require_name=False,
+            require_personal_email=False,
+            require_gender=False,
+            require_date_of_birth=False,
+            require_nationality=False,
+            require_corporate_email=False,
+            require_contact_number=False,
             require_fide_id=False,
+            require_regional_rating=False,
             email_required=False,
             show_provisional_warning=False,
             ask_availability=False,
@@ -729,9 +762,15 @@ class FieldVisibilitySettingsTestCase(TestCase):
         _, season = self._create_league_and_season(
             "invite",
             registration_mode="invite_only",
-            require_personal_info=False,
-            require_corporate_info=False,
+            require_name=False,
+            require_personal_email=False,
+            require_gender=False,
+            require_date_of_birth=False,
+            require_nationality=False,
+            require_corporate_email=False,
+            require_contact_number=False,
             require_fide_id=False,
+            require_regional_rating=False,
             email_required=False,
             show_provisional_warning=False,
             ask_availability=False,
@@ -773,3 +812,30 @@ class FieldVisibilitySettingsTestCase(TestCase):
 
         self.assertIn("fide_id", form.fields)
         self.assertTrue(form.fields["fide_id"].required)
+
+    def test_regional_rating_label_customization(self):
+        """Test that regional rating field label is customized based on regional_rating_name."""
+        _, season = self._create_league_and_season(
+            "uscf-rating",
+            require_regional_rating=True,
+            regional_rating_name="USCF",
+        )
+
+        form = RegistrationForm(season=season, player=self.player)
+
+        self.assertIn("regional_rating", form.fields)
+        self.assertTrue(form.fields["regional_rating"].required)
+        self.assertIn("USCF", str(form.fields["regional_rating"].label))
+
+    def test_regional_rating_without_name(self):
+        """Test regional rating field when no specific name is provided."""
+        _, season = self._create_league_and_season(
+            "generic-rating",
+            require_regional_rating=True,
+            regional_rating_name="",
+        )
+
+        form = RegistrationForm(season=season, player=self.player)
+
+        self.assertIn("regional_rating", form.fields)
+        self.assertTrue(form.fields["regional_rating"].required)

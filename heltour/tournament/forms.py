@@ -60,6 +60,7 @@ class RegistrationForm(forms.ModelForm):
             "personal_email",
             "contact_number",
             "fide_id",
+            "regional_rating",
             "has_played_20_games",
             "can_commit",
             "friends",
@@ -81,6 +82,7 @@ class RegistrationForm(forms.ModelForm):
             "personal_email": _("Personal Email Address (optional)"),
             "contact_number": _("Contact Number"),
             "fide_id": _("FIDE ID (optional)"),
+            "regional_rating": _("Regional Rating"),
         }
         widgets = {
             "date_of_birth": forms.DateInput(attrs={"type": "date"}),
@@ -111,43 +113,68 @@ class RegistrationForm(forms.ModelForm):
             # Make email field required when email_required=True
             self.fields["email"].required = True
 
-        # Configure personal info fields based on league settings
-        if league.require_personal_info:
+        # Configure name fields
+        if league.require_name:
             self.fields["first_name"].required = True
             self.fields["last_name"].required = True
-            self.fields["gender"].required = True
-            self.fields["date_of_birth"].required = True
-            self.fields["nationality"].required = True
+        else:
+            del self.fields["first_name"]
+            del self.fields["last_name"]
 
+        # Configure personal email field
+        if league.require_personal_email:
+            self.fields["personal_email"].required = True
+        else:
+            del self.fields["personal_email"]
+
+        # Configure gender field
+        if league.require_gender:
+            self.fields["gender"].required = True
+        else:
+            del self.fields["gender"]
+
+        # Configure date of birth field
+        if league.require_date_of_birth:
+            self.fields["date_of_birth"].required = True
             # Set default date of birth to 18 years ago
             if not self.instance.pk:  # Only for new registrations
                 eighteen_years_ago = datetime.now().date() - timedelta(days=365 * 18)
                 self.fields["date_of_birth"].initial = eighteen_years_ago
         else:
-            # Remove personal info fields entirely when not required
-            del self.fields["first_name"]
-            del self.fields["last_name"]
-            del self.fields["gender"]
             del self.fields["date_of_birth"]
+
+        # Configure nationality field
+        if league.require_nationality:
+            self.fields["nationality"].required = True
+        else:
             del self.fields["nationality"]
 
-        # Configure corporate info fields based on league settings
-        if league.require_corporate_info:
+        # Configure corporate email field
+        if league.require_corporate_email:
             self.fields["corporate_email"].required = True
-            self.fields["personal_email"].required = True
+        else:
+            del self.fields["corporate_email"]
+
+        # Configure contact number field
+        if league.require_contact_number:
             self.fields["contact_number"].required = True
         else:
-            # Remove corporate info fields entirely when not required
-            del self.fields["corporate_email"]
-            del self.fields["personal_email"]
             del self.fields["contact_number"]
 
-        # Configure FIDE ID field based on league settings
+        # Configure FIDE ID field
         if league.require_fide_id:
             self.fields["fide_id"].required = True
         else:
-            # Remove FIDE ID field when not required
             del self.fields["fide_id"]
+
+        # Configure regional rating field
+        if league.require_regional_rating:
+            self.fields["regional_rating"].required = True
+            # Update the label with the specific regional rating name if provided
+            if league.regional_rating_name:
+                self.fields["regional_rating"].label = _(f"{league.regional_rating_name} Rating")
+        else:
+            del self.fields["regional_rating"]
 
         # Add invite code field if league is invite-only
         if league.registration_mode == RegistrationMode.INVITE_ONLY:

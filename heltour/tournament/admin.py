@@ -386,10 +386,41 @@ class LeagueAdmin(_BaseAdmin):
                     "email_required",
                     "show_provisional_warning",
                     "ask_availability",
-                    "require_personal_info",
-                    "require_corporate_info",
-                    "require_fide_id",
                 )
+            },
+        ),
+        (
+            "Personal Information Settings",
+            {
+                "fields": (
+                    "require_name",
+                    "require_personal_email",
+                    "require_gender",
+                    "require_date_of_birth",
+                    "require_nationality",
+                ),
+                "description": "Configure which personal information fields are required during registration.",
+            },
+        ),
+        (
+            "Corporate/Organizational Information Settings",
+            {
+                "fields": (
+                    "require_corporate_email",
+                    "require_contact_number",
+                ),
+                "description": "Configure corporate and organizational information requirements.",
+            },
+        ),
+        (
+            "Chess Federation Information Settings",
+            {
+                "fields": (
+                    "require_fide_id",
+                    "require_regional_rating",
+                    "regional_rating_name",
+                ),
+                "description": "Configure chess federation ID and rating requirements. Set regional_rating_name (e.g., 'USCF', 'ECF', 'CFC') when require_regional_rating is enabled.",
             },
         ),
         (

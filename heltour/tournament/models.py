@@ -212,17 +212,52 @@ class League(_BaseModel):
         default=True,
         help_text="If true, ask players about their availability during registration. Default is true.",
     )
-    require_personal_info = models.BooleanField(
+    # Personal information settings
+    require_name = models.BooleanField(
         default=False,
-        help_text="If true, require personal info fields (first_name, last_name, gender, date_of_birth, nationality) during registration. Default is false.",
+        help_text="If true, require first_name and last_name during registration. Default is false.",
     )
-    require_corporate_info = models.BooleanField(
+    require_personal_email = models.BooleanField(
         default=False,
-        help_text="If true, require corporate info fields (corporate_email, personal_email, contact_number) during registration. Default is false.",
+        help_text="If true, require personal_email during registration. Default is false.",
     )
+    require_gender = models.BooleanField(
+        default=False,
+        help_text="If true, require gender during registration. Default is false.",
+    )
+    require_date_of_birth = models.BooleanField(
+        default=False,
+        help_text="If true, require date_of_birth during registration. Default is false.",
+    )
+    require_nationality = models.BooleanField(
+        default=False,
+        help_text="If true, require nationality during registration. Default is false.",
+    )
+
+    # Corporate/organizational information settings
+    require_corporate_email = models.BooleanField(
+        default=False,
+        help_text="If true, require corporate_email during registration. Default is false.",
+    )
+    require_contact_number = models.BooleanField(
+        default=False,
+        help_text="If true, require contact_number during registration. Default is false.",
+    )
+
+    # Chess federation information
     require_fide_id = models.BooleanField(
         default=False,
         help_text="If true, require FIDE ID during registration. Default is false.",
+    )
+    require_regional_rating = models.BooleanField(
+        default=False,
+        help_text="If true, require a regional rating during registration. Default is false.",
+    )
+    regional_rating_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Name of the regional rating system (e.g., 'USCF', 'ECF', 'CFC'). Used when require_regional_rating is True.",
     )
 
     # Team league tiebreak configuration
@@ -2750,6 +2785,7 @@ class Registration(_BaseModel):
 
     # Additional registration information
     fide_id = models.CharField(max_length=20, blank=True, verbose_name="FIDE ID")
+    regional_rating = models.CharField(max_length=20, blank=True, verbose_name="Regional Rating")
     first_name = models.CharField(max_length=100, blank=True, verbose_name="First Name")
     last_name = models.CharField(max_length=100, blank=True, verbose_name="Family Name")
 
