@@ -2603,7 +2603,6 @@ class PlayerAdmin(_BaseAdmin):
     search_fields = ["lichess_username", "slack_user_id"]
     list_filter = ("is_active",)
     readonly_fields = (
-        "rating",
         "games_played",
         "slack_user_id",
         "timezone_offset",
