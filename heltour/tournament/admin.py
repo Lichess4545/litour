@@ -2627,7 +2627,7 @@ class PlayerAdmin(_BaseAdmin):
         fields = []
         if not request.user.has_perm("tournament.change_player_details"):
             fields += ("lichess_username", "email", "is_active")
-        fields += ["rating", "games_played"]
+        fields += ["games_played"]
         if not request.user.has_perm("tournament.link_slack"):
             fields += ["slack_user_id"]
         fields += ["timezone_offset", "account_status"]
