@@ -1327,11 +1327,22 @@ class Player(_BaseModel):
     def __init__(self, *args, **kwargs):
         super(Player, self).__init__(*args, **kwargs)
         self.initial_account_status = self.account_status
+        self.initial_rating = self.rating
 
     def save(self, *args, **kwargs):
         account_status_changed = (
             self.pk and self.account_status != self.initial_account_status
         )
+
+        # Sync rating changes to profile's classical rating
+        rating_changed = self.pk and self.rating != self.initial_rating
+        if rating_changed and self.rating is not None and self.profile is not None:
+            if "perfs" not in self.profile:
+                self.profile["perfs"] = {}
+            if "classical" not in self.profile["perfs"]:
+                self.profile["perfs"]["classical"] = {}
+            self.profile["perfs"]["classical"]["rating"] = self.rating
+
         super(Player, self).save(*args, **kwargs)
         if account_status_changed:
             signals.player_account_status_changed.send(
