@@ -37,6 +37,7 @@ from heltour.tournament.forms import (
     TvTimezoneForm,
 )
 from heltour.tournament.models import (
+    LONE_TIEBREAK_OPTIONS,
     MOD_REQUEST_SENDER,
     PLAYER_NOTIFICATION_TYPES,
     Alternate,
@@ -335,6 +336,10 @@ class LeagueHomeView(LeagueView):
                 player_highlights = []
             current_seasons_with_more.append((season, player_scores, player_highlights))
 
+        tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+        lone_tiebreaks = self.league.get_lone_tiebreaks()
+        first_tiebreak = (lone_tiebreaks[0], tiebreak_names.get(lone_tiebreaks[0], "TB")) if lone_tiebreaks else None
+
         context = {
             'current_seasons_with_more': current_seasons_with_more,
             'completed_seasons': completed_seasons,
@@ -343,6 +348,7 @@ class LeagueHomeView(LeagueView):
             'can_edit_document': self.request.user.has_perm('tournament.change_document',
                                                             self.league),
             'other_leagues': other_leagues,
+            'first_tiebreak': first_tiebreak,
         }
         return self.render('tournament/lone_league_home.html', context)
 
@@ -431,6 +437,10 @@ class SeasonLandingView(SeasonView):
 
             links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
 
+                tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+            lone_tiebreaks = self.league.get_lone_tiebreaks()
+            first_tiebreak = (lone_tiebreaks[0], tiebreak_names.get(lone_tiebreaks[0], "TB")) if lone_tiebreaks else None
+
             context = {
                 'has_more_seasons': has_more_seasons,
                 'current_seasons': current_seasons,
@@ -440,6 +450,7 @@ class SeasonLandingView(SeasonView):
                 'last_round_pairings': last_round_pairings,
                 'player_scores': player_scores,
                 'links_doc': links_doc,
+                'first_tiebreak': first_tiebreak,
                 'can_edit_document': self.request.user.has_perm('tournament.change_document',
                                                                 self.league),
             }
@@ -509,6 +520,12 @@ class SeasonLandingView(SeasonView):
 
         links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
 
+        tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+        tiebreaks = []
+        for tb in self.league.get_lone_tiebreaks():
+            if tb in tiebreak_names:
+                tiebreaks.append((tb, tiebreak_names[tb]))
+
         context = {
             'has_more_seasons': has_more_seasons,
             'current_seasons': current_seasons,
@@ -521,6 +538,7 @@ class SeasonLandingView(SeasonView):
             'ribbons': ribbons,
             'player_highlights': player_highlights,
             'links_doc': links_doc,
+            'tiebreaks': tiebreaks,
             'can_edit_document': self.request.user.has_perm('tournament.change_document',
                                                             self.league),
         }
@@ -1136,6 +1154,13 @@ class StandingsView(SeasonView):
                     season_prize__season__league=self.league)
             player_highlights = _get_player_highlights(prize_winners)
 
+            # Build tiebreak display list from league config
+                tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+            tiebreaks = []
+            for tb in self.league.get_lone_tiebreaks():
+                if tb in tiebreak_names:
+                    tiebreaks.append((tb, tiebreak_names[tb]))
+
             context = {
                 'round_numbers': round_numbers,
                 'player_scores': player_scores,
@@ -1143,6 +1168,7 @@ class StandingsView(SeasonView):
                 'player_sections': player_sections,
                 'current_section': current_section,
                 'player_highlights': player_highlights,
+                'tiebreaks': tiebreaks,
             }
             return self.render('tournament/lone_standings.html', context)
 

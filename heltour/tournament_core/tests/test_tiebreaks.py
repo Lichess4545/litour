@@ -17,8 +17,10 @@ from heltour.tournament_core.structure import (
 from heltour.tournament_core.tiebreaks import (
     calculate_sonneborn_berger,
     calculate_buchholz,
+    calculate_buchholz_cut1,
     calculate_head_to_head,
     calculate_games_won,
+    calculate_all_tiebreaks,
 )
 from heltour.tournament_core.scoring import STANDARD_SCORING
 
@@ -473,6 +475,126 @@ class SimpleTiebreakTests(unittest.TestCase):
         # Also verify using assertions
         assert_tournament(tournament).team("Royal Knights").assert_().match_points(0).game_points(1.5)
         assert_tournament(tournament).team("Ice Warriors").assert_().match_points(2).game_points(2.5)
+
+
+class BuchholzCut1Tests(unittest.TestCase):
+    """Test Buchholz Cut-1 calculation."""
+
+    def _make_round_robin(self):
+        """4-player round robin returning tournament and results."""
+        players = [1, 2, 3, 4]
+        matches_with_rounds = [
+            (1, create_single_game_match(1, 2, GameResult.P1_WIN)),
+            (1, create_single_game_match(3, 4, GameResult.DRAW)),
+            (2, create_single_game_match(1, 3, GameResult.P2_WIN)),
+            (2, create_single_game_match(2, 4, GameResult.P1_WIN)),
+            (3, create_single_game_match(1, 4, GameResult.DRAW)),
+            (3, create_single_game_match(2, 3, GameResult.P2_WIN)),
+        ]
+        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        return tournament, tournament.calculate_results()
+
+    def test_buchholz_cut1_basic(self):
+        """Buchholz Cut-1 = Buchholz minus the lowest opponent score."""
+        _, results = self._make_round_robin()
+
+        # MP: P1=3, P2=2, P3=5, P4=2
+        # P1 opponents: P2(2), P3(5), P4(2) → sorted [2,2,5] → drop lowest → [2,5] = 7
+        full_buchholz = calculate_buchholz(results[1], results)
+        cut1 = calculate_buchholz_cut1(results[1], results)
+        self.assertEqual(full_buchholz, 9)
+        self.assertEqual(cut1, 7)
+
+    def test_buchholz_cut1_with_bye(self):
+        """Bye opponent gets own score; still drops the lowest."""
+        players = [1, 2, 3]
+        matches_with_rounds = [
+            (1, create_single_game_match(1, 2, GameResult.P1_WIN)),
+            (1, create_bye_match(3)),
+            (2, create_single_game_match(1, 3, GameResult.DRAW)),
+            (2, create_bye_match(2)),
+        ]
+        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        results = tournament.calculate_results()
+
+        # P1: 3 MP. Opponents: P2(1), P3(2)
+        cut1 = calculate_buchholz_cut1(results[1], results)
+        # sorted [1, 2] → drop lowest → [2] = 2
+        self.assertEqual(cut1, 2)
+
+
+class UseGamePointsTests(unittest.TestCase):
+    """Test the use_game_points flag on buchholz/h2h/cut1."""
+
+    def _make_simple(self):
+        """3-player simple scenario for game_points testing."""
+        players = [1, 2, 3]
+        matches_with_rounds = [
+            (1, create_single_game_match(1, 2, GameResult.P1_WIN)),
+            (1, create_bye_match(3)),
+            (2, create_single_game_match(2, 3, GameResult.DRAW)),
+            (2, create_bye_match(1)),
+        ]
+        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        return tournament.calculate_results()
+
+    def test_buchholz_with_game_points(self):
+        results = self._make_simple()
+        # bye_game_points_factor=0.5, so bye gives 0.5 GP
+        # P1: 3 MP / 1.5 GP, P2: 1 MP / 0.5 GP, P3: 2 MP / 1.0 GP
+        # P1 opponents (game_points): P2(0.5) + bye(own=1.5) = 2.0
+        gp_buchholz = calculate_buchholz(results[1], results, use_game_points=True)
+        mp_buchholz = calculate_buchholz(results[1], results, use_game_points=False)
+        self.assertEqual(gp_buchholz, 2.0)
+        self.assertEqual(mp_buchholz, 4)  # P2(1) + bye(own=3)
+
+    def test_buchholz_cut1_with_game_points(self):
+        results = self._make_simple()
+        gp_cut1 = calculate_buchholz_cut1(results[1], results, use_game_points=True)
+        # sorted [0.5, 1.5] → drop 0.5 → 1.5
+        self.assertEqual(gp_cut1, 1.5)
+
+    def test_head_to_head_with_game_points(self):
+        results = self._make_simple()
+        # P2 and P3 tied at 1 MP
+        tied = {2, 3}
+        gp_h2h_2 = calculate_head_to_head(results[2], tied, results, use_game_points=True)
+        gp_h2h_3 = calculate_head_to_head(results[3], tied, results, use_game_points=True)
+        # P2 drew P3 → 0.5 game points each
+        self.assertEqual(gp_h2h_2, 0.5)
+        self.assertEqual(gp_h2h_3, 0.5)
+
+
+class CalculateAllTiebreaksTests(unittest.TestCase):
+    """Test calculate_all_tiebreaks with new tiebreak names."""
+
+    def test_lone_fide_tiebreaks(self):
+        """Test the full FIDE tiebreak order for a lone tournament."""
+        players = [1, 2, 3]
+        matches_with_rounds = [
+            (1, create_single_game_match(1, 2, GameResult.P1_WIN)),
+            (1, create_bye_match(3)),
+            (2, create_single_game_match(1, 3, GameResult.DRAW)),
+            (2, create_bye_match(2)),
+            (3, create_single_game_match(2, 3, GameResult.P1_WIN)),
+            (3, create_bye_match(1)),
+        ]
+        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        results = tournament.calculate_results()
+
+        tiebreak_order = ["head_to_head", "buchholz_cut1", "buchholz", "games_won", "sonneborn_berger"]
+        tb = calculate_all_tiebreaks(results, tiebreak_order, use_game_points=True)
+
+        # Verify all keys present for each player
+        for pid in players:
+            for name in tiebreak_order:
+                self.assertIn(name, tb[pid], f"Missing {name} for player {pid}")
+
+        # P1: 4 MP / 2.0 GP, P2: 3 MP / 1.0 GP, P3: 2 MP / 1.5 GP
+        # games_won: P1 won 1 game (vs P2), P2 won 1 game (vs P3), P3 won 0 games
+        self.assertEqual(tb[1]["games_won"], 1)
+        self.assertEqual(tb[2]["games_won"], 1)
+        self.assertEqual(tb[3]["games_won"], 0)
 
 
 if __name__ == "__main__":

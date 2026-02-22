@@ -252,8 +252,8 @@ def concat(str1, str2):
 
 
 @register.filter
-def get_tiebreak_display(team_score, tiebreak_name):
-    """Get the display value for a specific tiebreak from a TeamScore object."""
-    if hasattr(team_score, 'get_tiebreak_display'):
-        return team_score.get_tiebreak_display(tiebreak_name)
+def get_tiebreak_display(score, tiebreak_name):
+    """Get the display value for a specific tiebreak from a TeamScore or LonePlayerScore."""
+    if hasattr(score, 'get_tiebreak_display'):
+        return score.get_tiebreak_display(tiebreak_name)
     return ""
