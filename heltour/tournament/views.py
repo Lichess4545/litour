@@ -900,8 +900,8 @@ class RegistrationSuccessView(SeasonView):
                 registration = Registration.objects.get(pk=reg_id)
                 context['registration'] = registration
                 if registration.invite_code_used:
-                    if registration.invite_code_used.code_type == 'captain':
-                        # Captain code - needs to create team
+                    if registration.invite_code_used.code_type == 'captain' and self.league.is_team_league():
+                        # Captain code on a team league - needs to create team
                         context['is_captain'] = True
                         context['needs_team_setup'] = True
                     elif registration.invite_code_used.code_type == 'team_member':
@@ -3037,7 +3037,10 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
     def view(self):
         from heltour.tournament.forms import TeamCreateForm
         from heltour.tournament.models import InviteCode, TeamMember, Registration
-        
+
+        if not self.league.is_team_league():
+            raise Http404("Team creation is only available for team leagues")
+
         # Check if user is already on a team
         existing_member = TeamMember.objects.filter(
             player=self.player,
@@ -3090,7 +3093,10 @@ class TeamCreateView(LoginRequiredMixin, SeasonView):
     def view_post(self):
         from heltour.tournament.forms import TeamCreateForm
         from heltour.tournament.models import TeamMember, Registration
-        
+
+        if not self.league.is_team_league():
+            raise Http404("Team creation is only available for team leagues")
+
         # Check if user already has a team
         existing_member = TeamMember.objects.filter(
             player=self.player,

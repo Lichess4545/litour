@@ -54,7 +54,7 @@ class Command(BaseCommand):
 
         # Adjust counts based on dataset size
         if options["minimal"]:
-            num_leagues = 2  # Create both team and individual league
+            num_leagues = 3  # team/open, individual/open, individual/invite_only
             num_players = 80  # Enough for teams
         elif options["full"]:
             num_leagues = 5  # Include various league types
@@ -136,7 +136,7 @@ class Command(BaseCommand):
                 for league in leagues:
                     for i, season_config in enumerate(season_configs):
                         # Skip some configurations for minimal dataset
-                        if options["minimal"] and i > 1:
+                        if options["minimal"] and i > 2:
                             continue
                         
                         self.stdout.write(
@@ -457,12 +457,24 @@ class Command(BaseCommand):
         lone_games = LonePlayerPairing.objects.exclude(result="").count()
         self.stdout.write(f"  - Games played: {team_games + lone_games}")
 
+        # Show unused invite codes for manual testing
+        invite_only_leagues = League.objects.filter(registration_mode="invite_only")
+        if invite_only_leagues.exists():
+            self.stdout.write("\nUnused invite codes for manual testing:")
+            for league in invite_only_leagues:
+                unused = InviteCode.objects.filter(
+                    league=league,
+                    used_by__isnull=True,
+                    code_type="captain",
+                    season__registration_open=True,
+                )
+                if unused.exists():
+                    self.stdout.write(f"  {league.name}:")
+                    for ic in unused[:5]:
+                        self.stdout.write(f"    - {ic.code} (season: {ic.season.name})")
+
         # Show some sample players for testing
         self.stdout.write("\nSample players for testing:")
-        first_league = League.objects.filter(rating_type="classical").first()
-        if not first_league:
-            first_league = League.objects.first()
-
         for player in Player.objects.all()[:5]:
             rating = player.rating
             self.stdout.write(f"  - {player.lichess_username} (Rating: {rating})")
