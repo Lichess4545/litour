@@ -198,64 +198,108 @@ def calculate_egmsb(
 
 
 def calculate_buchholz(
-    competitor_score: CompetitorScore, all_scores: Dict[int, CompetitorScore]
+    competitor_score: CompetitorScore,
+    all_scores: Dict[int, CompetitorScore],
+    use_game_points: bool = False,
 ) -> float:
     """
     Calculate Buchholz score.
 
-    The Buchholz score is the sum of all opponents' match points.
+    The Buchholz score is the sum of all opponents' scores.
 
     Args:
         competitor_score: The competitor's score data
         all_scores: Dictionary mapping competitor IDs to their final scores
+        use_game_points: If True, use game_points instead of match_points (FIDE individual)
 
     Returns:
         The Buchholz score
     """
+    score_attr = "game_points" if use_game_points else "match_points"
     buchholz = 0.0
 
     for result in competitor_score.match_results:
         if result.is_bye or result.opponent_id is None:
-            # Per FIDE Article 16.3: virtual opponent has same match points as the team with bye
-            buchholz += competitor_score.match_points
+            buchholz += getattr(competitor_score, score_attr)
             continue
 
         opponent_score = all_scores.get(result.opponent_id)
         if opponent_score is None:
             continue
 
-        buchholz += opponent_score.match_points
+        buchholz += getattr(opponent_score, score_attr)
 
     return buchholz
+
+
+def calculate_buchholz_cut1(
+    competitor_score: CompetitorScore,
+    all_scores: Dict[int, CompetitorScore],
+    use_game_points: bool = False,
+) -> float:
+    """
+    Calculate Buchholz Cut-1 score.
+
+    Buchholz minus the lowest opponent score.
+
+    Args:
+        competitor_score: The competitor's score data
+        all_scores: Dictionary mapping competitor IDs to their final scores
+        use_game_points: If True, use game_points instead of match_points (FIDE individual)
+
+    Returns:
+        The Buchholz Cut-1 score
+    """
+    score_attr = "game_points" if use_game_points else "match_points"
+    scores = []
+
+    for result in competitor_score.match_results:
+        if result.is_bye or result.opponent_id is None:
+            scores.append(getattr(competitor_score, score_attr))
+        else:
+            opp = all_scores.get(result.opponent_id)
+            if opp:
+                scores.append(getattr(opp, score_attr))
+
+    if scores:
+        scores.sort()
+        scores = scores[1:]  # drop lowest
+
+    return sum(scores)
 
 
 def calculate_head_to_head(
     competitor_score: CompetitorScore,
     tied_competitors: Set[int],
     all_scores: Dict[int, CompetitorScore],
-) -> int:
+    use_game_points: bool = False,
+) -> float:
     """
     Calculate head-to-head score among tied competitors.
 
-    The head-to-head score is the sum of match points earned against
+    The head-to-head score is the sum of points earned against
     other competitors who are tied on both match points and game points.
 
     Args:
         competitor_score: The competitor's score data
         tied_competitors: Set of competitor IDs that are tied with this competitor
         all_scores: Dictionary mapping competitor IDs to their final scores
+        use_game_points: If True, use game_points instead of match_points (FIDE individual)
 
     Returns:
         The head-to-head score
     """
-    h2h_score = 0
+    h2h_score = 0.0
 
     for result in competitor_score.match_results:
         if result.is_bye or result.opponent_id is None:
             continue
 
         if result.opponent_id in tied_competitors:
-            h2h_score += result.match_points
+            if use_game_points:
+                h2h_score += result.game_points
+            else:
+                h2h_score += result.match_points
 
     return h2h_score
 
@@ -345,7 +389,9 @@ def build_competitor_scores(
 
 
 def calculate_all_tiebreaks(
-    competitor_scores: Dict[int, CompetitorScore], tiebreak_order: List[str]
+    competitor_scores: Dict[int, CompetitorScore],
+    tiebreak_order: List[str],
+    use_game_points: bool = False,
 ) -> Dict[int, Dict[str, float]]:
     """
     Calculate all tiebreak scores for all competitors.
@@ -353,12 +399,13 @@ def calculate_all_tiebreaks(
     Args:
         competitor_scores: Dictionary mapping competitor IDs to CompetitorScore objects
         tiebreak_order: List of tiebreak names to calculate
+        use_game_points: If True, use game_points scale for buchholz/h2h (FIDE individual)
 
     Returns:
         Dictionary mapping competitor IDs to dictionaries of tiebreak scores
     """
     # Group competitors by match points and game points for head-to-head
-    tied_groups = {}
+    tied_groups: Dict[tuple, Set[int]] = {}
     for comp_id, score in competitor_scores.items():
         key = (score.match_points, score.game_points)
         if key not in tied_groups:
@@ -366,9 +413,9 @@ def calculate_all_tiebreaks(
         tied_groups[key].add(comp_id)
 
     # Calculate tiebreaks for each competitor
-    tiebreak_scores = {}
+    tiebreak_scores: Dict[int, Dict[str, float]] = {}
     for comp_id, score in competitor_scores.items():
-        tiebreaks = {}
+        tiebreaks: Dict[str, float] = {}
 
         for tiebreak_name in tiebreak_order:
             if tiebreak_name == "sonneborn_berger":
@@ -384,13 +431,19 @@ def calculate_all_tiebreaks(
             elif tiebreak_name == "egmsb":
                 tiebreaks["egmsb"] = calculate_egmsb(score, competitor_scores)
             elif tiebreak_name == "buchholz":
-                tiebreaks["buchholz"] = calculate_buchholz(score, competitor_scores)
+                tiebreaks["buchholz"] = calculate_buchholz(
+                    score, competitor_scores, use_game_points
+                )
+            elif tiebreak_name == "buchholz_cut1":
+                tiebreaks["buchholz_cut1"] = calculate_buchholz_cut1(
+                    score, competitor_scores, use_game_points
+                )
             elif tiebreak_name == "head_to_head":
                 tied_set = tied_groups.get(
                     (score.match_points, score.game_points), set()
                 )
                 tiebreaks["head_to_head"] = calculate_head_to_head(
-                    score, tied_set, competitor_scores
+                    score, tied_set, competitor_scores, use_game_points
                 )
             elif tiebreak_name == "games_won":
                 tiebreaks["games_won"] = calculate_games_won(score)

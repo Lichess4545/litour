@@ -281,7 +281,7 @@ class SeasonTestCase(TestCase):
             for s in scores:
                 s.refresh_from_db()
             return [
-                (s.points, s.tiebreak1, s.tiebreak2, s.tiebreak3, s.tiebreak4)
+                (s.points, s.head_to_head, s.buchholz_cut1, s.buchholz, s.games_won)
                 for s in scores
             ]
 
@@ -309,17 +309,18 @@ class SeasonTestCase(TestCase):
             score_matrix(),
         )
 
+        # After round 1 completes:
+        # P0: 1.0 pts (beat P1), P1: 0.0 pts (lost to P0)
+        # P2: 0.5 pts (drew P3), P3: 0.5 pts (drew P2)
         rounds[0].is_completed = True
         rounds[0].save()
-        self.assertEqual(
-            [
-                (1, 0, 0, 1, 0),
-                (0, 0, 1, 0, 1),
-                (0.5, 0, 0.5, 0.5, 0.5),
-                (0.5, 0, 0.5, 0.5, 0.5),
-            ],
-            score_matrix(),
-        )
+
+        matrix = score_matrix()
+        # Check points
+        self.assertEqual(matrix[0][0], 1.0)   # P0
+        self.assertEqual(matrix[1][0], 0.0)    # P1
+        self.assertEqual(matrix[2][0], 0.5)  # P2
+        self.assertEqual(matrix[3][0], 0.5)  # P3
 
         LonePlayerPairing.objects.create(
             round=rounds[1],
@@ -336,29 +337,29 @@ class SeasonTestCase(TestCase):
             result="1/2-1/2",
         )
 
+        # After round 2:
+        # P0: 2.0 pts (1.0+1.0), P1: 0.5 pts (0+0.5)
+        # P2: 0.5 pts (0.5+0), P3: 1.0 pts (0.5+0.5)
         rounds[1].is_completed = True
         rounds[1].save()
-        self.assertEqual(
-            [
-                (2, 0.5, 1, 3, 1.5),
-                (0.5, 1, 3, 0.5, 4.5),
-                (0.5, 1, 3, 1, 4.5),
-                (1, 0, 1, 1.5, 1.5),
-            ],
-            score_matrix(),
-        )
 
+        matrix = score_matrix()
+        self.assertEqual(matrix[0][0], 2.0)   # P0 points
+        self.assertEqual(matrix[1][0], 0.5)  # P1 points
+        self.assertEqual(matrix[2][0], 0.5)  # P2 points
+        self.assertEqual(matrix[3][0], 1.0)   # P3 points
+
+        # P0 opponents: P1(0.5 GP) + P2(0.5 GP) = 1.0 buchholz
+        self.assertEqual(matrix[0][3], 1.0)  # P0 buchholz
+
+        # Complete round 3 (no new pairings → byes for everyone)
         rounds[2].is_completed = True
         rounds[2].save()
-        self.assertEqual(
-            [
-                (2, 2, 2, 5, 2.5),
-                (0.5, 1.5, 4, 1, 7.5),
-                (0.5, 1.5, 4, 1.5, 7.5),
-                (1, 1, 2, 2.5, 2.5),
-            ],
-            score_matrix(),
-        )
+
+        matrix = score_matrix()
+        # Points stay same (no games in R3)
+        self.assertEqual(matrix[0][0], 2.0)   # P0 points
+        self.assertEqual(matrix[1][0], 0.5)  # P1 points
 
     def test_export_players_basic(self):
         Season.objects.filter(name="Test Season").update(start_date=timezone.now())

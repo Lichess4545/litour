@@ -435,6 +435,19 @@ class LeagueAdmin(_BaseAdmin):
                 "description": "Configure the tiebreak order for team tournaments. Match points is always the primary sort criterion.",
             },
         ),
+        (
+            "Lone Tiebreak Configuration",
+            {
+                "fields": (
+                    "lone_tiebreak_1",
+                    "lone_tiebreak_2",
+                    "lone_tiebreak_3",
+                    "lone_tiebreak_4",
+                    "lone_tiebreak_5",
+                ),
+                "description": "Configure the tiebreak order for individual tournaments. Points is always the primary sort criterion.",
+            },
+        ),
     )
 
     def has_add_permission(self, request):
@@ -463,6 +476,11 @@ class LeagueAdmin(_BaseAdmin):
             "team_tiebreak_2",
             "team_tiebreak_3",
             "team_tiebreak_4",
+            "lone_tiebreak_1",
+            "lone_tiebreak_2",
+            "lone_tiebreak_3",
+            "lone_tiebreak_4",
+            "lone_tiebreak_5",
         )
 
     def get_urls(self):

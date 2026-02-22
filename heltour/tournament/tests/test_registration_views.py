@@ -10,7 +10,7 @@ from heltour.tournament.models import (
     League, Season, Player, Registration, InviteCode, Team, TeamMember, SeasonPlayer
 )
 from heltour.tournament.templatetags.tournament_extras import leagueurl
-from heltour.tournament.tests.testutils import get_valid_registration_form_data
+from heltour.tournament.tests.testutils import get_valid_registration_form_data, Shush
 
 
 class RegistrationViewIntegrationTestCase(TestCase):
@@ -420,7 +420,8 @@ class LoneLeagueRegistrationViewTestCase(TestCase):
         self._register_with_captain_code()
 
         team_create_url = leagueurl('team_create', self.league.tag, self.season.tag)
-        response = self.client.get(team_create_url)
+        with Shush():
+            response = self.client.get(team_create_url)
         self.assertEqual(response.status_code, 404)
 
 

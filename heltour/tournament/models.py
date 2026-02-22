@@ -170,6 +170,14 @@ TEAM_TIEBREAK_OPTIONS = (
     ("emgsb", "EMGSB - Extended Match-Game Sonneborn-Berger"),
     ("egmsb", "EGMSB - Extended Game-Match Sonneborn-Berger"),
 )
+LONE_TIEBREAK_OPTIONS = (
+    ("head_to_head", "Head-to-Head"),
+    ("buchholz_cut1", "Buchholz Cut-1"),
+    ("buchholz", "Buchholz"),
+    ("games_won", "Games Won"),
+    ("games_with_black", "Games with Black"),
+    ("sonneborn_berger", "Sonneborn-Berger"),
+)
 
 
 # -------------------------------------------------------------------------------
@@ -290,6 +298,43 @@ class League(_BaseModel):
         help_text="Fourth tiebreak for team tournaments",
     )
 
+    # Lone league tiebreak configuration (FIDE order by default)
+    lone_tiebreak_1 = models.CharField(
+        max_length=32,
+        choices=LONE_TIEBREAK_OPTIONS,
+        blank=True,
+        default="head_to_head",
+        help_text="First tiebreak for individual tournaments",
+    )
+    lone_tiebreak_2 = models.CharField(
+        max_length=32,
+        choices=LONE_TIEBREAK_OPTIONS,
+        blank=True,
+        default="buchholz_cut1",
+        help_text="Second tiebreak for individual tournaments",
+    )
+    lone_tiebreak_3 = models.CharField(
+        max_length=32,
+        choices=LONE_TIEBREAK_OPTIONS,
+        blank=True,
+        default="buchholz",
+        help_text="Third tiebreak for individual tournaments",
+    )
+    lone_tiebreak_4 = models.CharField(
+        max_length=32,
+        choices=LONE_TIEBREAK_OPTIONS,
+        blank=True,
+        default="games_won",
+        help_text="Fourth tiebreak for individual tournaments",
+    )
+    lone_tiebreak_5 = models.CharField(
+        max_length=32,
+        choices=LONE_TIEBREAK_OPTIONS,
+        blank=True,
+        default="games_with_black",
+        help_text="Fifth tiebreak for individual tournaments",
+    )
+
     # Knockout tournament settings
     knockout_games_per_match = models.PositiveIntegerField(
         default=1,
@@ -358,6 +403,23 @@ class League(_BaseModel):
         ]:
             value = getattr(self, attr, None)
             if value and value not in tiebreaks:  # Avoid duplicates
+                tiebreaks.append(value)
+        return tiebreaks
+
+    def get_lone_tiebreaks(self):
+        """Return ordered list of configured tiebreak names for lone leagues"""
+        if self.is_team_league():
+            return []
+        tiebreaks = []
+        for attr in [
+            "lone_tiebreak_1",
+            "lone_tiebreak_2",
+            "lone_tiebreak_3",
+            "lone_tiebreak_4",
+            "lone_tiebreak_5",
+        ]:
+            value = getattr(self, attr, None)
+            if value and value not in tiebreaks:
                 tiebreaks.append(value)
         return tiebreaks
 
@@ -754,15 +816,36 @@ class Season(_BaseModel):
             score.save()
 
     def _calculate_lone_scores(self):
+        from heltour.tournament.db_to_structure import season_to_tournament_structure
+
         season_players = (
             SeasonPlayer.objects.filter(season=self)
             .select_related("loneplayerscore")
             .nocache()
         )
+        player_scores = [sp.get_loneplayerscore() for sp in season_players]
+
+        completed_rounds = list(
+            self.round_set.filter(is_completed=True).order_by("number")
+        )
+        if not completed_rounds:
+            for score in player_scores:
+                score.points = 0
+                score.head_to_head = 0
+                score.buchholz_cut1 = 0
+                score.buchholz = 0
+                score.games_won = 0
+                score.games_with_black = 0
+                score.sonneborn_berger = 0
+                score.perf_rating = None
+                score.save()
+            return
+
+        # --- Points and perf rating via legacy accumulation ---
         seed_rating_dict = {sp.player_id: sp.seed_rating for sp in season_players}
         score_dict = {}
         last_round = None
-        for round_ in self.round_set.filter(is_completed=True).order_by("number"):
+        for round_ in completed_rounds:
             pairings = round_.loneplayerpairing_set.all().nocache()
             byes = PlayerBye.objects.filter(round=round_)
             for sp in season_players:
@@ -771,24 +854,18 @@ class Season(_BaseModel):
                 bye = find(byes, player_id=sp.player_id)
 
                 def increment_score(round_opponent, round_score, round_played):
-                    total, mm_total, cumul, perf, _, _ = (
+                    total, _mm, _cumul, perf, _, _ = (
                         score_dict[(sp.player_id, last_round.number)]
                         if last_round is not None
                         else (0, 0, 0, PerfRatingCalc(), None, False)
                     )
                     total += round_score
-                    cumul += total
                     if round_played:
-                        mm_total += round_score
                         opp_rating = seed_rating_dict.get(round_opponent, None)
                         if opp_rating is not None:
                             perf.add_game(round_score, opp_rating)
-                    else:
-                        # Special cases for unplayed games
-                        mm_total += 0.5
-                        cumul -= round_score
                     score_dict[(sp.player_id, round_.number)] = _LoneScoreState(
-                        total, mm_total, cumul, perf, round_opponent, round_played
+                        total, 0, 0, perf, round_opponent, round_played
                     )
 
                 if white_pairing is not None:
@@ -809,67 +886,33 @@ class Season(_BaseModel):
                     increment_score(None, 0, False)
             last_round = round_
 
-        player_scores = [sp.get_loneplayerscore() for sp in season_players]
+        # --- Tiebreaks via tournament_core ---
+        tournament = season_to_tournament_structure(self)
+        results = tournament.calculate_results()
 
+        tiebreak_order = self.league.get_lone_tiebreaks()
+        core_tiebreaks = [tb for tb in tiebreak_order if tb != "games_with_black"]
+        tiebreak_results = tiebreaks.calculate_all_tiebreaks(
+            results, core_tiebreaks, use_game_points=True
+        )
+
+        # --- Games with black: count from DB pairings ---
+        games_with_black_map = _count_games_with_black(completed_rounds)
+
+        # --- Write scores ---
         for score in player_scores:
             player_id = score.season_player.player_id
-            if last_round is None:
-                score.points = 0
-                score.tiebreak1 = 0
-                score.tiebreak2 = 0
-                score.tiebreak3 = 0
-                score.tiebreak4 = 0
-            else:
-                score_state = score_dict[
-                    (score.season_player.player_id, last_round.number)
-                ]
-                score.points = score_state.total
+            score_state = score_dict.get((player_id, last_round.number))
+            score.points = score_state.total if score_state else 0
+            score.perf_rating = score_state.perf.calculate() if score_state else None
 
-                # Tiebreak calculations
-
-                opponent_scores = []
-                opponent_cumuls = []
-                for round_number in range(1, last_round.number + 1):
-                    round_state = score_dict[(player_id, round_number)]
-                    if (
-                        round_state.round_played
-                        and round_state.round_opponent is not None
-                    ):
-                        opponent_scores.append(
-                            score_dict[
-                                (round_state.round_opponent, last_round.number)
-                            ].mm_total
-                        )
-                        opponent_cumuls.append(
-                            score_dict[
-                                (round_state.round_opponent, last_round.number)
-                            ].cumul
-                        )
-                    else:
-                        opponent_scores.append(0)
-                opponent_scores.sort()
-
-                # TB1: Modified Median
-                median_scores = opponent_scores
-                skip = 2 if last_round.number >= 9 else 1
-                if score.points <= last_round.number / 2.0:
-                    median_scores = median_scores[:-skip]
-                if score.points >= last_round.number / 2.0:
-                    median_scores = median_scores[skip:]
-                score.tiebreak1 = sum(median_scores)
-
-                # TB2: Solkoff
-                score.tiebreak2 = sum(opponent_scores)
-
-                # TB3: Cumulative
-                score.tiebreak3 = score_state.cumul
-
-                # TB4: Cumulative opponent
-                score.tiebreak4 = sum(opponent_cumuls)
-
-                # Performance rating
-                score.perf_rating = score_state.perf.calculate()
-
+            tb_vals = tiebreak_results.get(player_id, {})
+            score.head_to_head = tb_vals.get("head_to_head", 0)
+            score.buchholz_cut1 = tb_vals.get("buchholz_cut1", 0)
+            score.buchholz = tb_vals.get("buchholz", 0)
+            score.games_won = tb_vals.get("games_won", 0)
+            score.sonneborn_berger = tb_vals.get("sonneborn_berger", 0)
+            score.games_with_black = games_with_black_map.get(player_id, 0)
             score.save()
 
     def is_started(self):
@@ -949,6 +992,29 @@ _TeamScoreState = namedtuple(
 _LoneScoreState = namedtuple(
     "_LoneScoreState", "total, mm_total, cumul, perf, round_opponent, round_played"
 )
+
+
+def _count_games_with_black(completed_rounds):
+    """Count played games where each player had the black pieces.
+
+    Accounts for ``colors_reversed`` on ``LonePlayerPairing``.
+    Returns a dict mapping player_id → count.
+    """
+    counts: dict[int, int] = {}
+    for round_ in completed_rounds:
+        for pairing in round_.loneplayerpairing_set.select_related(
+            "white", "black"
+        ).all():
+            if not pairing.game_played():
+                continue
+            if pairing.colors_reversed:
+                if pairing.white_id:
+                    counts[pairing.white_id] = counts.get(pairing.white_id, 0) + 1
+            else:
+                if pairing.black_id:
+                    counts[pairing.black_id] = counts.get(pairing.black_id, 0) + 1
+    return counts
+
 
 # From https://www.fide.com/component/handbook/?id=174&view=article
 # Used for performance rating calculations
@@ -3007,10 +3073,18 @@ class LonePlayerScore(_BaseModel):
     season_player = models.OneToOneField(SeasonPlayer, on_delete=models.CASCADE)
     points = ScoreField(default=0)
     late_join_points = ScoreField(default=0)
+    # Vestigial — kept for backwards compatibility, no longer populated
     tiebreak1 = ScoreField(default=0)
     tiebreak2 = ScoreField(default=0)
     tiebreak3 = ScoreField(default=0)
     tiebreak4 = ScoreField(default=0)
+    # Named tiebreak fields (FIDE-standard)
+    head_to_head = ScoreField(default=0)
+    buchholz_cut1 = ScoreField(default=0)
+    buchholz = ScoreField(default=0)
+    games_won = models.PositiveIntegerField(default=0)
+    games_with_black = models.PositiveIntegerField(default=0)
+    sonneborn_berger = ScoreField(default=0)
     acceleration_group = models.PositiveIntegerField(default=0)
 
     perf_rating = models.PositiveIntegerField(blank=True, null=True)
@@ -3103,43 +3177,44 @@ class LonePlayerScore(_BaseModel):
     def late_join_points_display(self):
         return "%.1f" % self.late_join_points
 
-    def tiebreak1_display(self):
-        return "%g" % self.tiebreak1
+    def get_tiebreak_value(self, name):
+        field_map = {
+            "head_to_head": self.head_to_head,
+            "buchholz_cut1": self.buchholz_cut1,
+            "buchholz": self.buchholz,
+            "games_won": self.games_won,
+            "games_with_black": self.games_with_black,
+            "sonneborn_berger": self.sonneborn_berger,
+        }
+        return field_map.get(name, 0)
 
-    def tiebreak2_display(self):
-        return "%g" % self.tiebreak2
+    def get_tiebreak_display(self, tiebreak_name):
+        value = self.get_tiebreak_value(tiebreak_name)
+        if isinstance(value, float):
+            return "%g" % value
+        return str(value)
 
-    def tiebreak3_display(self):
-        return "%g" % self.tiebreak3
-
-    def tiebreak4_display(self):
-        return "%g" % self.tiebreak4
+    def _tiebreak_sort_values(self):
+        league = self.season_player.season.league
+        return [self.get_tiebreak_value(tb) for tb in league.get_lone_tiebreaks()]
 
     def pairing_sort_key(self):
-        return (
-            self.points + self.late_join_points,
-            self.season_player.player_rating_display() or 0,
-        )
+        sort_key = [self.points + self.late_join_points]
+        sort_key.extend(self._tiebreak_sort_values())
+        sort_key.append(self.season_player.player_rating_display() or 0)
+        return tuple(sort_key)
 
     def intermediate_standings_sort_key(self):
-        return (
-            self.points + self.late_join_points,
-            self.tiebreak1,
-            self.tiebreak2,
-            self.tiebreak3,
-            self.tiebreak4,
-            self.season_player.player_rating_display() or 0,
-        )
+        sort_key = [self.points + self.late_join_points]
+        sort_key.extend(self._tiebreak_sort_values())
+        sort_key.append(self.season_player.player_rating_display() or 0)
+        return tuple(sort_key)
 
     def final_standings_sort_key(self):
-        return (
-            self.points,
-            self.tiebreak1,
-            self.tiebreak2,
-            self.tiebreak3,
-            self.tiebreak4,
-            self.season_player.player_rating_display() or 0,
-        )
+        sort_key = [self.points]
+        sort_key.extend(self._tiebreak_sort_values())
+        sort_key.append(self.season_player.player_rating_display() or 0)
+        return tuple(sort_key)
 
     def __str__(self):
         return "%s" % (self.season_player)
