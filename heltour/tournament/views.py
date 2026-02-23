@@ -437,7 +437,7 @@ class SeasonLandingView(SeasonView):
 
             links_doc = SeasonDocument.objects.filter(season=self.season, type='links').first()
 
-                tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+            tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
             lone_tiebreaks = self.league.get_lone_tiebreaks()
             first_tiebreak = (lone_tiebreaks[0], tiebreak_names.get(lone_tiebreaks[0], "TB")) if lone_tiebreaks else None
 
