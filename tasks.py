@@ -338,5 +338,39 @@ def docker_stage_down(c):
     c.run("docker compose -f deploy/litour-staging/compose.yml down", pty=True)
 
 
+@task(
+    help={
+        "league_name": "League name (default: Lone Test League)",
+        "season_name": "Season name (default: Test Season)",
+        "rounds": "Number of rounds (default: 7)",
+        "players": "Number of players (default: 400)",
+        "clear": "Clear existing league data first",
+        "pairing_type": "Pairing algorithm: swiss-dutch or swiss-dutch-baku-accel",
+    }
+)
+def seed_lone(
+    c,
+    league_name="Lone Test League",
+    season_name="Test Season",
+    rounds=7,
+    players=400,
+    clear=False,
+    pairing_type="swiss-dutch",
+):
+    """Seed a test lone (individual Swiss) tournament."""
+    manage_py = project_relative("manage.py")
+    cmd = (
+        f"python {manage_py} seed_test_lone_tournament"
+        f" --league-name '{league_name}'"
+        f" --season-name '{season_name}'"
+        f" --rounds {rounds}"
+        f" --players {players}"
+        f" --pairing-type {pairing_type}"
+    )
+    if clear:
+        cmd += " --clear-existing"
+    c.run(cmd, pty=True)
+
+
 # Shortcuts
 up = update
