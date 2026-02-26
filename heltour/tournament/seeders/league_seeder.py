@@ -116,6 +116,7 @@ class LeagueSeeder(BaseSeeder):
             elif league.tag == "soloinv":
                 league.require_name = True
                 league.email_required = True
+                league.ask_availability = False
                 league.save()
 
             # Create associated LeagueSetting

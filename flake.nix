@@ -59,6 +59,7 @@
             zoxide # Smart cd
             dust # Better du
             starship # Better prompt
+            ruff # Python linter/formatter
             ripgrep # Better grep (rg command)
             sd # Better sed
             procs # Better ps

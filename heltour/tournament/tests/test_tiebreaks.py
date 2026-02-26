@@ -3,7 +3,9 @@ from django.core.exceptions import ValidationError
 from heltour.tournament.models import (
     Team,
     TeamScore,
+    LonePlayerScore,
     TEAM_TIEBREAK_OPTIONS,
+    LONE_TIEBREAK_OPTIONS,
 )
 from heltour.tournament.builder import TournamentBuilder
 
@@ -376,3 +378,198 @@ class TeamTiebreakTestCase(TestCase):
                 # Teams that played should have opponent-based tiebreaks
                 self.assertIsNotNone(score.sb_score)
                 self.assertIsNotNone(score.buchholz)
+
+
+class LoneTiebreakTestCase(TestCase):
+    def _create_lone_tournament(self, rounds=3):
+        return (
+            TournamentBuilder()
+            .league(
+                "Lone League",
+                "LL",
+                "individual",
+                theme="blue",
+                pairing_type="swiss-dutch",
+                rating_type="classical",
+            )
+            .season("LL", "Lone Season", rounds=rounds)
+            .player("Alice", 2100)
+            .player("Bob", 2000)
+            .player("Charlie", 1900)
+            .player("Dave", 1800)
+        )
+
+    def test_named_fields_populated(self):
+        """_calculate_lone_scores populates all named tiebreak fields."""
+        tournament = (
+            self._create_lone_tournament(rounds=2)
+            .round(1)
+            .game("Alice", "Bob", "1-0")
+            .game("Charlie", "Dave", "1/2-1/2")
+            .complete()
+            .round(2)
+            .game("Alice", "Charlie", "0-1")
+            .game("Bob", "Dave", "1-0")
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Lone Season"]
+        scores = {
+            lps.season_player.player.lichess_username: lps
+            for lps in LonePlayerScore.objects.filter(
+                season_player__season=season
+            ).select_related("season_player__player")
+        }
+
+        # Alice: W + L = 1.0 pts. Bob: L + W = 1.0 pts.
+        # Charlie: D + W = 1.5 pts. Dave: D + L = 0.5 pts.
+        self.assertEqual(scores["Alice"].points, 1.0)
+        self.assertEqual(scores["Charlie"].points, 1.5)
+
+        # Buchholz for Alice: opponents Bob(1.0 GP) + Charlie(1.5 GP) = 2.5
+        self.assertEqual(scores["Alice"].buchholz, 2.5)
+
+        # Buchholz Cut-1 for Alice: sorted [1.0, 1.5] → drop 1.0 → 1.5
+        self.assertEqual(scores["Alice"].buchholz_cut1, 1.5)
+
+        # Games won for Alice: 1 (beat Bob)
+        self.assertEqual(scores["Alice"].games_won, 1)
+
+    def test_games_with_black_counted(self):
+        """games_with_black counts games where the player had black pieces."""
+        tournament = (
+            self._create_lone_tournament(rounds=2)
+            .round(1)
+            .game("Alice", "Bob", "1-0")       # Alice=W, Bob=B
+            .game("Charlie", "Dave", "1/2-1/2")  # Charlie=W, Dave=B
+            .complete()
+            .round(2)
+            .game("Charlie", "Alice", "0-1")   # Alice=B
+            .game("Dave", "Bob", "0-1")        # Bob=B
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Lone Season"]
+        scores = {
+            lps.season_player.player.lichess_username: lps
+            for lps in LonePlayerScore.objects.filter(
+                season_player__season=season
+            ).select_related("season_player__player")
+        }
+
+        # Alice: white R1, black R2 → 1 game with black
+        self.assertEqual(scores["Alice"].games_with_black, 1)
+        # Bob: black R1, black R2 → 2 games with black
+        self.assertEqual(scores["Bob"].games_with_black, 2)
+        # Charlie: white R1, white R2 → 0 games with black
+        self.assertEqual(scores["Charlie"].games_with_black, 0)
+        # Dave: black R1, white R2 → 1 game with black
+        self.assertEqual(scores["Dave"].games_with_black, 1)
+
+    def test_get_lone_tiebreaks_returns_configured_order(self):
+        """get_lone_tiebreaks() respects configured fields."""
+        tournament = self._create_lone_tournament(rounds=1).build()
+        league = tournament.simulator.leagues["LL"]
+
+        # Default FIDE order
+        self.assertEqual(
+            league.get_lone_tiebreaks(),
+            ["head_to_head", "buchholz_cut1", "buchholz", "games_won", "games_with_black"],
+        )
+
+        # Custom order
+        league.lone_tiebreak_1 = "buchholz"
+        league.lone_tiebreak_2 = "games_won"
+        league.lone_tiebreak_3 = "head_to_head"
+        league.lone_tiebreak_4 = ""
+        league.lone_tiebreak_5 = ""
+        league.save()
+
+        self.assertEqual(
+            league.get_lone_tiebreaks(),
+            ["buchholz", "games_won", "head_to_head"],
+        )
+
+    def test_get_lone_tiebreaks_skips_duplicates(self):
+        """Duplicate tiebreak values are deduplicated."""
+        tournament = self._create_lone_tournament(rounds=1).build()
+        league = tournament.simulator.leagues["LL"]
+
+        league.lone_tiebreak_1 = "buchholz"
+        league.lone_tiebreak_2 = "buchholz"
+        league.lone_tiebreak_3 = "games_won"
+        league.lone_tiebreak_4 = ""
+        league.lone_tiebreak_5 = ""
+        league.save()
+
+        self.assertEqual(league.get_lone_tiebreaks(), ["buchholz", "games_won"])
+
+    def test_get_lone_tiebreaks_empty_for_team_league(self):
+        """Team leagues return empty list for lone tiebreaks."""
+        tournament = (
+            TournamentBuilder()
+            .league(
+                "Team League", "TM", "team",
+                theme="blue", pairing_type="swiss-dutch", rating_type="classical",
+            )
+            .season("TM", "Team Season", rounds=1, boards=2)
+            .team("T1", "P1", "P2")
+            .team("T2", "P3", "P4")
+            .build()
+        )
+        league = tournament.simulator.leagues["TM"]
+        self.assertEqual(league.get_lone_tiebreaks(), [])
+
+    def test_sort_key_uses_configured_tiebreaks(self):
+        """Sort keys respect the configured tiebreak order."""
+        tournament = (
+            self._create_lone_tournament(rounds=1)
+            .round(1)
+            .game("Alice", "Bob", "1-0")
+            .game("Charlie", "Dave", "1/2-1/2")
+            .complete()
+            .calculate()
+            .build()
+        )
+
+        season = tournament.seasons["Lone Season"]
+        league = season.league
+
+        # Set custom order: buchholz, games_won
+        league.lone_tiebreak_1 = "buchholz"
+        league.lone_tiebreak_2 = "games_won"
+        league.lone_tiebreak_3 = ""
+        league.lone_tiebreak_4 = ""
+        league.lone_tiebreak_5 = ""
+        league.save()
+
+        season.calculate_scores()
+
+        alice_score = LonePlayerScore.objects.select_related(
+            "season_player__player", "season_player__season__league"
+        ).get(season_player__player__lichess_username="Alice")
+
+        key = alice_score.final_standings_sort_key()
+        # key = (points, buchholz, games_won, rating)
+        self.assertEqual(len(key), 4)
+        self.assertEqual(key[0], alice_score.points)
+        self.assertEqual(key[1], alice_score.buchholz)
+        self.assertEqual(key[2], alice_score.games_won)
+
+    def test_tiebreak_choices_valid(self):
+        """All lone tiebreak choices pass model validation."""
+        tournament = self._create_lone_tournament(rounds=1).build()
+        league = tournament.simulator.leagues["LL"]
+
+        valid_choices = [choice[0] for choice in LONE_TIEBREAK_OPTIONS]
+        for choice in valid_choices:
+            league.lone_tiebreak_1 = choice
+            league.full_clean()
+
+        with self.assertRaises(ValidationError):
+            league.lone_tiebreak_1 = "invalid_choice"
+            league.full_clean()
