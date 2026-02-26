@@ -215,21 +215,22 @@ def get_team_status(user, season):
             'needs_setup': False
         }
     
-    # Check if user is a captain who needs to set up team
-    registration = Registration.objects.filter(
-        player=player,
-        season=season,
-        status='approved',
-        invite_code_used__code_type='captain'
-    ).first()
-    
-    if registration:
-        return {
-            'has_team': False,
-            'is_captain': True,
-            'team': None,
-            'needs_setup': True
-        }
+    # Check if user is a captain who needs to set up team (team leagues only)
+    if season.league.is_team_league():
+        registration = Registration.objects.filter(
+            player=player,
+            season=season,
+            status='approved',
+            invite_code_used__code_type='captain'
+        ).first()
+
+        if registration:
+            return {
+                'has_team': False,
+                'is_captain': True,
+                'team': None,
+                'needs_setup': True
+            }
     
     return {
         'has_team': False,

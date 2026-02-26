@@ -42,6 +42,17 @@ class LeagueSeeder(BaseSeeder):
                 "registration_mode": "open",
             },
             {
+                "name": "Solo Invitational",
+                "tag": "soloinv",
+                "description": "Invite-only individual tournament for vetted players",
+                "theme": "green",
+                "time_control": "30+30",
+                "rating_type": "classical",
+                "competitor_type": "individual",
+                "pairing_type": "swiss-dutch",
+                "registration_mode": "invite_only",
+            },
+            {
                 "name": "Rapid League",
                 "tag": "rapid",
                 "description": "Fast-paced rapid chess league",
@@ -96,11 +107,15 @@ class LeagueSeeder(BaseSeeder):
 
             league = League.objects.create(**league_data)
             
-            # Apply minimal registration settings for Elite Team Championship
+            # Apply settings for invite-only leagues
             if league.tag == "elite":
                 league.email_required = False
                 league.show_provisional_warning = False
                 league.ask_availability = False
+                league.save()
+            elif league.tag == "soloinv":
+                league.require_name = True
+                league.email_required = True
                 league.save()
 
             # Create associated LeagueSetting

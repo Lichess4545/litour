@@ -343,6 +343,87 @@ class RegistrationViewIntegrationTestCase(TestCase):
         self.assertContains(response, team.name)
 
 
+class LoneLeagueRegistrationViewTestCase(TestCase):
+    """Test that team-specific UI/routes are blocked for lone (individual) leagues."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.league = League.objects.create(
+            name='Lone Invite League',
+            tag='lone-inv',
+            description='Invite-only individual league',
+            theme='green',
+            time_control='30+30',
+            rating_type='classical',
+            competitor_type='individual',
+            registration_mode='invite_only',
+            require_name=True,
+            email_required=True,
+        )
+
+        self.season = Season.objects.create(
+            league=self.league,
+            name='Lone Invite Season',
+            tag='lone-inv-season',
+            rounds=6,
+            start_date=timezone.now() + timedelta(days=7),
+            registration_open=True,
+        )
+
+        self.user = User.objects.create_user(
+            username='loneplayer', password='testpass123'
+        )
+        self.player = Player.objects.create(
+            lichess_username='loneplayer', rating=1800, email='lone@example.com'
+        )
+
+    def _register_with_captain_code(self):
+        """Register the test player using a captain invite code. Returns the registration."""
+        captain_code = InviteCode.objects.create(
+            league=self.league,
+            season=self.season,
+            code='LONE-CAPTAIN-001',
+            code_type='captain',
+        )
+
+        self.client.login(username='loneplayer', password='testpass123')
+
+        reg_url = leagueurl('register', self.league.tag, self.season.tag)
+        form_data = get_valid_registration_form_data()
+        form_data['invite_code'] = 'LONE-CAPTAIN-001'
+
+        response = self.client.post(reg_url, form_data)
+        success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
+        self.assertRedirects(response, success_url)
+
+        return Registration.objects.get(player=self.player, season=self.season)
+
+    def test_success_page_does_not_show_team_creation_for_lone_league(self):
+        """Captain code in a lone league should NOT prompt the user to create a team."""
+        self._register_with_captain_code()
+
+        success_url = leagueurl('registration_success', self.league.tag, self.season.tag)
+        response = self.client.get(success_url)
+        self.assertEqual(response.status_code, 200)
+
+        # Must not set team-specific context flags
+        self.assertFalse(response.context.get('is_captain', False))
+        self.assertFalse(response.context.get('needs_team_setup', False))
+
+        # Must not render the "Create Your Team" link
+        self.assertNotContains(response, 'Create Your Team')
+        self.assertNotContains(response, 'team/create')
+
+    def test_team_create_view_returns_404_for_lone_league(self):
+        """The team/create/ route should 404 when the league is not a team league."""
+        self._register_with_captain_code()
+
+        team_create_url = leagueurl('team_create', self.league.tag, self.season.tag)
+        response = self.client.get(team_create_url)
+        self.assertEqual(response.status_code, 404)
+
+
 class RegistrationErrorHandlingTestCase(TestCase):
     """Test error handling in registration with invite codes."""
     
