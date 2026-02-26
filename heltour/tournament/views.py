@@ -1155,7 +1155,7 @@ class StandingsView(SeasonView):
             player_highlights = _get_player_highlights(prize_winners)
 
             # Build tiebreak display list from league config
-                tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
+            tiebreak_names = dict(LONE_TIEBREAK_OPTIONS)
             tiebreaks = []
             for tb in self.league.get_lone_tiebreaks():
                 if tb in tiebreak_names:
