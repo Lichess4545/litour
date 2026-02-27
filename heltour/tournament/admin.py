@@ -375,6 +375,7 @@ class LeagueAdmin(_BaseAdmin):
                     "is_active",
                     "is_default",
                     "enable_notifications",
+                    "skip_slack_invites",
                 )
             },
         ),
