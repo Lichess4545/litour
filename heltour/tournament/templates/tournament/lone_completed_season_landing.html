@@ -20,7 +20,7 @@
                                     <div class="winners-name">
                                         <a class="player-link"
                                            href="{% leagueurl 'player_profile' league.tag season.tag first_player.season_player.player.lichess_username %}">
-                                            {{ first_player.season_player.player.lichess_username }}
+                                            {% player_display_name first_player.season_player.player %}
                                         </a>
                                     </div>
                                 {% endif %}
@@ -33,7 +33,7 @@
                                     <div class="winners-name">
                                         <a class="player-link"
                                            href="{% leagueurl 'player_profile' league.tag season.tag second_player.season_player.player.lichess_username %}">
-                                            {{ second_player.season_player.player.lichess_username }}
+                                            {% player_display_name second_player.season_player.player %}
                                         </a>
                                     </div>
                                 {% endif %}
@@ -46,7 +46,7 @@
                                     <div class="winners-name">
                                         <a class="player-link"
                                            href="{% leagueurl 'player_profile' league.tag season.tag third_player.season_player.player.lichess_username %}">
-                                            {{ third_player.season_player.player.lichess_username }}
+                                            {% player_display_name third_player.season_player.player %}
                                         </a>
                                     </div>
                                 {% endif %}
@@ -61,7 +61,7 @@
                                         <br />
                                         <a class="player-link"
                                            href="{% leagueurl 'player_profile' league.tag season.tag ribbon.player.lichess_username %}">
-                                            {{ ribbon.player.lichess_username }}
+                                            {% player_display_name ribbon.player %}
                                         </a>
                                     </div>
                                 </div>
@@ -116,7 +116,7 @@
                                                 <td class="text-center rank-value">{{ number }}</td>
                                                 <td class="{% highlightclass player_highlights player %}">
                                                     <a href="{% leagueurl 'player_profile' league.tag season.tag player.lichess_username %}">
-                                                        {{ player.lichess_username }}
+                                                        {% player_display_name player %}
                                                     </a>
                                                 </td>
                                                 {% if not zen_mode %}

@@ -8,6 +8,16 @@ from heltour.tournament.models import Registration, format_score
 register = template.Library()
 
 
+@register.simple_tag(takes_context=True)
+def player_display_name(context, player):
+    league = context.get('league')
+    if league and league.show_fide_names:
+        fide_name = (player.fide_profile or {}).get('name', '')
+        if fide_name:
+            return f'{fide_name} ({player.lichess_username})'
+    return player.lichess_username
+
+
 @register.simple_tag
 def leagueurl(name, league_tag=None, season_tag=None, *args, **kwargs):
     if season_tag is not None and season_tag != '':

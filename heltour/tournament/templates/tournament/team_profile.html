@@ -26,7 +26,7 @@
                                     <td {% if team_member.is_captain %}class="captain"{% endif %}>
                                         {% if team_member %}
                                             <a href="{% leagueurl 'player_profile' league.tag season.tag team_member.player.lichess_username %}">
-                                                {{ team_member.player.lichess_username }}
+                                                {% player_display_name team_member.player %}
                                                 {% if team_member.player_rating_display and not zen_mode %}({{ team_member.player_rating_display }}){% endif %}
                                             </a>
                                         {% endif %}
@@ -47,7 +47,7 @@
                                     <tr>
                                         <td>
                                             <a href="{% leagueurl 'player_profile' league.tag season.tag player.lichess_username %}">
-                                                {{ player.lichess_username }}
+                                                {% player_display_name player %}
                                                 {% if rating_display and not zen_mode %}({{ rating_display }}){% endif %}
                                             </a>
                                         </td>

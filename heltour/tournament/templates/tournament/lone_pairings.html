@@ -106,7 +106,7 @@
                                             {% if pairing.white %}
                                                 <div class="pairing-player">
                                                     <a href="{% leagueurl 'player_profile' league.tag season.tag pairing.white.lichess_username %}">
-                                                        {{ pairing.white.lichess_username }}
+                                                        {% player_display_name pairing.white %}
                                                         {% if not zen_mode %}
                                                             <span class="visible-xs"></span> ({% white_rating pairing %})
                                                         {% endif %}
@@ -143,7 +143,7 @@
                                             {% if pairing.black %}
                                                 <div class="pairing-player">
                                                     <a href="{% leagueurl 'player_profile' league.tag season.tag pairing.black.lichess_username %}">
-                                                        {{ pairing.black.lichess_username }}
+                                                        {% player_display_name pairing.black %}
                                                         {% if not zen_mode %}
                                                             <span class="visible-xs"></span> ({% black_rating pairing %})
                                                         {% endif %}
@@ -214,7 +214,7 @@
                                         <td>
                                             <div class="pairing-player">
                                                 <a href="{% leagueurl 'player_profile' league.tag season.tag bye.player.lichess_username %}">
-                                                    {{ bye.player.lichess_username }} <span class="visible-xs"></span>
+                                                    {% player_display_name bye.player %} <span class="visible-xs"></span>
                                                     ({% player_rating bye %})
                                                 </a>
                                             </div>

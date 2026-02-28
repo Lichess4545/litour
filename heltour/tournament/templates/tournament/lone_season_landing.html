@@ -39,7 +39,7 @@
                                         <td class="text-center rank-value">{{ number }}</td>
                                         <td>
                                             <a href="{% leagueurl 'player_profile' league.tag season.tag player_score.season_player.player.lichess_username %}">
-                                                {{ player_score.season_player.player.lichess_username }}
+                                                {% player_display_name player_score.season_player.player %}
                                             </a>
                                         </td>
                                         {% if not zen_mode %}
@@ -88,7 +88,7 @@
                                         </td>
                                         <td>
                                             <a href="{% leagueurl 'player_profile' league.tag season.tag pairing.white.lichess_username %}">
-                                                {{ pairing.white.lichess_username }}
+                                                {% player_display_name pairing.white %}
                                                 {% if not zen_mode %}
                                                     ({% white_rating pairing %})
                                                 {% endif %}
@@ -103,7 +103,7 @@
                                         </td>
                                         <td>
                                             <a href="{% leagueurl 'player_profile' league.tag season.tag pairing.black.lichess_username %}">
-                                                {{ pairing.black.lichess_username }}
+                                                {% player_display_name pairing.black %}
                                                 {% if not zen_mode %}
                                                     ({% black_rating pairing %})
                                                 {% endif %}
