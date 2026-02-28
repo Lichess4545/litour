@@ -269,6 +269,10 @@ class League(_BaseModel):
         default="",
         help_text="Name of the regional rating system (e.g., 'USCF', 'ECF', 'CFC'). Used when require_regional_rating is True.",
     )
+    show_fide_names = models.BooleanField(
+        default=False,
+        help_text="If true, display FIDE names with lichess usernames in parentheses.",
+    )
 
     # Team league tiebreak configuration
     team_tiebreak_1 = models.CharField(

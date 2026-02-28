@@ -68,7 +68,7 @@
                                                           "
                                                           {% endif %}>
                                                         {% if board.player %}
-                                                            <a href="{% leagueurl 'player_profile' league.tag season.tag board.player.lichess_username %}">{{ board.player.lichess_username }}</a>
+                                                            <a href="{% leagueurl 'player_profile' league.tag season.tag board.player.lichess_username %}">{% player_display_name board.player %}</a>
                                                         {% endif %}
                                                     </span>
                                                 </td>
@@ -120,7 +120,7 @@
                                                             {% elif alt.season_player.player in red_card_players %}
                                                                 player-red-card" title="2+ games missed"
                                                             {% else %}"{% endif %}>
-                                                                <a href="{% leagueurl 'player_profile' league.tag season.tag alt.season_player.player.lichess_username %}">{{ alt.season_player.player.lichess_username }}</a>
+                                                                <a href="{% leagueurl 'player_profile' league.tag season.tag alt.season_player.player.lichess_username %}">{% player_display_name alt.season_player.player %}</a>
                                                             </span>
                                                         {% endif %}
                                                     </td>

@@ -419,6 +419,7 @@ class LeagueAdmin(_BaseAdmin):
                     "require_fide_id",
                     "require_regional_rating",
                     "regional_rating_name",
+                    "show_fide_names",
                 ),
                 "description": "Configure chess federation ID and rating requirements. Set regional_rating_name (e.g., 'USCF', 'ECF', 'CFC') when require_regional_rating is enabled.",
             },
