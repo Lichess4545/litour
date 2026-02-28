@@ -155,6 +155,16 @@
                                 <span class="dashboard-note">Never validated</span>
                             {% endif %}
                         </div>
+                        {% if league.require_fide_id %}
+                            <div class="dashboard-season-action">
+                                <form method="post" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" name="update_fide_ratings" value="1" class="btn btn-default">
+                                        Update FIDE Ratings
+                                    </button>
+                                </form>
+                            </div>
+                        {% endif %}
                         {% if is_knockout_tournament %}
                             {% if knockout_advancement_info %}
                                 <div class="dashboard-season-action">
