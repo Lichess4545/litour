@@ -191,8 +191,8 @@ class FideDisplayNameLonePairingsTest(TestCase):
     def test_pairings_preserves_lichess_urls(self):
         response = self.client.get(season_url("fide", "pairings"))
         content = response.content.decode()
-        self.assertIn("alice_chess/perf/classical", content)
-        self.assertIn("bob_plays/perf/classical", content)
+        self.assertIn("games/user/alice_chess?perfType=classical", content)
+        self.assertIn("games/user/bob_plays?perfType=classical", content)
 
     def test_pairings_shows_lichess_only_when_disabled(self):
         self.league.show_fide_names = False
@@ -263,7 +263,8 @@ class FideDisplayNamePlayerProfileTest(TestCase):
         response = self.client.get(self._profile_url("charlie99"))
         content = response.content.decode()
         self.assertIn("charlie99", content)
-        self.assertNotIn("(charlie99)", content)
+        # Should not get FIDE-formatted display name
+        self.assertNotIn(">charlie99 (charlie99)", content)
 
     def test_profile_disabled_shows_lichess_only(self):
         self.league.show_fide_names = False
@@ -291,7 +292,9 @@ class FideDisplayNameTeamPairingsTest(TestCase):
         response = self.client.get(season_url("fideteam", "pairings"))
         content = response.content.decode()
         self.assertIn("fide_p3", content)
-        self.assertNotIn("(fide_p3)", content)
+        # Player without FIDE profile should not get a FIDE-formatted display name.
+        # Note: "(fide_p3)" appears in alt attributes, so check the link text specifically.
+        self.assertNotIn(">fide_p3 (fide_p3)", content)
 
 
 class FideDisplayNameTeamRostersTest(TestCase):
