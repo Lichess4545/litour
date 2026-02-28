@@ -204,6 +204,10 @@ class League(_BaseModel):
     is_active = models.BooleanField(default=True)
     is_default = models.BooleanField(default=False)
     enable_notifications = models.BooleanField(default=False)
+    skip_slack_invites = models.BooleanField(
+        default=True,
+        help_text="Skip sending Slack workspace invites when approving registrations",
+    )
     registration_mode = models.CharField(
         max_length=20,
         choices=RegistrationMode.choices,

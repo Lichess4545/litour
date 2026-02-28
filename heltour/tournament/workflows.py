@@ -397,6 +397,8 @@ class ApproveRegistrationWorkflow():
 
     @property
     def default_invite_to_slack(self):
+        if self.reg.season.league.skip_slack_invites:
+            return False
         return not self.player.slack_user_id
 
     @property
