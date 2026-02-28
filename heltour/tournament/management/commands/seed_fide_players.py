@@ -3,7 +3,7 @@ Seed players with well-known FIDE IDs for manual testing of FIDE rating integrat
 
 Creates a FIDE Standard league with an active season, registers players with
 real FIDE IDs, and creates SeasonPlayers so the update_fide_ratings task can
-pick them up.
+pick them up. Idempotent — safe to re-run.
 
 Usage:
     python manage.py seed_fide_players
@@ -12,7 +12,7 @@ Usage:
 
 After running:
     1. Run update_fide_ratings or force_update_all_fide_ratings celery task
-    2. Check Player.fide_profile in admin to confirm data was fetched
+    2. Check Player admin for fide_profile data
 """
 
 from django.core.management.base import BaseCommand
@@ -68,11 +68,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
-            players = self._create_players()
+            players = self._upsert_players()
 
             if not options["no_league"]:
-                league, season = self._create_league_and_season(options["league_tag"])
-                self._create_registrations_and_season_players(players, season)
+                league, season = self._upsert_league_and_season(options["league_tag"])
+                self._upsert_registrations_and_season_players(players, season)
 
         self.stdout.write(self.style.SUCCESS("Done. Players seeded:"))
         for info in WELL_KNOWN_FIDE_PLAYERS:
@@ -91,7 +91,7 @@ class Command(BaseCommand):
         )
         self.stdout.write("  2. Check Player admin for fide_profile data")
 
-    def _create_players(self):
+    def _upsert_players(self):
         players = []
         for info in WELL_KNOWN_FIDE_PLAYERS:
             player, created = Player.objects.update_or_create(
@@ -102,49 +102,43 @@ class Command(BaseCommand):
                     "is_active": True,
                 },
             )
-            if not created and not player.fide_id:
-                player.fide_id = info["fide_id"]
-                player.save()
-
             action = "Created" if created else "Updated"
             self.stdout.write(f"  {action} player: {info['lichess_username']}")
             players.append(player)
         return players
 
-    def _create_league_and_season(self, league_tag):
-        league, created = League.objects.get_or_create(
+    def _upsert_league_and_season(self, league_tag):
+        league, created = League.objects.update_or_create(
             tag=league_tag,
             defaults={
                 "name": "FIDE Test League",
+                "theme": "green",
                 "competitor_type": "lone",
                 "rating_type": "fide_standard",
             },
         )
-        if created:
-            self.stdout.write(f"Created league: {league.name} ({league.tag})")
-        else:
-            self.stdout.write(f"Using existing league: {league.name} ({league.tag})")
+        action = "Created" if created else "Updated"
+        self.stdout.write(f"  {action} league: {league.name} ({league.tag})")
 
-        season, created = Season.objects.get_or_create(
+        season, created = Season.objects.update_or_create(
             league=league,
             tag=f"{league_tag}-s1",
             defaults={
                 "name": "FIDE Test Season 1",
                 "rounds": 3,
+                "is_active": True,
                 "is_completed": False,
                 "registration_open": True,
             },
         )
-        if created:
-            self.stdout.write(f"Created season: {season.name}")
-        else:
-            self.stdout.write(f"Using existing season: {season.name}")
+        action = "Created" if created else "Updated"
+        self.stdout.write(f"  {action} season: {season.name}")
 
         return league, season
 
-    def _create_registrations_and_season_players(self, players, season):
+    def _upsert_registrations_and_season_players(self, players, season):
         for player in players:
-            reg, _ = Registration.objects.get_or_create(
+            reg, _ = Registration.objects.update_or_create(
                 season=season,
                 player=player,
                 defaults={
@@ -158,7 +152,7 @@ class Command(BaseCommand):
                     "fide_id": player.fide_id,
                 },
             )
-            SeasonPlayer.objects.get_or_create(
+            SeasonPlayer.objects.update_or_create(
                 season=season,
                 player=player,
                 defaults={"registration": reg, "is_active": True},
