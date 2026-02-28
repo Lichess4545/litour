@@ -586,7 +586,7 @@ def _init_start_league_games(
     clock = league.time_control_initial()
     increment = league.time_control_increment()
     variant = league.rating_type
-    if variant in ["classical", "rapid", "blitz", "bullet"]:
+    if variant in ["classical", "rapid", "blitz", "bullet"] or variant.startswith("fide_"):
         variant = "standard"
     do_clockstart = league.get_leaguesetting().start_clocks
     clockstart_in = league.get_leaguesetting().start_clock_time
