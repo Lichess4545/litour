@@ -1579,6 +1579,9 @@ class LeagueDashboardView(LeagueView):
         if 'validate_tokens' in request.POST:
             return self._handle_validate_tokens()
 
+        if 'update_fide_ratings' in request.POST:
+            return self._handle_update_fide_ratings()
+
         # If it's not a knockout-related request, fall back to GET behavior
         return self.view()
     
@@ -1613,6 +1616,16 @@ class LeagueDashboardView(LeagueView):
         messages.success(
             self.request,
             "Token validation started. Refresh this page to see results.",
+        )
+        return self.view()
+
+    def _handle_update_fide_ratings(self):
+        from django.contrib import messages
+        from heltour.tournament.tasks import update_fide_ratings
+        update_fide_ratings.delay()
+        messages.success(
+            self.request,
+            "FIDE ratings update started. This runs in the background.",
         )
         return self.view()
 
