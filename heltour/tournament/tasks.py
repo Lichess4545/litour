@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # ^ for annotating unions with | syntax, can be removed once we upgrade to python 3.10+
 import json
+import random
 import sys
 import textwrap
 import time
@@ -144,9 +145,15 @@ def populate_historical_ratings():
         if p.game_id() is None:
             continue
         p.refresh_from_db()
-        game_meta = lichessapi.get_game_meta(p.game_id(), priority=0, timeout=300)
-        p.white_rating = game_meta["players"]["white"]["rating"]
-        p.black_rating = game_meta["players"]["black"]["rating"]
+        round_ = p.get_round()
+        league = round_.season.league if round_ else None
+        if league and league.rating_type.startswith("fide_"):
+            p.white_rating = p.white.rating_for(league)
+            p.black_rating = p.black.rating_for(league)
+        else:
+            game_meta = lichessapi.get_game_meta(p.game_id(), priority=0, timeout=300)
+            p.white_rating = game_meta["players"]["white"]["rating"]
+            p.black_rating = game_meta["players"]["black"]["rating"]
         p.save(update_fields=["white_rating", "black_rating"])
         api_poll_count += 1
         if api_poll_count >= 100:
@@ -1371,21 +1378,18 @@ def _fetch_fide_profiles_for_registrations(regs: QuerySet[Registration]) -> None
 
 @app.task()
 def validate_pending_registrations():
-    # we want to re-validate pending registrations if they are not marked valid already; or have recently been validated
-    reg_to_validate = (
-        Registration.objects.filter(
-            season__registration_open=True, status__exact="pending"
-        )
-        .exclude(
-            Q(validation_warning=False) & Q(validation_ok=True)
-            | Q(last_validation_try__gt=timezone.now() - timedelta(hours=24))
-        )
-        .order_by("last_validation_try")
-        .first()
-    )
-    if reg_to_validate is not None:
+    recently_checked = timezone.now() - timedelta(hours=24)
+    regs = Registration.objects.filter(
+        season__registration_open=True,
+        status__exact="pending",
+    ).exclude(
+        player__date_modified__gt=recently_checked,
+    ).order_by("player__date_modified")[:5]
+    if regs:
+        reg = random.choice(list(regs))
         signals.do_validate_registration.send(
-            sender=validate_pending_registrations, reg_id=reg_to_validate.pk
+            sender=validate_pending_registrations,
+            regs=Registration.objects.filter(pk=reg.pk),
         )
 
 
