@@ -500,10 +500,13 @@ class ApproveRegistrationWorkflow():
             reversion.set_user(request.user)
             reversion.set_comment('Approved registration.')
 
+            player_defaults = {'lichess_username': reg.lichess_username, 'email': reg.email,
+                              'is_active': True}
+            if reg.fide_id:
+                player_defaults['fide_id'] = reg.fide_id
             player, _ = Player.objects.update_or_create(
                 lichess_username__iexact=reg.lichess_username,
-                defaults={'lichess_username': reg.lichess_username, 'email': reg.email,
-                          'is_active': True}
+                defaults=player_defaults
             )
             if player.rating is None:
                 # In the very rare case that we do not have a rating, use 0.

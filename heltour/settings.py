@@ -281,6 +281,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute="*/5"),  # run every 5 minutes
         "args": (),
     },
+    "update-fide-ratings": {
+        "task": "heltour.tournament.tasks.update_fide_ratings",
+        "schedule": timedelta(days=1),
+        "args": (),
+    },
 }
 CELERY_TIMEZONE = "UTC"
 

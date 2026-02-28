@@ -2626,7 +2626,7 @@ class PlayerAdmin(_BaseAdmin):
         "timezone_offset",
         "account_status",
     )
-    exclude = ("profile", "oauth_token")
+    exclude = ("profile", "fide_profile", "oauth_token")
     actions = ["update_selected_player_ratings"]
 
     def get_fields(self, request, obj=None):

@@ -89,7 +89,6 @@ def format_score(score, game_played=None):
 
 # Represents a positive number in increments of 0.25 (0, 0.25, 0.5, 0.75, 1, etc.)
 class ScoreField(models.PositiveIntegerField):
-
     def from_db_value(self, value, expression, connection):
         if value is None:
             return None
@@ -134,6 +133,9 @@ RATING_TYPE_OPTIONS = (
     ("rapid", "Rapid"),
     ("chess960", "Chess 960"),
     ("blitz", "Blitz"),
+    ("fide_standard", "FIDE Standard"),
+    ("fide_rapid", "FIDE Rapid"),
+    ("fide_blitz", "FIDE Blitz"),
 )
 COMPETITOR_TYPE_OPTIONS = (
     ("team", "Team"),
@@ -452,9 +454,9 @@ class League(_BaseModel):
         query = f"""
                  SELECT player_id, COUNT(player_id) as game_count, MAX(played_time) as last_played
                  FROM (
-                 {games_query(colour='white')}
+                 {games_query(colour="white")}
                  UNION ALL
-                 {games_query(colour='black')}
+                 {games_query(colour="black")}
                  ) as all_games
                  GROUP BY player_id
                  ORDER BY game_count DESC
@@ -1371,6 +1373,9 @@ class Player(_BaseModel):
 
     profile = JSONField(blank=True, null=True)
 
+    fide_id = models.CharField(max_length=20, blank=True)
+    fide_profile = JSONField(blank=True, null=True)
+
     date_first_agreed_to_tos = models.DateTimeField(blank=True, null=True)
     date_last_agreed_to_tos = models.DateTimeField(blank=True, null=True)
 
@@ -1434,6 +1439,10 @@ class Player(_BaseModel):
             self.profile = user_meta
         self.save()
 
+    def update_fide_profile(self, fide_meta):
+        self.fide_profile = fide_meta
+        self.save()
+
     def profile_update_after(self) -> datetime:
         # lichess gives us "seenAt" in miliseconds as the last time the user was online
         # thus, the profile was last updated *after* this seenAt.
@@ -1472,12 +1481,17 @@ class Player(_BaseModel):
             round=round_, player=self, is_available=False
         ).exists()
 
+    def _is_fide_rating_type(self, league):
+        return league and league.rating_type.startswith("fide_")
+
+    def _fide_rating_key(self, league):
+        return league.rating_type.removeprefix("fide_")
+
     def rating_for(self, league):
+        if self._is_fide_rating_type(league):
+            return (self.fide_profile or {}).get(self._fide_rating_key(league), 1400)
         if league:
             if self.profile is None:
-                # some admin screens cannot handle a None rating, so we return 0 instead.
-                # self.profile is only None if the player profile has never been downloaded
-                # from lichess or the account had already been closed at that first download.
                 return 0
             return (
                 self.profile.get("perfs", {})
@@ -1487,6 +1501,8 @@ class Player(_BaseModel):
         return self.rating
 
     def games_played_for(self, league):
+        if self._is_fide_rating_type(league):
+            return 0
         if league:
             if self.profile is None:
                 return None
@@ -1497,6 +1513,8 @@ class Player(_BaseModel):
         return self.games_played  # classical
 
     def provisional_for(self, league):
+        if self._is_fide_rating_type(league):
+            return False
         if self.profile is None:
             return True
         perf = self.profile.get("perfs", {}).get(league.rating_type)
@@ -3126,14 +3144,22 @@ class LonePlayerScore(_BaseModel):
                     result_type = (
                         "W"
                         if score == 1
-                        else "D" if score == 0.5 else "L" if score == 0 else "F"
+                        else "D"
+                        if score == 0.5
+                        else "L"
+                        if score == 0
+                        else "F"
                     )
                 else:
                     # Special result
                     result_type = (
                         "X"
                         if score == 1
-                        else "Z" if score == 0.5 else "F" if score == 0 else ""
+                        else "Z"
+                        if score == 0.5
+                        else "F"
+                        if score == 0
+                        else ""
                     )
             elif black_pairing is not None and black_pairing.white is not None:
                 opponent = black_pairing.white
@@ -3144,14 +3170,22 @@ class LonePlayerScore(_BaseModel):
                     result_type = (
                         "W"
                         if score == 1
-                        else "D" if score == 0.5 else "L" if score == 0 else "F"
+                        else "D"
+                        if score == 0.5
+                        else "L"
+                        if score == 0
+                        else "F"
                     )
                 else:
                     # Special result
                     result_type = (
                         "X"
                         if score == 1
-                        else "Z" if score == 0.5 else "F" if score == 0 else ""
+                        else "Z"
+                        if score == 0.5
+                        else "F"
+                        if score == 0
+                        else ""
                     )
             elif bye is not None:
                 score = bye.score()
