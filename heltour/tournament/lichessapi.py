@@ -59,17 +59,14 @@ def _apicall_with_error_parsing(*args, **kwargs) -> str:
 
 def test_oauth_token(token):
     url = (
-        f"{settings.API_WORKER_HOST}/lichessapi/api/token/test?"
-        f"content_type=text/plain"
+        f"{settings.API_WORKER_HOST}/lichessapi/api/token/test?content_type=text/plain"
     )
     result = _apicall_with_error_parsing(url=url, post=True, post_data=token)
     return json.loads(result)
 
 
 def test_whoami():
-    url = (
-        f"{settings.API_WORKER_HOST}/lichessapi/api/account"
-    )
+    url = f"{settings.API_WORKER_HOST}/lichessapi/api/account"
     result = _apicall_with_error_parsing(url=url)
     return json.loads(result)
 
@@ -78,6 +75,17 @@ def get_user_meta(lichess_username, priority=0, max_retries=5, timeout=1800):
     url = "%s/lichessapi/api/user/%s?priority=%s&max_retries=%s" % (
         settings.API_WORKER_HOST,
         lichess_username,
+        priority,
+        max_retries,
+    )
+    result = _apicall_with_error_parsing(url, timeout)
+    return json.loads(result)
+
+
+def get_fide_player(fide_id, priority=0, max_retries=5, timeout=1800):
+    url = "%s/lichessapi/api/fide/player/%s?priority=%s&max_retries=%s" % (
+        settings.API_WORKER_HOST,
+        fide_id,
         priority,
         max_retries,
     )

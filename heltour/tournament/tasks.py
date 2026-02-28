@@ -574,9 +574,7 @@ def _start_league_games(
             logger.info(
                 f"[ERROR] For league {leaguename}, unexpected bulk pairing json response with error {e}"
             )
-        except (
-            TypeError
-        ):  # if all tokens are rejected by lichess, result['games'] is None, resulting in a TypeError.
+        except TypeError:  # if all tokens are rejected by lichess, result['games'] is None, resulting in a TypeError.
             pass
     return result
 
@@ -1207,6 +1205,23 @@ def do_validate_registration(regs: QuerySet[Registration], **kwargs) -> None:
     update_player_ratings(
         usernames=list(regs.values_list("player__lichess_username", flat=True))
     )
+    _fetch_fide_profiles_for_registrations(regs)
+
+
+def _fetch_fide_profiles_for_registrations(regs: QuerySet[Registration]) -> None:
+    fide_regs = regs.filter(
+        player__fide_id__gt="",
+        season__league__rating_type__startswith="fide_",
+    ).select_related("player")
+    for reg in fide_regs:
+        player = reg.player
+        try:
+            fide_meta = lichessapi.get_fide_player(player.fide_id, priority=1)
+            player.update_fide_profile(fide_meta)
+        except lichessapi.ApiWorkerError:
+            logger.warning(
+                f"Failed to fetch FIDE profile for {player.lichess_username}"
+            )
 
 
 @app.task()
@@ -1456,3 +1471,50 @@ def _get_or_set_token(
             token.save()
             Player.objects.filter(pk=player.id).update(oauth_token=token)
     return result
+
+
+def _players_needing_fide_update(force_all: bool = False) -> QuerySet[Player]:
+    base = Player.objects.filter(
+        fide_id__gt="",
+        seasonplayer__season__is_completed=False,
+    ).distinct()
+    if force_all:
+        return base
+    one_week_ago = timezone.now() - timedelta(days=7)
+    return base.filter(
+        Q(fide_profile__isnull=True) | Q(date_modified__lte=one_week_ago)
+    )
+
+
+@app.task()
+def update_fide_ratings() -> None:
+    players = _players_needing_fide_update(force_all=False)
+    logger.info(f"[START] Updating FIDE ratings for {players.count()} players")
+    updated = 0
+    for player in players:
+        try:
+            fide_meta = lichessapi.get_fide_player(player.fide_id, priority=1)
+            player.update_fide_profile(fide_meta)
+            updated += 1
+        except lichessapi.ApiWorkerError:
+            logger.warning(
+                f"Failed to fetch FIDE profile for {player.lichess_username} (FIDE ID: {player.fide_id})"
+            )
+    logger.info(f"[FINISHED] Updated {updated}/{players.count()} FIDE ratings")
+
+
+@app.task()
+def force_update_all_fide_ratings() -> None:
+    players = _players_needing_fide_update(force_all=True)
+    logger.info(f"[START] Force updating FIDE ratings for {players.count()} players")
+    updated = 0
+    for player in players:
+        try:
+            fide_meta = lichessapi.get_fide_player(player.fide_id, priority=1)
+            player.update_fide_profile(fide_meta)
+            updated += 1
+        except lichessapi.ApiWorkerError:
+            logger.warning(
+                f"Failed to fetch FIDE profile for {player.lichess_username} (FIDE ID: {player.fide_id})"
+            )
+    logger.info(f"[FINISHED] Force updated {updated}/{players.count()} FIDE ratings")
