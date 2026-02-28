@@ -25,7 +25,7 @@ from django.utils.text import slugify
 from django.views.generic import View
 from icalendar import Calendar, Event
 
-from heltour.tournament import alternates_manager, lichessapi, oauth, uptime
+from heltour.tournament import alternates_manager, lichessapi, oauth, signals, uptime
 from heltour.tournament.forms import (
     ContactForm,
     DeleteNominationForm,
