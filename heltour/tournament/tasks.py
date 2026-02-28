@@ -13,6 +13,7 @@ from typing import Dict
 
 import reversion
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.db.models.signals import post_save
 from django.dispatch.dispatcher import receiver
@@ -518,72 +519,100 @@ def _start_league_games(
             )
     if result is None:  # starting games failed, or all tokens rejected
         return
-    gamechannel = LeagueChannel.objects.filter(
-        league__name=leaguename, type="games"
-    ).first()
-    # use lichess reply to set game ids
-    for game in league_games:
-        try:
+    # Build {pairing_pk: (game_link, game_id)} from API response — idempotent save phase
+    pairing_game_map: dict[int, tuple[str, str]] = {}
+    try:
+        if result.get("games") is None:
+            return result
+        for game in league_games:
             for gameids in result["games"]:
                 if (
                     gameids["white"] == game.white.lichess_username.lower()
                     and gameids["black"] == game.black.lichess_username.lower()
                 ):
-                    game.game_link = get_gamelink_from_gameid(gameids["id"])
-                    game.save()
-                    signals.notify_players_game_started.send(
-                        sender=_start_league_games,
-                        pairing=game,
-                        do_clockstart=do_clockstart,
-                        clockstart_in=clockstart_in,
-                        gameid=gameids["id"],
-                    )
-                    if gamechannel is not None:
-                        slackapi.send_message(
-                            channel=gamechannel.slack_channel,
-                            text=(
-                                f"<@{game.white.lichess_username}> vs "
-                                f"<@{game.black.lichess_username}>: "
-                                f"{game.game_link}"
-                            ),
-                        )
-                    if game.get_league().is_team_league():
-                        message = (
-                            f"Board {game.teamplayerpairing.board_number} game "
-                            f"<@{game.white.lichess_username}> vs "
-                            f"<@{game.black.lichess_username}> has started: "
-                            f"{game.game_link}"
-                        )
-                        if game.teamplayerpairing.white_team().slack_channel:
-                            slackapi.send_message(
-                                channel=game.teamplayerpairing.white_team().slack_channel,
-                                text=message,
-                            )
-                            time.sleep(settings.SLEEP_UNIT)
-                        if game.teamplayerpairing.black_team().slack_channel:
-                            slackapi.send_message(
-                                channel=game.teamplayerpairing.black_team().slack_channel,
-                                text=message,
-                            )
-                            time.sleep(settings.SLEEP_UNIT)
-        except slackapi.SlackError:
-            logger.info(
-                f"[ERROR] sending slack game message to {gamechannel.slack_channel}."
-            )
-        except KeyError as e:
-            logger.info(
-                f"[ERROR] For league {leaguename}, unexpected bulk pairing json response with error {e}"
-            )
-        except TypeError:  # if all tokens are rejected by lichess, result['games'] is None, resulting in a TypeError.
-            pass
+                    link = get_gamelink_from_gameid(gameids["id"])
+                    pairing_game_map[game.pk] = (link, gameids["id"])
+    except (KeyError, TypeError) as e:
+        logger.info(
+            f"[ERROR] For league {leaguename}, unexpected bulk pairing json response with error {e}"
+        )
+        return result
+    # Idempotent update: only sets game_link on rows where it's still blank
+    for pk, (link, _game_id) in pairing_game_map.items():
+        PlayerPairing.objects.filter(pk=pk, game_link="").update(game_link=link)
+    # Notifications — best-effort, won't block persistence
+    gamechannel = LeagueChannel.objects.filter(
+        league__name=leaguename, type="games"
+    ).first()
+    for game in league_games:
+        if game.pk not in pairing_game_map:
+            continue
+        link, game_id = pairing_game_map[game.pk]
+        game.game_link = link
+        _notify_game_started(
+            game=game,
+            game_id=game_id,
+            do_clockstart=do_clockstart,
+            clockstart_in=clockstart_in,
+            gamechannel=gamechannel,
+        )
     return result
+
+
+def _notify_game_started(
+    *,
+    game: PlayerPairing,
+    game_id: str,
+    do_clockstart: bool,
+    clockstart_in: int,
+    gamechannel: LeagueChannel | None,
+) -> None:
+    try:
+        signals.notify_players_game_started.send(
+            sender=_start_league_games,
+            pairing=game,
+            do_clockstart=do_clockstart,
+            clockstart_in=clockstart_in,
+            gameid=game_id,
+        )
+        if gamechannel is not None:
+            slackapi.send_message(
+                channel=gamechannel.slack_channel,
+                text=(
+                    f"<@{game.white.lichess_username}> vs "
+                    f"<@{game.black.lichess_username}>: "
+                    f"{game.game_link}"
+                ),
+            )
+        if game.get_league().is_team_league():
+            message = (
+                f"Board {game.teamplayerpairing.board_number} game "
+                f"<@{game.white.lichess_username}> vs "
+                f"<@{game.black.lichess_username}> has started: "
+                f"{game.game_link}"
+            )
+            if game.teamplayerpairing.white_team().slack_channel:
+                slackapi.send_message(
+                    channel=game.teamplayerpairing.white_team().slack_channel,
+                    text=message,
+                )
+                time.sleep(settings.SLEEP_UNIT)
+            if game.teamplayerpairing.black_team().slack_channel:
+                slackapi.send_message(
+                    channel=game.teamplayerpairing.black_team().slack_channel,
+                    text=message,
+                )
+                time.sleep(settings.SLEEP_UNIT)
+    except slackapi.SlackError:
+        logger.info(f"[ERROR] sending slack game notification for game {game_id}.")
 
 
 def _init_start_league_games(
     *,
     league: League,
     tokens: list[str],
-    league_games: QuerySet[LonePlayerPairing | TeamPlayerPairing],
+    league_games: QuerySet[LonePlayerPairing | TeamPlayerPairing]
+    | list[LonePlayerPairing | TeamPlayerPairing],
 ) -> dict | None:
     tokenstring = ",".join(tokens)
     clock = league.time_control_initial()
@@ -918,6 +947,22 @@ def update_broadcast(season_id: int, first_board: int = 1) -> None:
 
 @app.task()
 def _start_unscheduled_games(round_id: int) -> None:
+    lock = cache.lock(f"start_games_round_{round_id}", timeout=120)
+    if not lock.acquire(blocking=False):
+        logger.warning(
+            f"[SKIP] start_games_round_{round_id} already running, skipping."
+        )
+        return
+    try:
+        _start_unscheduled_games_inner(round_id)
+    finally:
+        try:
+            lock.release()
+        except Exception:
+            pass
+
+
+def _start_unscheduled_games_inner(round_id: int) -> None:
     result = None
     logger.info("[START] Trying to start games.")
     round_ = Round.objects.get(pk=round_id)
@@ -925,46 +970,46 @@ def _start_unscheduled_games(round_id: int) -> None:
     if league.is_player_scheduled_league():
         logger.error("[ERROR] Tried to start unscheduled games in a scheduling league.")
         return
-    if league.is_team_league():
-        games_to_start = (
-            TeamPlayerPairing.objects.filter(
-                result="", game_link="", team_pairing__round=round_
+    with transaction.atomic():
+        if league.is_team_league():
+            games_to_start = list(
+                TeamPlayerPairing.objects.select_for_update()
+                .filter(result="", game_link="", team_pairing__round=round_)
+                .exclude(white=None)
+                .exclude(black=None)
+                .select_related("white", "black")
+                .nocache()
             )
-            .exclude(white=None)
-            .exclude(black=None)
-            .select_related("white", "black")
-            .nocache()
+        else:
+            games_to_start = list(
+                LonePlayerPairing.objects.select_for_update()
+                .filter(result="", game_link="", round=round_)
+                .exclude(white=None)
+                .exclude(black=None)
+                .select_related("white", "black")
+                .nocache()
+            )
+        if not games_to_start:
+            logger.info("[FINISHED] No games to start.")
+            return
+        playerpks = [
+            pk
+            for game in games_to_start
+            for pk in (game.white_id, game.black_id)
+        ]
+        playerslist = list(Player.objects.filter(pk__in=playerpks))
+        token_dict = _get_or_set_token(
+            players=playerslist, tournament=round_.season.league.name
         )
-    else:
-        games_to_start = (
-            LonePlayerPairing.objects.filter(result="", game_link="", round=round_)
-            .exclude(white=None)
-            .exclude(black=None)
-            .select_related("white", "black")
-            .nocache()
+        tokens = []
+        for game in games_to_start:
+            tokens.append(
+                f"{token_dict[game.white.lichess_username]}:"
+                f"{token_dict[game.black.lichess_username]}"
+            )
+        result = _init_start_league_games(
+            league=league, tokens=tokens, league_games=games_to_start
         )
-    # get a flat list from the queryset
-    playerpks = [
-        pk
-        for sidename in games_to_start.values_list(
-            "white",
-            "black",
-        )
-        for pk in sidename
-    ]
-    playerslist = list(Player.objects.filter(pk__in=playerpks))
-    token_dict = _get_or_set_token(
-        players=playerslist, tournament=round_.season.league.name
-    )
-    tokens = []
-    for game in games_to_start:
-        tokens.append(
-            f"{token_dict[game.white.lichess_username]}:"
-            f"{token_dict[game.black.lichess_username]}"
-        )
-    result = _init_start_league_games(
-        league=league, tokens=tokens, league_games=games_to_start
-    )
     if result is None:
         logger.warning("[FINISHED] Failed starting games.")
     else:
@@ -991,6 +1036,138 @@ def _start_clocks(round_id: int) -> None:
 @receiver(signals.do_start_clocks, dispatch_uid="heltour.tournament.tasks")
 def do_start_clocks(sender, round_id: int, **kwargs) -> None:
     _start_clocks.apply_async(args=[round_id])
+
+
+@app.task()
+def validate_season_tokens(season_id: int) -> None:
+    season = Season.objects.get(pk=season_id)
+    league = season.league
+    current_rounds = Round.objects.filter(
+        season=season, publish_pairings=True, is_completed=False
+    )
+    pairings = _pending_pairings_for_rounds(current_rounds, league)
+    if not pairings:
+        _store_token_validation_result(
+            season_id, success=True, total=0, refreshed=[], failed=[]
+        )
+        return
+    players = _unique_players_from_pairings(pairings)
+    tokens_by_username = {
+        p.lichess_username: p.get_access_token()
+        for p in players
+        if p.token_valid()
+    }
+    missing_token_players = [p for p in players if not p.token_valid()]
+    invalid_usernames: list[str] = []
+    if tokens_by_username:
+        comma_tokens = ",".join(tokens_by_username.values())
+        valid_map = lichessapi.test_oauth_token(comma_tokens)
+        token_to_username = {v: k for k, v in tokens_by_username.items()}
+        for token, username in token_to_username.items():
+            if token not in valid_map:
+                invalid_usernames.append(username)
+    needs_refresh = [p.lichess_username for p in missing_token_players] + invalid_usernames
+    refreshed: list[str] = []
+    failed: list[str] = []
+    if needs_refresh:
+        try:
+            new_tokens = lichessapi.get_admin_token(
+                lichess_usernames=needs_refresh,
+                description=league.name,
+            )
+            for username in needs_refresh:
+                if username in new_tokens:
+                    token_obj = OauthToken(
+                        access_token=new_tokens[username],
+                        token_type="admin challenge token",
+                        expires=timezone.now() + timedelta(days=28),
+                        account_username=username,
+                        scope="challenge:write",
+                    )
+                    token_obj.save()
+                    Player.objects.filter(
+                        lichess_username=username
+                    ).update(oauth_token=token_obj)
+                    refreshed.append(username)
+                else:
+                    failed.append(username)
+        except (lichessapi.ApiWorkerError, lichessapi.ApiClientError):
+            logger.exception(
+                f"[ERROR] Failed to refresh tokens for season {season_id}"
+            )
+            failed = needs_refresh
+    success = len(failed) == 0
+    _store_token_validation_result(
+        season_id,
+        success=success,
+        total=len(players),
+        refreshed=refreshed,
+        failed=failed,
+    )
+
+
+def _pending_pairings_for_rounds(
+    current_rounds: QuerySet[Round], league: League
+) -> list[PlayerPairing]:
+    if league.is_team_league():
+        return list(
+            TeamPlayerPairing.objects.filter(
+                game_link="",
+                result="",
+                team_pairing__round__in=current_rounds,
+            )
+            .exclude(white=None)
+            .exclude(black=None)
+            .select_related("white", "black")
+        )
+    return list(
+        LonePlayerPairing.objects.filter(
+            game_link="", result="", round__in=current_rounds
+        )
+        .exclude(white=None)
+        .exclude(black=None)
+        .select_related("white", "black")
+    )
+
+
+def _unique_players_from_pairings(pairings: list[PlayerPairing]) -> list[Player]:
+    seen: set[int] = set()
+    players: list[Player] = []
+    for p in pairings:
+        for player in (p.white, p.black):
+            if player.pk not in seen:
+                seen.add(player.pk)
+                players.append(player)
+    return players
+
+
+def _store_token_validation_result(
+    season_id: int,
+    *,
+    success: bool,
+    total: int,
+    refreshed: list[str],
+    failed: list[str],
+) -> None:
+    cache.set(
+        f"token_validation_{season_id}",
+        {
+            "timestamp": timezone.now().isoformat(),
+            "success": success,
+            "total": total,
+            "refreshed": refreshed,
+            "failed": failed,
+        },
+        timeout=86400 * 7,
+    )
+
+
+@receiver(
+    signals.do_validate_season_tokens,
+    dispatch_uid="heltour.tournament.tasks.validate_tokens",
+)
+def do_validate_season_tokens_handler(sender, season_id: int, **kwargs):
+    validate_season_tokens.apply_async(args=[season_id])
 
 
 @receiver(signals.do_update_broadcast, dispatch_uid="heltour.tournament.tasks")

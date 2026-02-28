@@ -9,9 +9,11 @@ from heltour.tournament.models import (
     Broadcast,
     BroadcastRound,
     League,
+    LeagueChannel,
     LonePlayerPairing,
     OauthToken,
     Player,
+    PlayerPairing,
     Round,
     SeasonPlayer,
     Team,
@@ -19,11 +21,15 @@ from heltour.tournament.models import (
     TeamPlayerPairing,
 )
 from heltour.tournament.slackapi import NameTaken, SlackError, SlackGroup
+from django.core.cache import cache
+
 from heltour.tournament.tasks import (
     _create_broadcast_grouping,
     _create_or_update_broadcast,
     _create_or_update_broadcast_round,
     _create_team_string,
+    _start_league_games,
+    _start_unscheduled_games,
     active_player_usernames,
     create_broadcast,
     create_broadcast_round,
@@ -34,6 +40,7 @@ from heltour.tournament.tasks import (
     update_broadcast_round,
     update_player_ratings,
     update_tv_state,
+    validate_season_tokens,
 )
 from heltour.tournament.tests.testutils import (
     Shush,
@@ -678,3 +685,205 @@ class TestBroadcasts(TestCase):
         self.assertEqual(
             Broadcast.objects.get(season=sl, first_board=3).lichess_id, "bcslug"
         )
+
+
+class TestStartUnscheduledGamesLock(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+
+    @patch("heltour.tournament.tasks._start_unscheduled_games_inner")
+    def test_lock_prevents_concurrent_execution(self, mock_inner):
+        round_ = get_round(league_type="lone", round_number=1)
+        lock = cache.lock(f"start_games_round_{round_.pk}", timeout=120)
+        lock.acquire(blocking=False)
+        try:
+            with Shush():
+                _start_unscheduled_games(round_.pk)
+            mock_inner.assert_not_called()
+        finally:
+            lock.release()
+
+    @patch("heltour.tournament.tasks._start_unscheduled_games_inner")
+    def test_runs_when_lock_available(self, mock_inner):
+        round_ = get_round(league_type="lone", round_number=1)
+        with Shush():
+            _start_unscheduled_games(round_.pk)
+        mock_inner.assert_called_once_with(round_.pk)
+
+
+class TestIdempotentGameLinkSave(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        cls.round_ = get_round(league_type="lone", round_number=1)
+        cls.p1 = get_player("Player1")
+        cls.p2 = get_player("Player2")
+
+    def setUp(self):
+        self.lpp = LonePlayerPairing.objects.create(
+            round=self.round_,
+            white=self.p1,
+            black=self.p2,
+            game_link="",
+            pairing_order=1,
+        )
+
+    @patch("heltour.tournament.tasks._notify_game_started")
+    @patch("heltour.tournament.lichessapi.bulk_start_games")
+    def test_does_not_overwrite_existing_game_link(self, mock_bulk, mock_notify):
+        existing_link = "https://lichess.org/existing123"
+        self.lpp.game_link = existing_link
+        self.lpp.save()
+        mock_bulk.return_value = {
+            "id": "bulk123",
+            "games": [
+                {
+                    "id": "newgame456",
+                    "white": self.p1.lichess_username.lower(),
+                    "black": self.p2.lichess_username.lower(),
+                }
+            ],
+        }
+        with Shush():
+            _start_league_games(
+                tokens="tok1:tok2",
+                clock=600,
+                increment=5,
+                do_clockstart=False,
+                clockstart=0,
+                clockstart_in=0,
+                variant="standard",
+                leaguename="Lone League",
+                league_games=LonePlayerPairing.objects.filter(pk=self.lpp.pk),
+            )
+        self.lpp.refresh_from_db()
+        self.assertEqual(self.lpp.game_link, existing_link)
+
+    @patch("heltour.tournament.tasks._notify_game_started")
+    @patch("heltour.tournament.lichessapi.bulk_start_games")
+    def test_sets_game_link_when_blank(self, mock_bulk, mock_notify):
+        mock_bulk.return_value = {
+            "id": "bulk123",
+            "games": [
+                {
+                    "id": "newgame456",
+                    "white": self.p1.lichess_username.lower(),
+                    "black": self.p2.lichess_username.lower(),
+                }
+            ],
+        }
+        with Shush():
+            _start_league_games(
+                tokens="tok1:tok2",
+                clock=600,
+                increment=5,
+                do_clockstart=False,
+                clockstart=0,
+                clockstart_in=0,
+                variant="standard",
+                leaguename="Lone League",
+                league_games=LonePlayerPairing.objects.filter(pk=self.lpp.pk),
+            )
+        self.lpp.refresh_from_db()
+        self.assertIn("newgame456", self.lpp.game_link)
+
+
+class TestValidateSeasonTokens(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+
+    def setUp(self):
+        self.season = get_season("lone")
+        self.round_ = get_round(league_type="lone", round_number=1)
+        self.round_.publish_pairings = True
+        self.round_.is_completed = False
+        self.round_.save()
+        self.p1 = get_player("Player1")
+        self.p2 = get_player("Player2")
+        self.lpp = LonePlayerPairing.objects.create(
+            round=self.round_,
+            white=self.p1,
+            black=self.p2,
+            game_link="",
+            result="",
+            pairing_order=1,
+        )
+        cache.delete(f"token_validation_{self.season.pk}")
+
+    @patch("heltour.tournament.lichessapi.get_admin_token")
+    @patch("heltour.tournament.lichessapi.test_oauth_token")
+    def test_all_tokens_valid(self, mock_test, mock_admin):
+        token = OauthToken.objects.create(
+            access_token="valid_tok_1",
+            token_type="admin challenge token",
+            expires=timezone.now() + timedelta(days=28),
+            account_username=self.p1.lichess_username,
+            scope="challenge:write",
+        )
+        Player.objects.filter(pk=self.p1.pk).update(oauth_token=token)
+        token2 = OauthToken.objects.create(
+            access_token="valid_tok_2",
+            token_type="admin challenge token",
+            expires=timezone.now() + timedelta(days=28),
+            account_username=self.p2.lichess_username,
+            scope="challenge:write",
+        )
+        Player.objects.filter(pk=self.p2.pk).update(oauth_token=token2)
+        mock_test.return_value = {
+            "valid_tok_1": {"scopes": "challenge:write"},
+            "valid_tok_2": {"scopes": "challenge:write"},
+        }
+        with Shush():
+            validate_season_tokens(self.season.pk)
+        mock_admin.assert_not_called()
+        result = cache.get(f"token_validation_{self.season.pk}")
+        self.assertIsNotNone(result)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["failed"], [])
+
+    @patch("heltour.tournament.lichessapi.get_admin_token")
+    @patch("heltour.tournament.lichessapi.test_oauth_token")
+    def test_refreshes_invalid_tokens(self, mock_test, mock_admin):
+        token = OauthToken.objects.create(
+            access_token="bad_tok",
+            token_type="admin challenge token",
+            expires=timezone.now() + timedelta(days=28),
+            account_username=self.p1.lichess_username,
+            scope="challenge:write",
+        )
+        Player.objects.filter(pk=self.p1.pk).update(oauth_token=token)
+        mock_test.return_value = {}
+        mock_admin.return_value = {
+            self.p1.lichess_username: "refreshed_tok_1",
+            self.p2.lichess_username: "refreshed_tok_2",
+        }
+        with Shush():
+            validate_season_tokens(self.season.pk)
+        mock_admin.assert_called_once()
+        result = cache.get(f"token_validation_{self.season.pk}")
+        self.assertTrue(result["success"])
+        self.assertIn(self.p1.lichess_username, result["refreshed"])
+        self.assertIn(self.p2.lichess_username, result["refreshed"])
+        self.assertEqual(result["failed"], [])
+
+    @patch("heltour.tournament.lichessapi.get_admin_token")
+    @patch("heltour.tournament.lichessapi.test_oauth_token")
+    def test_records_failed_tokens(self, mock_test, mock_admin):
+        token = OauthToken.objects.create(
+            access_token="bad_tok",
+            token_type="admin challenge token",
+            expires=timezone.now() + timedelta(days=28),
+            account_username=self.p1.lichess_username,
+            scope="challenge:write",
+        )
+        Player.objects.filter(pk=self.p1.pk).update(oauth_token=token)
+        mock_test.return_value = {}
+        mock_admin.return_value = {}
+        with Shush():
+            validate_season_tokens(self.season.pk)
+        result = cache.get(f"token_validation_{self.season.pk}")
+        self.assertFalse(result["success"])
+        self.assertGreater(len(result["failed"]), 0)

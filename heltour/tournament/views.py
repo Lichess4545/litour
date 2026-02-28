@@ -1572,10 +1572,13 @@ class LeagueDashboardView(LeagueView):
             return self._handle_knockout_advancement()
         
         # Handle creating missing matches for multi-match knockouts
-        if ('create_missing_matches' in request.POST 
+        if ('create_missing_matches' in request.POST
             and self.season.league.pairing_type.startswith('knockout')):
             return self._handle_create_missing_matches()
-        
+
+        if 'validate_tokens' in request.POST:
+            return self._handle_validate_tokens()
+
         # If it's not a knockout-related request, fall back to GET behavior
         return self.view()
     
@@ -1599,7 +1602,18 @@ class LeagueDashboardView(LeagueView):
         except Exception as e:
             from django.contrib import messages
             messages.error(self.request, f"Error clearing cache: {str(e)}")
-        
+
+        return self.view()
+
+    def _handle_validate_tokens(self):
+        from django.contrib import messages
+        signals.do_validate_season_tokens.send(
+            sender=self.__class__, season_id=self.season.pk
+        )
+        messages.success(
+            self.request,
+            "Token validation started. Refresh this page to see results.",
+        )
         return self.view()
 
     def _common_context(self):
@@ -1643,6 +1657,8 @@ class LeagueDashboardView(LeagueView):
         if is_knockout and self.request.user.is_staff:
             knockout_advancement_info = self._get_knockout_advancement_info()
 
+        token_validation_status = cache.get(f"token_validation_{self.season.pk}")
+
         return {
             'current_season_list': current_season_list,
             'completed_season_list': completed_season_list,
@@ -1659,6 +1675,7 @@ class LeagueDashboardView(LeagueView):
             'can_admin_users': self.request.user.has_module_perms('auth'),
             'is_knockout_tournament': is_knockout,
             'knockout_advancement_info': knockout_advancement_info,
+            'token_validation_status': token_validation_status,
         }
 
     def team_view(self):
