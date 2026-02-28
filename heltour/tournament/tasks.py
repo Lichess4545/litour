@@ -1210,6 +1210,26 @@ def do_validate_registration(regs: QuerySet[Registration], **kwargs) -> None:
 
 
 @app.task()
+def validate_pending_registrations():
+    # we want to re-validate pending registrations if they are not marked valid already; or have recently been validated
+    reg_to_validate = (
+        Registration.objects.filter(
+            season__registration_open=True, status__exact="pending"
+        )
+        .exclude(
+            Q(validation_warning=False) & Q(validation_ok=True)
+            | Q(last_validation_try__gt=timezone.now() - timedelta(hours=24))
+        )
+        .order_by("last_validation_try")
+        .first()
+    )
+    if reg_to_validate is not None:
+        signals.do_validate_registration.send(
+            sender=validate_pending_registrations, reg_id=reg_to_validate.pk
+        )
+
+
+@app.task()
 def pairings_published(round_id, overwrite=False):
     round_ = Round.objects.get(pk=round_id)
     season = round_.season
@@ -1300,16 +1320,14 @@ def do_notify_slack_link(lichess_username, **kwargs):
 
 @app.task()
 def create_team_channel(team_ids):
-    intro_message = textwrap.dedent(
-        """
+    intro_message = textwrap.dedent("""
             Welcome! This is your private team channel. Feel free to chat, study, discuss strategy, or whatever you like!
             You need to pick a team captain and a team name by {season_start}.
             Once you've chosen (or if you need help with anything), contact one of the moderators using the command `@chesster summon mods` in #general (do not contact them directly.)
 
             Here are some useful links for your team:
             - <{pairings_url}|View your team pairings>
-            - <{calendar_url}|Import your team pairings to your calendar>"""
-    )
+            - <{calendar_url}|Import your team pairings to your calendar>""")
 
     for team in (
         Team.objects.filter(id__in=team_ids).select_related("season__league").nocache()
