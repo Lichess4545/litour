@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # ^ for annotating unions with | syntax, can be removed once we upgrade to python 3.10+
 import json
-import re
 import sys
 import textwrap
 import time
@@ -469,54 +468,23 @@ def _start_league_games(
             leaguename=leaguename,
         )
     except lichessapi.ApiClientError as err:
-        logger.info(f"Received error from lichess api: {err}")
-        logger.info("Attempting to recover by removing rejected tokens.")
-        # try to handle errors due to rjected tokens
-        e = str(err).replace(
-            "API failure: CLIENT-ERROR: [400] ", ""
-        )  # get json part from error
+        logger.error(
+            f"[ERROR] bulk_start_games failed for {leaguename}: {err}. "
+            "NOT retrying — some games may have been created on Lichess. "
+            "The TV state poller will pick them up. Expire any bad tokens and "
+            "re-trigger game creation manually after verifying state."
+        )
+        # Still expire bad tokens so they aren't reused on the next manual attempt
+        e = str(err).replace("API failure: CLIENT-ERROR: [400] ", "")
         try:
-            result = json.loads(e)
-            new_tokens = None
-            for bad_token in result["tokens"]:
+            parsed = json.loads(e)
+            for bad_token in parsed.get("tokens", []):
                 _expire_bad_tokens(league_games=league_games, bad_token=bad_token)
-                # remove bad token from our token string + the good token paired with it, remove potential superfluous comma
-                # the token string is structured as such: white_token_game1:black_token_game1,white_token_game2:black_token_game2 and so on.
-                optional_white_token = "([A-z0-9_]*:)?"
-                optional_black_token = "(:[A-z0-9_]*)?"
-                # either the pairing with the bad token is the first in the string, or there is a comma in front of it
-                start_or_comma = "(^|,)"
-                removed_token = re.sub(
-                    f"{start_or_comma}{optional_white_token}{bad_token}{optional_black_token}",
-                    "",
-                    tokens,
-                )
-                # if it was the last token, then we end up with a useless comma in the end, remove that
-                new_tokens = re.sub("^,", "", removed_token)
-            if new_tokens:
-                try:
-                    # if there are still tokens to be paired, retry, and give up afterwards.
-                    result = lichessapi.bulk_start_games(
-                        tokens=new_tokens,
-                        clock=clock,
-                        increment=increment,
-                        do_clockstart=do_clockstart,
-                        clockstart=clockstart,
-                        clockstart_in=clockstart_in,
-                        variant=variant,
-                        leaguename=leaguename,
-                    )
-                except lichessapi.ApiClientError as err:
-                    # give up.
-                    logger.exception(
-                        f"[ERROR] Failed to bulk start games for league {leaguename} after removing rejected tokens."
-                    )
-            else:  # no tokens left after deleting rejected tokens
-                result = None
-        except KeyError:
-            logger.exception(
-                f"[ERROR] could not parse error as json for {leaguename}:\n{e}"
+        except (KeyError, json.JSONDecodeError):
+            logger.error(
+                f"[ERROR] Could not parse rejected tokens from error for {leaguename}: {e}"
             )
+        return None
     if result is None:  # starting games failed, or all tokens rejected
         return
     # Build {pairing_pk: (game_link, game_id)} from API response — idempotent save phase

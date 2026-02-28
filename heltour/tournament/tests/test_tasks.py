@@ -303,26 +303,21 @@ class TestAutostartGames(TestCase):
 
     @patch(
         "heltour.tournament.lichessapi.bulk_start_games",
-        side_effect=[
-            ApiClientError('{"tokens": ["blah2"]}'),
-            {
-                "id": "RVAcwgg7",
-                "games": [{"id": "KT837Aut", "black": "player3", "white": "player1"}],
-            },
-        ],
+        side_effect=ApiClientError('{"tokens": ["blah2"]}'),
     )
-    def test_start_invalid_token(self, *args):
+    def test_start_invalid_token_no_retry(self, mock_bulk, *args):
         TeamPlayerPairing.objects.filter(board_number=1).update(black_confirmed=True)
-        # start_games writes to the log, disable that temporarily for nicer test output
         with Shush():
             start_games()
         tpp2 = TeamPlayerPairing.objects.get(board_number=2)
         tpp1 = TeamPlayerPairing.objects.get(board_number=1)
-        # test that the tpp2 game link was not set
+        # No retry — neither game link should be set
         self.assertEqual(tpp2.game_link, "")
-        # test that the ttp1 game was set, that is a bad token pairing was removed and the remaining pairing still used
-        self.assertEqual(tpp1.game_link, "https://lichess.org/KT837Aut")
-        # test that the expiry of the bad token was set to a time in the past
+        self.assertEqual(tpp1.game_link, "")
+        # bulk_start_games called exactly once (no retry)
+        mock_bulk.assert_called_once()
+        # Bad token still expired so it won't be reused
+        tpp2.black.refresh_from_db()
         self.assertTrue(
             tpp2.black.oauth_token.expires < timezone.now() - timedelta(minutes=30)
         )
@@ -787,6 +782,33 @@ class TestIdempotentGameLinkSave(TestCase):
             )
         self.lpp.refresh_from_db()
         self.assertIn("newgame456", self.lpp.game_link)
+
+    @patch("heltour.tournament.tasks._expire_bad_tokens")
+    @patch("heltour.tournament.lichessapi.bulk_start_games")
+    def test_no_retry_on_api_error(self, mock_bulk, mock_expire):
+        error_body = '{"tokens": ["bad_tok_abc"]}'
+        mock_bulk.side_effect = ApiClientError(
+            f"API failure: CLIENT-ERROR: [400] {error_body}"
+        )
+        with Shush():
+            result = _start_league_games(
+                tokens="bad_tok_abc:tok2",
+                clock=600,
+                increment=5,
+                do_clockstart=False,
+                clockstart=0,
+                clockstart_in=0,
+                variant="standard",
+                leaguename="Lone League",
+                league_games=LonePlayerPairing.objects.filter(pk=self.lpp.pk),
+            )
+        self.assertIsNone(result)
+        mock_bulk.assert_called_once()
+        mock_expire.assert_called_once_with(
+            league_games=ANY, bad_token="bad_tok_abc"
+        )
+        self.lpp.refresh_from_db()
+        self.assertEqual(self.lpp.game_link, "")
 
 
 class TestValidateSeasonTokens(TestCase):
