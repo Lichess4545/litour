@@ -110,12 +110,32 @@
                         <div class="dashboard-season-action">
                             <form method="post" style="display: inline;">
                                 {% csrf_token %}
-                                <button type="submit" name="clear_cache" value="1" 
+                                <button type="submit" name="clear_cache" value="1"
                                         class="btn btn-warning"
                                         onclick="return confirm('Are you sure you want to clear all caches? This may temporarily slow down the site.')">
                                     <i class="fa fa-refresh"></i> Clear All Caches
                                 </button>
                             </form>
+                        </div>
+                        <div class="dashboard-season-action">
+                            <form method="post" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" name="validate_tokens" value="1" class="btn btn-default">
+                                    Validate Tokens
+                                </button>
+                            </form>
+                            {% if token_validation_status %}
+                                <span class="dashboard-note">
+                                    Last: {{ token_validation_status.timestamp }}
+                                    {% if token_validation_status.success %}
+                                        — All OK ({{ token_validation_status.total }} players)
+                                    {% else %}
+                                        — {{ token_validation_status.failed|length }} failed
+                                    {% endif %}
+                                </span>
+                            {% else %}
+                                <span class="dashboard-note">Never validated</span>
+                            {% endif %}
                         </div>
                         {% if is_knockout_tournament %}
                             {% if knockout_advancement_info %}

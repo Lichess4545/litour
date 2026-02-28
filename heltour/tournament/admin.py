@@ -2022,6 +2022,7 @@ class RoundAdmin(_BaseAdmin):
         "update_broadcast_round",
         "start_games",
         "start_clocks",
+        "validate_tokens",
         "advance_knockout_tournament_action",
     ]
     league_id_field = "season__league_id"
@@ -2182,7 +2183,28 @@ class RoundAdmin(_BaseAdmin):
             return
         self.message_user(request, "Attempting to start clocks.", messages.INFO)
         signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
-    
+
+    def validate_tokens(self, request, queryset):
+        try:
+            require(
+                len(queryset) == 1,
+                "Can only validate tokens for one round at a time.",
+            )
+            round_ = queryset[0]
+        except PreconditionError as e:
+            self.message_user(request, str(e), messages.ERROR)
+            return
+        signals.do_validate_season_tokens.send(
+            sender=request.user, season_id=round_.season_id
+        )
+        self.message_user(
+            request,
+            "Token validation started. Check the dashboard for results.",
+            messages.INFO,
+        )
+
+    validate_tokens.short_description = "Validate player OAuth tokens"
+
     def advance_knockout_tournament_action(self, request, queryset):
         """Advance knockout tournament to next round based on current round results."""
         if queryset.count() != 1:
