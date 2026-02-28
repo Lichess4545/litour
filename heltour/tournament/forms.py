@@ -413,6 +413,12 @@ class RegistrationForm(forms.ModelForm):
             and self.season.league.registration_mode == RegistrationMode.INVITE_ONLY
         )
 
+        # Auto-approve pre-approved usernames
+        if not should_auto_approve and is_new:
+            should_auto_approve = self.season.is_username_pre_approved(
+                self.player.lichess_username
+            )
+
         if should_auto_approve:
             registration.status = "approved"
         elif is_new:
@@ -453,6 +459,18 @@ class RegistrationForm(forms.ModelForm):
                             # Add player to existing team
                             add_player_to_team(self.player, self.invite_code_obj.team)
                     # For captain codes, we auto-approve but don't create the team yet - they need to complete setup first
+
+            # Handle auto-approval for pre-approved usernames (no invite code)
+            if should_auto_approve and not (
+                hasattr(self, "invite_code_obj") and self.invite_code_obj
+            ):
+                from heltour.tournament.models import SeasonPlayer
+
+                SeasonPlayer.objects.update_or_create(
+                    player=self.player,
+                    season=self.season,
+                    defaults={"registration": registration, "is_active": True},
+                )
 
         registration.player.agreed_to_tos()
         return registration

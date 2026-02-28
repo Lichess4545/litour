@@ -562,6 +562,11 @@ class Season(_BaseModel):
     is_active = models.BooleanField(default=False)
     is_completed = models.BooleanField(default=False)
     registration_open = models.BooleanField(default=False)
+    pre_approved_usernames = models.TextField(
+        blank=True,
+        default="",
+        help_text="Newline-delimited lichess usernames that are auto-approved on registration",
+    )
     nominations_open = models.BooleanField(default=False)
     codes_per_captain_limit = models.PositiveIntegerField(
         default=20, help_text="Maximum number of invite codes each captain can create"
@@ -599,6 +604,16 @@ class Season(_BaseModel):
         self.initial_round_duration = self.round_duration
         self.initial_start_date = self.start_date
         self.initial_is_completed = self.is_completed
+
+    def is_username_pre_approved(self, username):
+        if not self.pre_approved_usernames:
+            return False
+        approved = {
+            name.strip().lower()
+            for name in self.pre_approved_usernames.splitlines()
+            if name.strip()
+        }
+        return username.lower() in approved
 
     def last_season_alternates(self) -> set[Player]:
         start_date = self.start_date or timezone.now()

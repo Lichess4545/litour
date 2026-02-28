@@ -1300,16 +1300,14 @@ def do_notify_slack_link(lichess_username, **kwargs):
 
 @app.task()
 def create_team_channel(team_ids):
-    intro_message = textwrap.dedent(
-        """
+    intro_message = textwrap.dedent("""
             Welcome! This is your private team channel. Feel free to chat, study, discuss strategy, or whatever you like!
             You need to pick a team captain and a team name by {season_start}.
             Once you've chosen (or if you need help with anything), contact one of the moderators using the command `@chesster summon mods` in #general (do not contact them directly.)
 
             Here are some useful links for your team:
             - <{pairings_url}|View your team pairings>
-            - <{calendar_url}|Import your team pairings to your calendar>"""
-    )
+            - <{calendar_url}|Import your team pairings to your calendar>""")
 
     for team in (
         Team.objects.filter(id__in=team_ids).select_related("season__league").nocache()
@@ -1413,6 +1411,7 @@ def pairing_changed(instance, created, **kwargs):
 def _get_or_set_token(
     players: list[Player], tournament: str = "Lichess Tournament Pairings"
 ) -> dict[str, str]:
+    logger.info(f"[STARTING] _get_or_set_token.")
     result = dict()
     players_needing_tokens = list()
     for player in players:
@@ -1421,11 +1420,16 @@ def _get_or_set_token(
         else:
             token = player.get_access_token()
             result[player.lichess_username] = token
+
     if len(players_needing_tokens) > 0:
+        logger.info(f"[DOING] Refreshing {len(players_needing_tokens)} tokens.")
         new_tokens = lichessapi.get_admin_token(
             lichess_usernames=players_needing_tokens, description=tournament
         )
         result.update(new_tokens)
+    else:
+        logger.info(f"[DOING] no refresh needed.")
+
     for player in players:
         if player.lichess_username in players_needing_tokens:
             token = OauthToken(

@@ -4,10 +4,13 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.test.client import RequestFactory
 
+from heltour.tournament.forms import RegistrationForm
 from heltour.tournament.models import (
     AlternatesManagerSetting,
+    League,
     Player,
     PlayerAvailability,
+    Season,
     SeasonPlayer,
     TeamMember,
 )
@@ -110,3 +113,84 @@ class UpdateBoardOrderWorkflowTestCase(TestCase):
         self.ubo.run(alternates_only=False)
         self.assertEqual(TeamMember.objects.get(player=self.players[0]).board_number, 2)
         self.assertEqual(TeamMember.objects.get(player=self.players[1]).board_number, 1)
+
+
+class PreApprovedUsernamesTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.league = League.objects.create(
+            name="Open League",
+            tag="open-league",
+            competitor_type="lone",
+            rating_type="classical",
+            email_required=False,
+            show_provisional_warning=False,
+            ask_availability=False,
+        )
+        cls.season = Season.objects.create(
+            league=cls.league,
+            name="Spring 2025",
+            tag="spring-2025",
+            rounds=5,
+            pre_approved_usernames="Alice\nBob\nCharlie",
+        )
+
+    def test_is_username_pre_approved_match(self):
+        self.assertTrue(self.season.is_username_pre_approved("alice"))
+        self.assertTrue(self.season.is_username_pre_approved("ALICE"))
+        self.assertTrue(self.season.is_username_pre_approved("Alice"))
+
+    def test_is_username_pre_approved_no_match(self):
+        self.assertFalse(self.season.is_username_pre_approved("Dave"))
+
+    def test_is_username_pre_approved_empty(self):
+        season = Season.objects.create(
+            league=self.league,
+            name="Empty Season",
+            tag="empty-season",
+            rounds=3,
+            pre_approved_usernames="",
+        )
+        self.assertFalse(season.is_username_pre_approved("Alice"))
+
+    def test_is_username_pre_approved_whitespace(self):
+        season = Season.objects.create(
+            league=self.league,
+            name="Whitespace Season",
+            tag="ws-season",
+            rounds=3,
+            pre_approved_usernames="  Alice  \n\n  Bob  \n  \n",
+        )
+        self.assertTrue(season.is_username_pre_approved("Alice"))
+        self.assertTrue(season.is_username_pre_approved("Bob"))
+        self.assertFalse(season.is_username_pre_approved(""))
+
+    def _make_form(self, player):
+        form_data = {
+            "agreed_to_tos": True,
+            "agreed_to_rules": True,
+            "can_commit": True,
+        }
+        return RegistrationForm(data=form_data, season=self.season, player=player)
+
+    def test_registration_auto_approved_when_pre_approved(self):
+        player = Player.objects.create(lichess_username="Alice", rating=1500)
+        form = self._make_form(player)
+        self.assertTrue(form.is_valid(), form.errors)
+        with Shush():
+            reg = form.save()
+        self.assertEqual(reg.status, "approved")
+        self.assertTrue(
+            SeasonPlayer.objects.filter(player=player, season=self.season).exists()
+        )
+
+    def test_registration_pending_when_not_pre_approved(self):
+        player = Player.objects.create(lichess_username="Dave", rating=1500)
+        form = self._make_form(player)
+        self.assertTrue(form.is_valid(), form.errors)
+        with Shush():
+            reg = form.save()
+        self.assertEqual(reg.status, "pending")
+        self.assertFalse(
+            SeasonPlayer.objects.filter(player=player, season=self.season).exists()
+        )
