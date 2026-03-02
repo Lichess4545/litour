@@ -6,19 +6,25 @@ from django.utils import timezone
 
 from heltour.tournament.lichessapi import ApiClientError
 from heltour.tournament.models import (
+    Alternate,
     Broadcast,
     BroadcastRound,
     League,
     LeagueChannel,
     LonePlayerPairing,
+    LonePlayerScore,
     OauthToken,
     Player,
+    PlayerBye,
     PlayerPairing,
     Round,
+    Season,
     SeasonPlayer,
     Team,
+    TeamMember,
     TeamPairing,
     TeamPlayerPairing,
+    TeamScore,
 )
 from heltour.tournament.slackapi import NameTaken, SlackError, SlackGroup
 from django.core.cache import cache
@@ -28,6 +34,7 @@ from heltour.tournament.tasks import (
     _create_or_update_broadcast,
     _create_or_update_broadcast_round,
     _create_team_string,
+    _find_closest_rating,
     _start_league_games,
     _start_unscheduled_games,
     active_player_usernames,
@@ -35,6 +42,7 @@ from heltour.tournament.tasks import (
     create_broadcast_round,
     create_team_channel,
     fetch_players_to_update,
+    populate_historical_ratings,
     start_games,
     update_broadcast,
     update_broadcast_round,
@@ -50,6 +58,7 @@ from heltour.tournament.tests.testutils import (
     get_player,
     get_round,
     get_season,
+    set_rating,
 )
 
 
@@ -909,3 +918,349 @@ class TestValidateSeasonTokens(TestCase):
         result = cache.get(f"token_validation_{self.season.pk}")
         self.assertFalse(result["success"])
         self.assertGreater(len(result["failed"]), 0)
+
+
+def _create_fide_league(rating_type="fide_standard"):
+    """Create a FIDE-rated league with a season and rounds."""
+    league = League.objects.create(
+        name="FIDE League",
+        tag="fideleague",
+        competitor_type="lone",
+        rating_type=rating_type,
+    )
+    now = timezone.now()
+    # Season.save() auto-creates rounds via update_or_create, so we just set
+    # start_date and round_duration to get the dates we want.
+    season = Season.objects.create(
+        league=league,
+        name="FIDE Season",
+        tag="fideseason",
+        rounds=3,
+        start_date=now - timedelta(days=21),
+        round_duration=timedelta(days=7),
+    )
+    # Mark first two rounds as completed with pairings published
+    Round.objects.filter(season=season, number__lte=2).update(
+        publish_pairings=True, is_completed=True
+    )
+    Round.objects.filter(season=season, number=3).update(
+        publish_pairings=True, is_completed=False
+    )
+    return league, season
+
+
+def _create_fide_player(username, fide_rating, rating_type="standard"):
+    """Create a player with a FIDE rating profile."""
+    player = Player.objects.create(
+        lichess_username=username,
+        fide_id="12345",
+        fide_profile={rating_type: fide_rating},
+    )
+    # Also set a different Lichess rating so we can detect if the wrong one is used
+    set_rating(player, fide_rating + 500)
+    player.save()
+    return player
+
+
+class TestPopulateHistoricalRatingsFide(TestCase):
+    """Tests that populate_historical_ratings uses FIDE ratings for FIDE-rated leagues."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.league, cls.season = _create_fide_league()
+        cls.r1 = Round.objects.get(season=cls.season, number=1)
+        cls.r2 = Round.objects.get(season=cls.season, number=2)
+        cls.r3 = Round.objects.get(season=cls.season, number=3)
+
+        cls.alice = _create_fide_player("FideAlice", 2100)
+        cls.bob = _create_fide_player("FideBob", 1900)
+
+        cls.sp_alice = SeasonPlayer.objects.create(
+            season=cls.season, player=cls.alice, seed_rating=2100
+        )
+        cls.sp_bob = SeasonPlayer.objects.create(
+            season=cls.season, player=cls.bob, seed_rating=1900
+        )
+        LonePlayerScore.objects.create(season_player=cls.sp_alice)
+        LonePlayerScore.objects.create(season_player=cls.sp_bob)
+
+    def test_pairing_with_game_link_uses_fide_rating(self):
+        """Pairings with game links in FIDE leagues should use FIDE ratings, not Lichess."""
+        pairing = LonePlayerPairing.objects.create(
+            round=self.r1,
+            white=self.alice,
+            black=self.bob,
+            game_link="https://lichess.org/abcd1234",
+            result="1-0",
+            pairing_order=1,
+        )
+        with Shush():
+            populate_historical_ratings()
+        pairing.refresh_from_db()
+        self.assertEqual(pairing.white_rating, 2100)
+        self.assertEqual(pairing.black_rating, 1900)
+
+    def test_pairing_without_game_link_incomplete_round_uses_fide_rating(self):
+        """Pairings without game links in incomplete rounds should use FIDE ratings."""
+        pairing = LonePlayerPairing.objects.create(
+            round=self.r3,  # not completed
+            white=self.alice,
+            black=self.bob,
+            result="1-0",
+            pairing_order=1,
+        )
+        with Shush():
+            populate_historical_ratings()
+        pairing.refresh_from_db()
+        self.assertEqual(pairing.white_rating, 2100)
+        self.assertEqual(pairing.black_rating, 1900)
+
+    @patch("heltour.tournament.lichessapi.get_game_meta")
+    def test_pairing_without_game_link_completed_round_uses_fide_rating(self, mock_api):
+        """Pairings without game links in completed rounds should use FIDE ratings,
+        NOT call the Lichess API."""
+        pairing = LonePlayerPairing.objects.create(
+            round=self.r1,  # completed
+            white=self.alice,
+            black=self.bob,
+            result="1-0",
+            pairing_order=1,
+        )
+        with Shush():
+            populate_historical_ratings()
+        pairing.refresh_from_db()
+        # Should use seed_rating (FIDE) not Lichess API
+        self.assertEqual(pairing.white_rating, 2100)
+        self.assertEqual(pairing.black_rating, 1900)
+        # Lichess API should NOT have been called
+        mock_api.assert_not_called()
+
+    def test_player_bye_uses_fide_rating(self):
+        """PlayerBye ratings should use FIDE ratings for FIDE leagues."""
+        bye = PlayerBye.objects.create(
+            round=self.r3,
+            player=self.alice,
+            type="half-point-bye",
+        )
+        with Shush():
+            populate_historical_ratings()
+        bye.refresh_from_db()
+        self.assertEqual(bye.player_rating, 2100)
+
+    @patch("heltour.tournament.lichessapi.get_game_meta")
+    def test_player_bye_completed_round_uses_fide_rating(self, mock_api):
+        """PlayerBye in completed rounds should use FIDE ratings, not Lichess API."""
+        bye = PlayerBye.objects.create(
+            round=self.r1,  # completed
+            player=self.alice,
+            type="half-point-bye",
+        )
+        with Shush():
+            populate_historical_ratings()
+        bye.refresh_from_db()
+        self.assertEqual(bye.player_rating, 2100)
+        mock_api.assert_not_called()
+
+    @patch("heltour.tournament.lichessapi.get_game_meta")
+    def test_season_player_final_rating_uses_fide_rating(self, mock_api):
+        """SeasonPlayer final_rating should use FIDE ratings for completed FIDE seasons."""
+        self.season.is_completed = True
+        self.season.save()
+        try:
+            with Shush():
+                populate_historical_ratings()
+            self.sp_alice.refresh_from_db()
+            self.sp_bob.refresh_from_db()
+            self.assertEqual(self.sp_alice.final_rating, 2100)
+            self.assertEqual(self.sp_bob.final_rating, 1900)
+            mock_api.assert_not_called()
+        finally:
+            self.season.is_completed = False
+            self.season.save()
+            SeasonPlayer.objects.filter(
+                pk__in=[self.sp_alice.pk, self.sp_bob.pk]
+            ).update(final_rating=None)
+
+
+class TestFindClosestRatingFide(TestCase):
+    """Tests that _find_closest_rating returns FIDE ratings for FIDE leagues."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.league, cls.season = _create_fide_league()
+        cls.r1 = Round.objects.get(season=cls.season, number=1)
+
+        cls.alice = _create_fide_player("FcrAlice", 2100)
+        cls.bob = _create_fide_player("FcrBob", 1900)
+
+        cls.sp_alice = SeasonPlayer.objects.create(
+            season=cls.season, player=cls.alice, seed_rating=2100
+        )
+        cls.sp_bob = SeasonPlayer.objects.create(
+            season=cls.season, player=cls.bob, seed_rating=1900
+        )
+
+    def test_returns_fide_rating_for_fide_league(self):
+        """_find_closest_rating should return the FIDE rating for FIDE leagues."""
+        result = _find_closest_rating(self.alice, self.r1.end_date, self.season)
+        self.assertEqual(result, 2100)
+
+    def test_returns_none_for_none_player(self):
+        """_find_closest_rating should return None for a None player."""
+        result = _find_closest_rating(None, self.r1.end_date, self.season)
+        self.assertIsNone(result)
+
+    @patch("heltour.tournament.lichessapi.get_game_meta")
+    def test_does_not_call_lichess_api(self, mock_api):
+        """_find_closest_rating should never call Lichess API for FIDE leagues."""
+        # Create a pairing with a game link to ensure there's data to tempt the API path
+        LonePlayerPairing.objects.create(
+            round=self.r1,
+            white=self.alice,
+            black=self.bob,
+            game_link="https://lichess.org/fakelink",
+            result="1-0",
+            white_rating=2100,
+            black_rating=1900,
+            pairing_order=1,
+        )
+        result = _find_closest_rating(self.alice, self.r1.end_date, self.season)
+        self.assertEqual(result, 2100)
+        mock_api.assert_not_called()
+
+    def test_returns_default_fide_rating_for_no_profile(self):
+        """Players without FIDE profile should get the default 1400 rating."""
+        player_no_fide = Player.objects.create(
+            lichess_username="FcrNoFide",
+            fide_id="00000",
+            fide_profile={},
+        )
+        SeasonPlayer.objects.create(season=self.season, player=player_no_fide)
+        result = _find_closest_rating(player_no_fide, self.r1.end_date, self.season)
+        # rating_for returns 1400 when FIDE profile doesn't have the key
+        self.assertEqual(result, 1400)
+
+
+class TestFindClosestRatingLichess(TestCase):
+    """Tests that _find_closest_rating still works correctly for Lichess-rated leagues."""
+
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        cls.season = get_season("lone")
+        cls.r1 = get_round(league_type="lone", round_number=1)
+        cls.r1.start_date = timezone.now() - timedelta(days=14)
+        cls.r1.end_date = timezone.now() - timedelta(days=7)
+        cls.r1.is_completed = True
+        cls.r1.save()
+        cls.p1 = get_player("Player1")
+        cls.p2 = get_player("Player2")
+        set_rating(cls.p1, 1500)
+        cls.p1.save()
+        set_rating(cls.p2, 1600)
+        cls.p2.save()
+        SeasonPlayer.objects.filter(
+            season=cls.season, player=cls.p1
+        ).update(seed_rating=1500)
+
+    def test_returns_seed_rating_when_no_pairings(self):
+        """Should return seed_rating when no pairings exist for Lichess league."""
+        result = _find_closest_rating(self.p1, self.r1.end_date, self.season)
+        self.assertEqual(result, 1500)
+
+    def test_returns_current_rating_when_no_seed_or_pairings(self):
+        """Should fall back to current Lichess rating when no seed or pairings."""
+        result = _find_closest_rating(self.p2, self.r1.end_date, self.season)
+        self.assertEqual(result, 1600)
+
+    def test_does_not_short_circuit_for_lichess_league(self):
+        """For non-FIDE leagues, should NOT short-circuit at the FIDE check."""
+        # Verify that with no seed_rating and no pairings, it falls through
+        # to player.rating_for(league) via the normal path, not the FIDE early return
+        SeasonPlayer.objects.filter(
+            season=self.season, player=self.p2
+        ).update(seed_rating=None)
+        result = _find_closest_rating(self.p2, self.r1.end_date, self.season)
+        # Should return the Lichess classical rating (1600), not a FIDE rating
+        self.assertEqual(result, 1600)
+
+
+class TestPopulateHistoricalRatingsFideTeam(TestCase):
+    """Tests that populate_historical_ratings uses FIDE ratings for FIDE-rated team leagues."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.league = League.objects.create(
+            name="FIDE Team League",
+            tag="fideteamleague",
+            competitor_type="team",
+            rating_type="fide_standard",
+        )
+        now = timezone.now()
+        cls.season = Season.objects.create(
+            league=cls.league,
+            name="FIDE Team Season",
+            tag="fideteamseason",
+            rounds=2,
+            boards=2,
+            start_date=now - timedelta(days=14),
+            round_duration=timedelta(days=7),
+        )
+        Round.objects.filter(season=cls.season).update(
+            publish_pairings=True, is_completed=True
+        )
+        cls.r1 = Round.objects.get(season=cls.season, number=1)
+
+        cls.alice = _create_fide_player("FtAlice", 2100)
+        cls.bob = _create_fide_player("FtBob", 1900)
+        cls.charlie = _create_fide_player("FtCharlie", 2000)
+        cls.dave = _create_fide_player("FtDave", 1800)
+
+        team1 = Team.objects.create(season=cls.season, number=1, name="FIDE Team 1")
+        team2 = Team.objects.create(season=cls.season, number=2, name="FIDE Team 2")
+        TeamScore.objects.create(team=team1)
+        TeamScore.objects.create(team=team2)
+
+        cls.tm1 = TeamMember.objects.create(
+            team=team1, player=cls.alice, board_number=1
+        )
+        cls.tm2 = TeamMember.objects.create(
+            team=team1, player=cls.bob, board_number=2
+        )
+        cls.tm3 = TeamMember.objects.create(
+            team=team2, player=cls.charlie, board_number=1
+        )
+        cls.tm4 = TeamMember.objects.create(
+            team=team2, player=cls.dave, board_number=2
+        )
+
+        for p in [cls.alice, cls.bob, cls.charlie, cls.dave]:
+            sp = SeasonPlayer.objects.create(
+                season=cls.season, player=p,
+                seed_rating=p.rating_for(cls.league),
+            )
+
+    @patch("heltour.tournament.lichessapi.get_game_meta")
+    def test_team_member_rating_uses_fide(self, mock_api):
+        """TeamMember ratings should use FIDE ratings when season is completed."""
+        # Reset player_rating to None so populate_historical_ratings will fill it
+        TeamMember.objects.filter(
+            pk__in=[self.tm1.pk, self.tm2.pk, self.tm3.pk, self.tm4.pk]
+        ).update(player_rating=None)
+        self.season.is_completed = True
+        self.season.save()
+        try:
+            with Shush():
+                populate_historical_ratings()
+            self.tm1.refresh_from_db()
+            self.tm2.refresh_from_db()
+            self.tm3.refresh_from_db()
+            self.tm4.refresh_from_db()
+            self.assertEqual(self.tm1.player_rating, 2100)
+            self.assertEqual(self.tm2.player_rating, 1900)
+            self.assertEqual(self.tm3.player_rating, 2000)
+            self.assertEqual(self.tm4.player_rating, 1800)
+            mock_api.assert_not_called()
+        finally:
+            self.season.is_completed = False
+            self.season.save()
