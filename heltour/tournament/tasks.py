@@ -227,6 +227,10 @@ def populate_historical_ratings():
 def _find_closest_rating(player, date, season):
     if player is None:
         return None
+    league = season.league
+    # For FIDE-rated leagues, we cannot get historical ratings from the Lichess API.
+    if league.rating_type.startswith("fide_"):
+        return player.rating_for(league)
     if season.league.competitor_type == "team":
         season_pairings = (
             TeamPlayerPairing.objects.filter(team_pairing__round__season=season)
