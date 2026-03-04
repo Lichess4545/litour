@@ -379,11 +379,12 @@ def structure_to_db(builder: TournamentBuilder, existing_league=None):
                     # Find player by ID
                     player = player_id_to_db.get(match.competitor1_id)
                     if player:
+                        bye_type = _match_to_bye_type(match)
                         # Use get_or_create to avoid duplicates
                         PlayerBye.objects.get_or_create(
                             round=round_obj,
                             player=player,
-                            defaults={"type": "full-point-pairing-bye"},
+                            defaults={"type": bye_type},
                         )
             else:
                 competitors_played.add(match.competitor1_id)
@@ -522,3 +523,18 @@ def _game_result_to_string(result) -> str:
     }
 
     return result_map.get(result, "")
+
+
+def _match_to_bye_type(match) -> str:
+    """Derive the PlayerBye type from a bye Match's effective game points."""
+    if match.bye_game_points is not None:
+        gp = match.bye_game_points
+    else:
+        gp, _ = match.game_points()
+
+    if gp >= 1.0:
+        return "full-point-pairing-bye"
+    elif gp > 0:
+        return "half-point-bye"
+    else:
+        return "zero-point-bye"

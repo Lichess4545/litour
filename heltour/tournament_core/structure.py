@@ -95,6 +95,8 @@ class Match:
     is_bye: bool = False
     games_per_match: int = 1
     manual_tiebreak_value: Optional[float] = None
+    bye_game_points: Optional[float] = None
+    bye_match_points: Optional[int] = None
 
     def _calculate_game_results(
         self, scoring: ScoringSystem = STANDARD_SCORING
@@ -140,6 +142,8 @@ class Match:
     ) -> Tuple[float, float]:
         """Return total (competitor1_game_points, competitor2_game_points)."""
         if self.is_bye:
+            if self.bye_game_points is not None:
+                return (self.bye_game_points, 0.0)
             # In a bye, the player gets the configured fraction of maximum possible points
             max_points = (
                 scoring.game_win_points * len(self.games)
@@ -273,12 +277,17 @@ class Tournament:
                         )
                 else:
                     # Handle bye
+                    bye_mp = (
+                        match.bye_match_points
+                        if match.bye_match_points is not None
+                        else self.scoring.bye_match_points
+                    )
                     results[match.competitor1_id].append(
                         MatchResult(
                             opponent_id=None,
                             game_points=c1_game_pts,
                             opponent_game_points=0,
-                            match_points=self.scoring.bye_match_points,
+                            match_points=bye_mp,
                             games_won=0,
                             is_bye=True,
                         )
@@ -358,6 +367,24 @@ def create_bye_match(competitor_id: int, games_per_match: int = 1) -> Match:
         ]
 
     return Match(competitor_id, -1, games, is_bye=True, games_per_match=games_per_match)
+
+
+def create_scored_bye_match(
+    competitor_id: int, game_points: float, match_points: int
+) -> Match:
+    """Create a bye match with explicit game and match point values.
+
+    Used when bye type is known (e.g. from PlayerBye records) and the default
+    scoring-system-derived values would be incorrect.
+    """
+    return Match(
+        competitor_id,
+        -1,
+        [],
+        is_bye=True,
+        bye_game_points=game_points,
+        bye_match_points=match_points,
+    )
 
 
 def create_team_match(

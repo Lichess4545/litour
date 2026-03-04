@@ -11,6 +11,7 @@ from heltour.tournament_core.structure import (
     Player,
     create_single_game_match,
     create_bye_match,
+    create_scored_bye_match,
     create_team_match,
     create_tournament_from_matches,
 )
@@ -23,6 +24,8 @@ from heltour.tournament_core.tiebreaks import (
     calculate_all_tiebreaks,
 )
 from heltour.tournament_core.scoring import STANDARD_SCORING
+from heltour.tournament_core.builder import TournamentBuilder
+from heltour.tournament_core.assertions import assert_tournament
 
 
 class SimpleTiebreakTests(unittest.TestCase):
@@ -320,9 +323,6 @@ class SimpleTiebreakTests(unittest.TestCase):
 
     def test_team_tournament_forfeit_win_game_points(self):
         """Test that forfeit wins count properly in game points tiebreaker."""
-        from heltour.tournament_core.builder import TournamentBuilder
-        from heltour.tournament_core.assertions import assert_tournament
-
         # Create a team tournament with one round
         builder = TournamentBuilder()
         builder.league("Test League", "TL", "team")
@@ -368,9 +368,6 @@ class SimpleTiebreakTests(unittest.TestCase):
 
     def test_team_tournament_forfeit_win_game_points_team_b(self):
         """Test that forfeit wins count properly in game points tiebreaker."""
-        from heltour.tournament_core.builder import TournamentBuilder
-        from heltour.tournament_core.assertions import assert_tournament
-
         # Create a team tournament with one round
         builder = TournamentBuilder()
         builder.league("Test League", "TL", "team")
@@ -417,9 +414,6 @@ class SimpleTiebreakTests(unittest.TestCase):
 
     def test_royal_knights_ice_warriors_forfeit_issue(self):
         """Test the specific forfeit issue from Royal Knights vs Ice Warriors match."""
-        from heltour.tournament_core.builder import TournamentBuilder
-        from heltour.tournament_core.assertions import assert_tournament
-
         # Create a team tournament with one round
         builder = TournamentBuilder()
         builder.league("Test League", "TL", "team")
@@ -595,6 +589,156 @@ class CalculateAllTiebreaksTests(unittest.TestCase):
         self.assertEqual(tb[1]["games_won"], 1)
         self.assertEqual(tb[2]["games_won"], 1)
         self.assertEqual(tb[3]["games_won"], 0)
+
+
+class ScoredByeBuchholzTests(unittest.TestCase):
+    """Test Buchholz with bye-type-aware scoring (zero/half/full-point byes)."""
+
+    def _build_tournament_with_scored_bye(self, bye_gp, bye_mp):
+        """Build a 4-player, 3-round lone tournament where P4 gets a scored bye in R1.
+
+        R1: P1 beats P2, P3 beats P4-placeholder (but P4 gets a scored bye instead)
+        R2: P1 beats P3, P2 beats P4
+        R3: P2 draws P3, P1 beats P4
+
+        bye_gp / bye_mp control P4's bye in R1.
+        """
+        players = [1, 2, 3, 4]
+        matches_with_rounds = [
+            # Round 1: P1 beats P2, P3 gets normal bye (half-point), P4 gets scored bye
+            (1, create_single_game_match(1, 2, GameResult.P1_WIN)),
+            (1, create_scored_bye_match(3, 0.5, 1)),
+            (1, create_scored_bye_match(4, bye_gp, bye_mp)),
+            # Round 2: P1 draws P3, P2 beats P4
+            (2, create_single_game_match(1, 3, GameResult.DRAW)),
+            (2, create_single_game_match(2, 4, GameResult.P1_WIN)),
+            # Round 3: P2 draws P3, P1 beats P4
+            (3, create_single_game_match(2, 3, GameResult.DRAW)),
+            (3, create_single_game_match(1, 4, GameResult.P1_WIN)),
+        ]
+
+        tournament = create_tournament_from_matches(
+            players, matches_with_rounds, STANDARD_SCORING
+        )
+        return tournament, tournament.calculate_results()
+
+    def test_zero_point_bye_game_points(self):
+        """Zero-point bye gives 0 GP and 0 MP to the player."""
+        _, results = self._build_tournament_with_scored_bye(0.0, 0)
+
+        # P4 scores: bye(0 GP, 0 MP) + loss(0 GP, 0 MP) + loss(0 GP, 0 MP) = 0 GP, 0 MP
+        self.assertEqual(results[4].game_points, 0.0)
+        self.assertEqual(results[4].match_points, 0)
+
+    def test_half_point_bye_game_points(self):
+        """Half-point bye gives 0.5 GP and 1 MP."""
+        _, results = self._build_tournament_with_scored_bye(0.5, 1)
+
+        # P4: bye(0.5 GP, 1 MP) + loss(0, 0) + loss(0, 0) = 0.5 GP, 1 MP
+        self.assertEqual(results[4].game_points, 0.5)
+        self.assertEqual(results[4].match_points, 1)
+
+    def test_full_point_bye_game_points(self):
+        """Full-point bye gives 1.0 GP and 2 MP."""
+        _, results = self._build_tournament_with_scored_bye(1.0, 2)
+
+        # P4: bye(1.0 GP, 2 MP) + loss(0, 0) + loss(0, 0) = 1.0 GP, 2 MP
+        self.assertEqual(results[4].game_points, 1.0)
+        self.assertEqual(results[4].match_points, 2)
+
+    def test_zero_point_bye_buchholz_lower_than_half_point(self):
+        """A zero-point bye should produce lower Buchholz than a half-point bye.
+
+        Buchholz for a bye round uses the player's own score as virtual opponent.
+        Zero-point bye → player has fewer total points → lower virtual opponent → lower Buchholz.
+        """
+        _, results_zero = self._build_tournament_with_scored_bye(0.0, 0)
+        _, results_half = self._build_tournament_with_scored_bye(0.5, 1)
+
+        buchholz_zero = calculate_buchholz(
+            results_zero[4], results_zero, use_game_points=True
+        )
+        buchholz_half = calculate_buchholz(
+            results_half[4], results_half, use_game_points=True
+        )
+
+        self.assertLess(buchholz_zero, buchholz_half)
+
+    def test_zero_point_bye_buchholz_values(self):
+        """Verify exact Buchholz values with a zero-point bye."""
+        _, results = self._build_tournament_with_scored_bye(0.0, 0)
+
+        # Standings with zero-point bye for P4:
+        # P1: Win(R1 vs P2) + Draw(R2 vs P3) + Win(R3 vs P4) = 2+1+2 = 5 MP, 2.5 GP
+        # P2: Loss(R1 vs P1) + Win(R2 vs P4) + Draw(R3 vs P3) = 0+2+1 = 3 MP, 1.5 GP
+        # P3: Bye(R1, 0.5GP/1MP) + Draw(R2 vs P1) + Draw(R3 vs P2) = 1+1+1 = 3 MP, 1.5 GP
+        # P4: Bye(R1, 0GP/0MP) + Loss(R2 vs P2) + Loss(R3 vs P1) = 0+0+0 = 0 MP, 0.0 GP
+        self.assertEqual(results[1].match_points, 5)
+        self.assertAlmostEqual(results[1].game_points, 2.5)
+        self.assertEqual(results[2].match_points, 3)
+        self.assertAlmostEqual(results[2].game_points, 1.5)
+        self.assertEqual(results[3].match_points, 3)
+        self.assertAlmostEqual(results[3].game_points, 1.5)
+        self.assertEqual(results[4].match_points, 0)
+        self.assertAlmostEqual(results[4].game_points, 0.0)
+
+        # Buchholz (use_game_points=True) for P4:
+        # Opponents: bye(own=0.0) + P2(1.5) + P1(2.5) = 4.0
+        buchholz_p4 = calculate_buchholz(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(buchholz_p4, 4.0)
+
+        # Buchholz Cut-1 for P4: sorted [0.0, 1.5, 2.5] → drop 0.0 → 4.0
+        cut1_p4 = calculate_buchholz_cut1(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(cut1_p4, 4.0)
+
+    def test_half_point_bye_buchholz_values(self):
+        """Verify exact Buchholz values with a half-point bye."""
+        _, results = self._build_tournament_with_scored_bye(0.5, 1)
+
+        # P4: bye(0.5GP/1MP) + Loss(R2) + Loss(R3) = 1 MP, 0.5 GP
+        self.assertEqual(results[4].match_points, 1)
+        self.assertAlmostEqual(results[4].game_points, 0.5)
+
+        # Buchholz (use_game_points=True) for P4:
+        # Opponents: bye(own=0.5) + P2(1.5) + P1(2.5) = 4.5
+        buchholz_p4 = calculate_buchholz(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(buchholz_p4, 4.5)
+
+        # Buchholz Cut-1: sorted [0.5, 1.5, 2.5] → drop 0.5 → 4.0
+        cut1_p4 = calculate_buchholz_cut1(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(cut1_p4, 4.0)
+
+    def test_zero_point_bye_buchholz_match_points(self):
+        """Buchholz with use_game_points=False sums opponents' match points."""
+        _, results = self._build_tournament_with_scored_bye(0.0, 0)
+
+        # P4: 0 MP. Opponents: bye(virtual=own MP=0), P2(3 MP), P1(5 MP)
+        buchholz_p4 = calculate_buchholz(results[4], results, use_game_points=False)
+        self.assertEqual(buchholz_p4, 8)
+
+    def test_full_point_bye_buchholz_values(self):
+        """Verify exact Buchholz and Cut-1 with a full-point bye."""
+        _, results = self._build_tournament_with_scored_bye(1.0, 2)
+
+        # P4: bye(1.0 GP, 2 MP) + loss + loss = 1.0 GP, 2 MP
+        self.assertEqual(results[4].match_points, 2)
+        self.assertAlmostEqual(results[4].game_points, 1.0)
+
+        # Buchholz(GP): bye(own=1.0) + P2(1.5) + P1(2.5) = 5.0
+        buchholz_p4 = calculate_buchholz(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(buchholz_p4, 5.0)
+
+        # Buchholz Cut-1(GP): sorted [1.0, 1.5, 2.5] → drop 1.0 → 4.0
+        cut1_p4 = calculate_buchholz_cut1(results[4], results, use_game_points=True)
+        self.assertAlmostEqual(cut1_p4, 4.0)
+
+    def test_scored_bye_sonneborn_berger_unaffected(self):
+        """SB skips byes; P4 lost all non-bye games so SB = 0 regardless of bye type."""
+        _, results_zero = self._build_tournament_with_scored_bye(0.0, 0)
+        _, results_full = self._build_tournament_with_scored_bye(1.0, 2)
+
+        self.assertEqual(calculate_sonneborn_berger(results_zero[4], results_zero), 0)
+        self.assertEqual(calculate_sonneborn_berger(results_full[4], results_full), 0)
 
 
 if __name__ == "__main__":

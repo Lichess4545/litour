@@ -5,18 +5,36 @@ This module provides functions to convert Django ORM models from heltour.tournam
 into the clean tournament_core structure for tiebreak calculations and analysis.
 """
 
+from collections import defaultdict
 from typing import Optional
+
+from heltour.tournament.models import (
+    KnockoutSeeding,
+    LonePlayerPairing,
+    PlayerBye,
+    SeasonPlayer,
+    Team,
+    TeamBye,
+    TeamMultiMatchProgress,
+    TeamPairing,
+)
+from heltour.tournament_core.multi_match import (
+    _find_match_by_pairing_order_and_match_number,
+    _get_current_match_number_from_matches,
+    get_multi_match_stage_status,
+)
+from heltour.tournament_core.scoring import STANDARD_SCORING, ScoringSystem
 from heltour.tournament_core.structure import (
     GameResult,
+    Match,
     Round,
     Tournament,
     TournamentFormat,
-    Match,
-    create_single_game_match,
     create_bye_match,
+    create_scored_bye_match,
+    create_single_game_match,
     create_team_match,
 )
-from heltour.tournament_core.scoring import STANDARD_SCORING, ScoringSystem
 
 
 def calculate_team_pairing_scores(team_pairing):
@@ -139,8 +157,6 @@ def team_tournament_to_structure(season) -> Tournament:
     Returns:
         Tournament object with all rounds, matches, and games
     """
-    from heltour.tournament.models import Team, TeamPairing, TeamBye
-
     # Get all teams in the season
     teams = list(Team.objects.filter(season=season).values_list("id", flat=True))
 
@@ -255,8 +271,6 @@ def lone_tournament_to_structure(season) -> Tournament:
     Returns:
         Tournament object with all rounds, matches, and games
     """
-    from heltour.tournament.models import SeasonPlayer, LonePlayerPairing
-
     # Get all players in the season
     players = list(
         SeasonPlayer.objects.filter(season=season).values_list("player_id", flat=True)
@@ -307,9 +321,21 @@ def lone_tournament_to_structure(season) -> Tournament:
                 players_that_played.add(match.competitor1_id)
                 players_that_played.add(match.competitor2_id)
 
+            byes = {
+                b.player_id: b
+                for b in PlayerBye.objects.filter(round=round_obj)
+            }
+
             for player_id in players:
                 if player_id not in players_that_played:
-                    matches.append(create_bye_match(player_id))
+                    bye = byes.get(player_id)
+                    if bye:
+                        gp = bye.score()  # 0, 0.5, or 1
+                    else:
+                        gp = 0.0  # no pairing, no bye record → 0 pts
+
+                    mp = 2 if gp >= 1.0 else (1 if gp > 0 else 0)
+                    matches.append(create_scored_bye_match(player_id, gp, mp))
 
         if matches:
             knockout_stage = round_obj.knockout_stage if format_type == TournamentFormat.KNOCKOUT else None
@@ -358,8 +384,6 @@ def knockout_bracket_to_structure(knockout_bracket) -> Tournament:
     Returns:
         Tournament object representing the knockout bracket
     """
-    from heltour.tournament.models import KnockoutSeeding
-    
     # Get the season from the bracket
     season = knockout_bracket.season
     
@@ -377,10 +401,7 @@ def knockout_bracket_to_structure(knockout_bracket) -> Tournament:
     
     # Convert using the standard tournament conversion
     tournament = season_to_tournament_structure(season)
-    
-    # Update tournament with knockout bracket specific fields
-    from heltour.tournament_core.structure import Tournament
-    
+
     # Create updated tournament with multi-match fields
     updated_tournament = Tournament(
         competitors=tournament.competitors,
@@ -411,9 +432,8 @@ def multi_match_knockout_to_structure(season) -> Tournament:
     
     # Get base tournament structure
     tournament = season_to_tournament_structure(season)
-    
+
     # Group rounds by knockout_multi_round_group
-    from collections import defaultdict
     round_groups = defaultdict(list)
     
     for round_obj in season.round_set.filter(is_completed=True).order_by("number"):
@@ -452,8 +472,6 @@ def multi_match_knockout_to_structure(season) -> Tournament:
 
 def _aggregate_multi_match_rounds(group_rounds, base_tournament, season):
     """Aggregate multiple rounds with same pairings into single round structure."""
-    from heltour.tournament.models import TeamPairing
-    
     # Use the first round as the base
     base_round = min(group_rounds, key=lambda r: r.number)
     
@@ -534,10 +552,7 @@ def _calculate_current_match_number(rounds, matches_per_stage):
     """
     if not rounds or matches_per_stage <= 1:
         return 1
-        
-    # Use the multi-match module to calculate current match number
-    from heltour.tournament_core.multi_match import _get_current_match_number_from_matches
-    
+
     # Get matches from the most recent round
     latest_round = max(rounds, key=lambda r: r.number)
     if not latest_round.matches:
@@ -567,9 +582,6 @@ def update_multi_match_progress_from_tournament(tournament, bracket):
     Returns:
         Number of progress records created/updated
     """
-    from heltour.tournament.models import TeamMultiMatchProgress, Team
-    from heltour.tournament_core.multi_match import get_multi_match_stage_status
-    
     if tournament.matches_per_stage <= 1:
         return 0  # No multi-match progress to track
     
@@ -594,9 +606,6 @@ def update_multi_match_progress_from_tournament(tournament, bracket):
         
         # Update progress for each team pair
         for original_pairing_order in range(1, total_pairs + 1):
-            # Find the original match for this pairing order
-            from heltour.tournament_core.multi_match import _find_match_by_pairing_order_and_match_number
-            
             original_match = _find_match_by_pairing_order_and_match_number(
                 round_obj.matches, original_pairing_order, 1, total_pairs
             )
