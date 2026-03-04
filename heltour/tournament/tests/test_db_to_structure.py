@@ -9,6 +9,7 @@ from heltour.tournament.models import (
     Round,
     Team,
     Player,
+    PlayerBye,
     SeasonPlayer,
     TeamPairing,
     TeamPlayerPairing,
@@ -93,6 +94,9 @@ class DbToStructureTests(TestCase):
         LonePlayerPairing.objects.create(
             round=round1, white=player1, black=player2, result="1-0", pairing_order=1
         )
+        PlayerBye.objects.create(
+            round=round1, player=player3, type="half-point-bye"
+        )
 
         round2 = Round.objects.create(season=season, number=2, is_completed=True)
         LonePlayerPairing.objects.create(
@@ -101,6 +105,9 @@ class DbToStructureTests(TestCase):
             black=player1,
             result="1/2-1/2",
             pairing_order=1,
+        )
+        PlayerBye.objects.create(
+            round=round2, player=player2, type="half-point-bye"
         )
 
         # Convert to structure
@@ -481,3 +488,54 @@ class DbToStructureTests(TestCase):
             2,
             "Ice Warriors won the match and should have 2 match points",
         )
+
+    def _make_lone_season_with_bye(self, bye_type):
+        """Create a lone season where player2 has a bye of the given type in round 1."""
+        league = League.objects.create(
+            name="Bye Test League",
+            tag="BTL",
+            competitor_type="individual",
+            rating_type="standard",
+        )
+        season = Season.objects.create(league=league, name="Bye Season", rounds=1)
+
+        player1 = Player.objects.create(lichess_username="bye_p1")
+        player2 = Player.objects.create(lichess_username="bye_p2")
+        SeasonPlayer.objects.create(season=season, player=player1)
+        SeasonPlayer.objects.create(season=season, player=player2)
+
+        round1 = Round.objects.create(season=season, number=1, is_completed=True)
+        # player1 gets a normal bye (half-point) so the round has someone
+        PlayerBye.objects.create(round=round1, player=player1, type="half-point-bye")
+
+        if bye_type is not None:
+            PlayerBye.objects.create(round=round1, player=player2, type=bye_type)
+
+        return season, player1, player2
+
+    def test_lone_tournament_zero_point_bye(self):
+        """Zero-point-bye gives 0 GP / 0 MP."""
+        season, _, player2 = self._make_lone_season_with_bye("zero-point-bye")
+        tournament = lone_tournament_to_structure(season)
+        results = tournament.calculate_results()
+
+        self.assertAlmostEqual(results[player2.id].game_points, 0.0)
+        self.assertEqual(results[player2.id].match_points, 0)
+
+    def test_lone_tournament_full_point_bye(self):
+        """Full-point-bye gives 1.0 GP / 2 MP."""
+        season, _, player2 = self._make_lone_season_with_bye("full-point-bye")
+        tournament = lone_tournament_to_structure(season)
+        results = tournament.calculate_results()
+
+        self.assertAlmostEqual(results[player2.id].game_points, 1.0)
+        self.assertEqual(results[player2.id].match_points, 2)
+
+    def test_lone_tournament_no_bye_record(self):
+        """Player with no pairing and no PlayerBye record gets 0 GP / 0 MP."""
+        season, _, player2 = self._make_lone_season_with_bye(None)
+        tournament = lone_tournament_to_structure(season)
+        results = tournament.calculate_results()
+
+        self.assertAlmostEqual(results[player2.id].game_points, 0.0)
+        self.assertEqual(results[player2.id].match_points, 0)
