@@ -3431,11 +3431,7 @@ class RegistrationAdmin(_BaseAdmin):
             return redirect("admin:tournament_registration_changelist")
         count = 0
         for reg in queryset:
-            if (
-                reg.status == "pending"
-                and reg.validation_ok
-                and not reg.validation_warning
-            ):
+            if reg.status == "pending":
                 workflow = ApproveRegistrationWorkflow(reg)
 
                 send_confirm_email = workflow.default_send_confirm_email
