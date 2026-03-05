@@ -34,6 +34,12 @@
                     <img src="{% static 'admin/img/icon-yes.svg' %}" />
                 {% endif %}
             </div>
+            {% if predefined_list_detail %}
+                <div class="form-row">
+                    <label>Predefined list:</label>
+                    {{ predefined_list_detail }}
+                </div>
+            {% endif %}
             {% if perms.tournament.dox %}
                 <div class="form-row">
                     <label>Email:</label>
