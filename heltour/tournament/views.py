@@ -26,6 +26,7 @@ from django.views.generic import View
 from icalendar import Calendar, Event
 
 from heltour.tournament import alternates_manager, lichessapi, oauth, signals, uptime
+from heltour.tournament.trf16_export import season_to_trf16
 from heltour.tournament.forms import (
     ContactForm,
     DeleteNominationForm,
@@ -2830,6 +2831,18 @@ class BroadcastPlayersView(LeagueView):
             'lines': "\n".join(lines),
         }
         return self.render('tournament/broadcast_players.html', context)
+
+
+class TRF16ExportView(LeagueView):
+    def view(self):
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+
+        content = season_to_trf16(self.season)
+        filename = f"{self.league.tag}_{self.season.tag}.trf"
+        response = HttpResponse(content, content_type="text/plain; charset=utf-8")
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 class ContactView(LoginRequiredMixin, LeagueView):

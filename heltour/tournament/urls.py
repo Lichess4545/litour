@@ -87,6 +87,11 @@ season_urlpatterns = [
         staff_member_required(views.BroadcastPlayersView.as_view()),
         name="broadcast_players",
     ),
+    path(
+        "dashboard/export-trf16/",
+        staff_member_required(views.TRF16ExportView.as_view()),
+        name="export_trf16",
+    ),
     path("player/", views.UserDashboardView.as_view(), name="user_dashboard"),
     path(
         "player/<str:username>/",

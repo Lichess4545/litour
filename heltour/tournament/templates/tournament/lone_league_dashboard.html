@@ -113,6 +113,11 @@
                         </div>
                         {% endif %}
                         <div class="dashboard-season-action">
+                            <a href="{% leagueurl 'export_trf16' league.tag season.tag %}" class="btn btn-default">
+                                <i class="fa fa-download"></i> Export TRF16
+                            </a>
+                        </div>
+                        <div class="dashboard-season-action">
                             <form method="post" style="display: inline;">
                                 {% csrf_token %}
                                 <button type="submit" name="clear_cache" value="1"
