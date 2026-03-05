@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import re
 from collections import namedtuple
+from collections.abc import Callable
+from typing import ClassVar
 from datetime import datetime, timedelta
 
 import reversion
@@ -3023,78 +3025,105 @@ class Registration(_BaseModel):
             detail="Not in predefined list",
         )
 
-    def compute_validation(self) -> tuple[ValidationStatus, list[dict]]:
-        season = self.season
-        issues: list[dict] = []
-
-        if season.validate_has_rating and self.rating == 0:
-            issues.append(
+    def _check_has_rating(self) -> list[dict]:
+        if self.rating == 0:
+            return [
                 {
                     "code": "no_rating",
                     "severity": "error",
                     "message": "Player has no rating",
                 }
-            )
-        if season.validate_account_status and self.player.account_status != "normal":
-            issues.append(
+            ]
+        return []
+
+    def _check_account_status(self) -> list[dict]:
+        if self.player.account_status != "normal":
+            return [
                 {
                     "code": "account_not_normal",
                     "severity": "error",
                     "message": f"Account status is {self.player.account_status}",
                 }
-            )
-        if season.validate_predefined_list:
-            check = self.predefined_list_check()
-            if not check.username_match and check.fide_match:
-                issues.append(
-                    {
-                        "code": "fide_id_wrong_player",
-                        "severity": "error",
-                        "message": check.detail,
-                    }
-                )
-            elif check.username_match and not check.fide_match:
-                issues.append(
-                    {
-                        "code": "predefined_fide_mismatch",
-                        "severity": "warning",
-                        "message": check.detail,
-                    }
-                )
-            elif not check.username_match and not check.fide_match:
-                issues.append(
-                    {
-                        "code": "not_in_predefined_list",
-                        "severity": "warning",
-                        "message": check.detail,
-                    }
-                )
-        if season.validate_not_provisional and self.player.provisional_for(
-            league=season.league
-        ):
-            issues.append(
+            ]
+        return []
+
+    def _check_predefined_list(self) -> list[dict]:
+        check = self.predefined_list_check()
+        if not check.username_match and check.fide_match:
+            return [
+                {
+                    "code": "fide_id_wrong_player",
+                    "severity": "error",
+                    "message": check.detail,
+                }
+            ]
+        if check.username_match and not check.fide_match:
+            return [
+                {
+                    "code": "predefined_fide_mismatch",
+                    "severity": "warning",
+                    "message": check.detail,
+                }
+            ]
+        if not check.username_match and not check.fide_match:
+            return [
+                {
+                    "code": "not_in_predefined_list",
+                    "severity": "warning",
+                    "message": check.detail,
+                }
+            ]
+        return []
+
+    def _check_not_provisional(self) -> list[dict]:
+        if self.player.provisional_for(league=self.season.league):
+            return [
                 {
                     "code": "provisional_rating",
                     "severity": "warning",
                     "message": "Player has a provisional rating",
                 }
-            )
-        if season.validate_agreed_to_rules and not self.agreed_to_rules:
-            issues.append(
+            ]
+        return []
+
+    def _check_agreed_to_rules(self) -> list[dict]:
+        if not self.agreed_to_rules:
+            return [
                 {
                     "code": "rules_not_agreed",
                     "severity": "warning",
                     "message": "Player has not agreed to rules",
                 }
-            )
-        if season.validate_agreed_to_tos and not self.agreed_to_tos:
-            issues.append(
+            ]
+        return []
+
+    def _check_agreed_to_tos(self) -> list[dict]:
+        if not self.agreed_to_tos:
+            return [
                 {
                     "code": "tos_not_agreed",
                     "severity": "warning",
                     "message": "Player has not agreed to terms of service",
                 }
-            )
+            ]
+        return []
+
+    VALIDATION_RULES: ClassVar[
+        list[tuple[str, Callable[["Registration"], list[dict]]]]
+    ] = [
+        ("validate_has_rating", _check_has_rating),
+        ("validate_account_status", _check_account_status),
+        ("validate_predefined_list", _check_predefined_list),
+        ("validate_not_provisional", _check_not_provisional),
+        ("validate_agreed_to_rules", _check_agreed_to_rules),
+        ("validate_agreed_to_tos", _check_agreed_to_tos),
+    ]
+
+    def compute_validation(self) -> tuple[ValidationStatus, list[dict]]:
+        issues: list[dict] = []
+        for season_flag, check_fn in self.VALIDATION_RULES:
+            if getattr(self.season, season_flag):
+                issues.extend(check_fn(self))
 
         has_error = any(i["severity"] == "error" for i in issues)
         has_warning = any(i["severity"] == "warning" for i in issues)
