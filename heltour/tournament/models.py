@@ -189,6 +189,12 @@ class RegistrationMode(models.TextChoices):
 
 
 # -------------------------------------------------------------------------------
+class ValidationMode(models.TextChoices):
+    STANDARD = "standard", "Standard"
+    PREDEFINED_LIST = "predefined_list", "Predefined Player List"
+
+
+# -------------------------------------------------------------------------------
 class League(_BaseModel):
     name = models.CharField(max_length=255, unique=True)
     tag = models.SlugField(
@@ -591,6 +597,16 @@ class Season(_BaseModel):
         verbose_name="Welcome Message",
     )
 
+    validation_mode = models.CharField(
+        max_length=32,
+        choices=ValidationMode.choices,
+        default=ValidationMode.STANDARD,
+    )
+    predefined_player_list = models.TextField(
+        blank=True,
+        help_text="One entry per line: lichess_username,fide_id",
+    )
+
     class Meta:
         unique_together = (("league", "name"), ("league", "tag"))
         permissions = (
@@ -605,6 +621,23 @@ class Season(_BaseModel):
         self.initial_round_duration = self.round_duration
         self.initial_start_date = self.start_date
         self.initial_is_completed = self.is_completed
+
+    def parse_predefined_player_list(self) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for line in self.predefined_player_list.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(",", 1)
+            if len(parts) == 2:
+                username = parts[0].strip().lower()
+                fide_id = parts[1].strip()
+                if username and fide_id:
+                    result[username] = fide_id
+        return result
+
+    def predefined_fide_to_username(self) -> dict[str, str]:
+        return {fide: user for user, fide in self.parse_predefined_player_list().items()}
 
     def last_season_alternates(self) -> set[Player]:
         start_date = self.start_date or timezone.now()
@@ -2938,13 +2971,60 @@ class Registration(_BaseModel):
     def rating(self):
         return self.player.rating_for(league=self.season.league)
 
+    PredefinedListResult = namedtuple(
+        "PredefinedListResult", ["username_match", "fide_match", "detail"]
+    )
+
+    def predefined_list_check(self) -> PredefinedListResult:
+        player_map = self.season.parse_predefined_player_list()
+        fide_map = self.season.predefined_fide_to_username()
+        username = self.lichess_username.lower()
+        fide_id = self.fide_id.strip()
+        username_match = username in player_map
+
+        if username_match:
+            fide_match = fide_id != "" and fide_id == player_map[username]
+            if fide_match:
+                return self.PredefinedListResult(
+                    username_match=True,
+                    fide_match=True,
+                    detail="Player matches predefined list",
+                )
+            return self.PredefinedListResult(
+                username_match=True,
+                fide_match=False,
+                detail="Known player, FIDE ID does not match list",
+            )
+
+        fide_in_list = fide_id != "" and fide_id in fide_map
+        if fide_in_list:
+            owner = fide_map[fide_id]
+            return self.PredefinedListResult(
+                username_match=False,
+                fide_match=True,
+                detail=f"FIDE ID {fide_id} belongs to {owner} in predefined list",
+            )
+        return self.PredefinedListResult(
+            username_match=False,
+            fide_match=False,
+            detail="Not in predefined list",
+        )
+
     @property
     def validation_ok(self):
+        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
+            check = self.predefined_list_check()
+            return not (not check.username_match and check.fide_match)
         # a rating of 0 means there were problems retrieving the rating
         return self.rating != 0 and self.player.account_status == "normal"
 
     @property
     def validation_warning(self):
+        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
+            check = self.predefined_list_check()
+            return (check.username_match and not check.fide_match) or (
+                not check.username_match and not check.fide_match
+            )
         return (
             self.player.provisional_for(league=self.season.league)
             or not self.agreed_to_rules
