@@ -83,6 +83,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_both_match(self):
         reg = _create_reg(self.season, "player1", fide_id="12345")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertFalse(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -91,6 +92,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_username_match_fide_mismatch(self):
         reg = _create_reg(self.season, "player1", fide_id="99999")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertTrue(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -100,6 +102,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_fide_match_username_mismatch(self):
         reg = _create_reg(self.season, "unknown_player", fide_id="12345")
+        reg.refresh_validation()
         self.assertFalse(reg.validation_ok)
         self.assertFalse(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -109,6 +112,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_neither_match(self):
         reg = _create_reg(self.season, "unknown_player", fide_id="99999")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertTrue(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -123,5 +127,6 @@ class PredefinedListValidationTest(TestCase):
             tag_prefix="std",
         )
         reg = _create_reg(season, "stdplayer", fide_id="99999")
+        reg.refresh_validation()
         # Standard defaults: validate_has_rating=True, rating=0 → validation_ok=False
         self.assertFalse(reg.validation_ok)

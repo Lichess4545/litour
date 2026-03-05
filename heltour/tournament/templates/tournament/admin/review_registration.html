@@ -26,9 +26,9 @@
                 <a href="{% leagueurl 'player_profile' original.season.league.tag original.season.tag original.player.lichess_username %}">
                     {{ original.player.lichess_username }}
                 </a>
-                {% if not original.validation_ok %}
+                {% if original.validation_status == "error" %}
                     <img src="{% static 'admin/img/icon-no.svg' %}" />
-                {% elif original.validation_warning %}
+                {% elif original.validation_status == "warning" %}
                     <img src="{% static 'admin/img/icon-alert.svg' %}" />
                 {% else %}
                     <img src="{% static 'admin/img/icon-yes.svg' %}" />
