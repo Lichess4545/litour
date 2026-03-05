@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import re
 from collections import namedtuple
+from collections.abc import Callable
+from typing import ClassVar
 from datetime import datetime, timedelta
 
 import reversion
@@ -189,9 +191,10 @@ class RegistrationMode(models.TextChoices):
 
 
 # -------------------------------------------------------------------------------
-class ValidationMode(models.TextChoices):
-    STANDARD = "standard", "Standard"
-    PREDEFINED_LIST = "predefined_list", "Predefined Player List"
+class ValidationStatus(models.TextChoices):
+    OK = "ok", "OK"
+    WARNING = "warning", "Warning"
+    ERROR = "error", "Error"
 
 
 # -------------------------------------------------------------------------------
@@ -597,15 +600,17 @@ class Season(_BaseModel):
         verbose_name="Welcome Message",
     )
 
-    validation_mode = models.CharField(
-        max_length=32,
-        choices=ValidationMode.choices,
-        default=ValidationMode.STANDARD,
-    )
     predefined_player_list = models.TextField(
         blank=True,
         help_text="One entry per line: lichess_username,fide_id",
     )
+
+    validate_account_status = models.BooleanField(default=True)
+    validate_has_rating = models.BooleanField(default=True)
+    validate_not_provisional = models.BooleanField(default=True)
+    validate_agreed_to_rules = models.BooleanField(default=True)
+    validate_agreed_to_tos = models.BooleanField(default=True)
+    validate_predefined_list = models.BooleanField(default=False)
 
     class Meta:
         unique_together = (("league", "name"), ("league", "tag"))
@@ -637,7 +642,9 @@ class Season(_BaseModel):
         return result
 
     def predefined_fide_to_username(self) -> dict[str, str]:
-        return {fide: user for user, fide in self.parse_predefined_player_list().items()}
+        return {
+            fide: user for user, fide in self.parse_predefined_player_list().items()
+        }
 
     def last_season_alternates(self) -> set[Player]:
         start_date = self.start_date or timezone.now()
@@ -2919,6 +2926,14 @@ class Registration(_BaseModel):
         related_name="registrations",
     )
 
+    validation_status = models.CharField(
+        max_length=10,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.OK,
+        db_index=True,
+    )
+    validation_issues = models.JSONField(default=list, blank=True)
+
     # Additional registration information
     fide_id = models.CharField(max_length=20, blank=True, verbose_name="FIDE ID")
     regional_rating = models.CharField(
@@ -3010,26 +3025,127 @@ class Registration(_BaseModel):
             detail="Not in predefined list",
         )
 
-    @property
-    def validation_ok(self):
-        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
-            check = self.predefined_list_check()
-            return not (not check.username_match and check.fide_match)
-        # a rating of 0 means there were problems retrieving the rating
-        return self.rating != 0 and self.player.account_status == "normal"
+    def _check_has_rating(self) -> list[dict]:
+        if self.rating == 0:
+            return [
+                {
+                    "code": "no_rating",
+                    "severity": "error",
+                    "message": "Player has no rating",
+                }
+            ]
+        return []
+
+    def _check_account_status(self) -> list[dict]:
+        if self.player.account_status != "normal":
+            return [
+                {
+                    "code": "account_not_normal",
+                    "severity": "error",
+                    "message": f"Account status is {self.player.account_status}",
+                }
+            ]
+        return []
+
+    def _check_predefined_list(self) -> list[dict]:
+        check = self.predefined_list_check()
+        if not check.username_match and check.fide_match:
+            return [
+                {
+                    "code": "fide_id_wrong_player",
+                    "severity": "error",
+                    "message": check.detail,
+                }
+            ]
+        if check.username_match and not check.fide_match:
+            return [
+                {
+                    "code": "predefined_fide_mismatch",
+                    "severity": "warning",
+                    "message": check.detail,
+                }
+            ]
+        if not check.username_match and not check.fide_match:
+            return [
+                {
+                    "code": "not_in_predefined_list",
+                    "severity": "warning",
+                    "message": check.detail,
+                }
+            ]
+        return []
+
+    def _check_not_provisional(self) -> list[dict]:
+        if self.player.provisional_for(league=self.season.league):
+            return [
+                {
+                    "code": "provisional_rating",
+                    "severity": "warning",
+                    "message": "Player has a provisional rating",
+                }
+            ]
+        return []
+
+    def _check_agreed_to_rules(self) -> list[dict]:
+        if not self.agreed_to_rules:
+            return [
+                {
+                    "code": "rules_not_agreed",
+                    "severity": "warning",
+                    "message": "Player has not agreed to rules",
+                }
+            ]
+        return []
+
+    def _check_agreed_to_tos(self) -> list[dict]:
+        if not self.agreed_to_tos:
+            return [
+                {
+                    "code": "tos_not_agreed",
+                    "severity": "warning",
+                    "message": "Player has not agreed to terms of service",
+                }
+            ]
+        return []
+
+    VALIDATION_RULES: ClassVar[
+        list[tuple[str, Callable[["Registration"], list[dict]]]]
+    ] = [
+        ("validate_has_rating", _check_has_rating),
+        ("validate_account_status", _check_account_status),
+        ("validate_predefined_list", _check_predefined_list),
+        ("validate_not_provisional", _check_not_provisional),
+        ("validate_agreed_to_rules", _check_agreed_to_rules),
+        ("validate_agreed_to_tos", _check_agreed_to_tos),
+    ]
+
+    def compute_validation(self) -> tuple[ValidationStatus, list[dict]]:
+        issues: list[dict] = []
+        for season_flag, check_fn in self.VALIDATION_RULES:
+            if getattr(self.season, season_flag):
+                issues.extend(check_fn(self))
+
+        has_error = any(i["severity"] == "error" for i in issues)
+        has_warning = any(i["severity"] == "warning" for i in issues)
+        if has_error:
+            status = ValidationStatus.ERROR
+        elif has_warning:
+            status = ValidationStatus.WARNING
+        else:
+            status = ValidationStatus.OK
+        return status, issues
+
+    def refresh_validation(self) -> None:
+        self.validation_status, self.validation_issues = self.compute_validation()
+        self.save(update_fields=["validation_status", "validation_issues"])
 
     @property
-    def validation_warning(self):
-        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
-            check = self.predefined_list_check()
-            return (check.username_match and not check.fide_match) or (
-                not check.username_match and not check.fide_match
-            )
-        return (
-            self.player.provisional_for(league=self.season.league)
-            or not self.agreed_to_rules
-            or not self.agreed_to_tos
-        )
+    def validation_ok(self) -> bool:
+        return self.validation_status != ValidationStatus.ERROR
+
+    @property
+    def validation_warning(self) -> bool:
+        return self.validation_status == ValidationStatus.WARNING
 
     @classmethod
     def can_register(cls, user, season):

@@ -5,29 +5,24 @@ from heltour.tournament.models import (
     Player,
     Registration,
     Season,
-    ValidationMode,
 )
 
 
-def _create_season(
-    validation_mode=ValidationMode.STANDARD,
-    predefined_player_list="",
-    tag_prefix="test",
-):
+def _create_season(tag_prefix="test", **overrides):
     league = League.objects.create(
         name=f"{tag_prefix} League",
         tag=f"{tag_prefix}league",
         competitor_type="lone",
         rating_type="classical",
     )
-    return Season.objects.create(
+    defaults = dict(
         league=league,
         name=f"{tag_prefix} Season",
         tag=f"{tag_prefix}season",
         rounds=3,
-        validation_mode=validation_mode,
-        predefined_player_list=predefined_player_list,
     )
+    defaults.update(overrides)
+    return Season.objects.create(**defaults)
 
 
 def _create_reg(season, username, fide_id=""):
@@ -77,12 +72,18 @@ class PredefinedListParsingTest(TestCase):
 class PredefinedListValidationTest(TestCase):
     def setUp(self):
         self.season = _create_season(
-            validation_mode=ValidationMode.PREDEFINED_LIST,
+            validate_predefined_list=True,
+            validate_has_rating=False,
+            validate_account_status=False,
+            validate_not_provisional=False,
+            validate_agreed_to_rules=False,
+            validate_agreed_to_tos=False,
             predefined_player_list="player1,12345\nplayer2,67890",
         )
 
     def test_both_match(self):
         reg = _create_reg(self.season, "player1", fide_id="12345")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertFalse(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -91,6 +92,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_username_match_fide_mismatch(self):
         reg = _create_reg(self.season, "player1", fide_id="99999")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertTrue(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -100,6 +102,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_fide_match_username_mismatch(self):
         reg = _create_reg(self.season, "unknown_player", fide_id="12345")
+        reg.refresh_validation()
         self.assertFalse(reg.validation_ok)
         self.assertFalse(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -109,6 +112,7 @@ class PredefinedListValidationTest(TestCase):
 
     def test_neither_match(self):
         reg = _create_reg(self.season, "unknown_player", fide_id="99999")
+        reg.refresh_validation()
         self.assertTrue(reg.validation_ok)
         self.assertTrue(reg.validation_warning)
         check = reg.predefined_list_check()
@@ -118,11 +122,11 @@ class PredefinedListValidationTest(TestCase):
 
     def test_standard_mode_unchanged(self):
         season = _create_season(
-            validation_mode=ValidationMode.STANDARD,
+            validate_predefined_list=False,
             predefined_player_list="player1,12345",
             tag_prefix="std",
         )
         reg = _create_reg(season, "stdplayer", fide_id="99999")
-        # Standard mode: validation_ok depends on rating and account status
-        # Player has no profile so rating=0 → validation_ok=False
+        reg.refresh_validation()
+        # Standard defaults: validate_has_rating=True, rating=0 → validation_ok=False
         self.assertFalse(reg.validation_ok)

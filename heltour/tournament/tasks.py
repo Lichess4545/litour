@@ -597,7 +597,9 @@ def _init_start_league_games(
     clock = league.time_control_initial()
     increment = league.time_control_increment()
     variant = league.rating_type
-    if variant in ["classical", "rapid", "blitz", "bullet"] or variant.startswith("fide_"):
+    if variant in ["classical", "rapid", "blitz", "bullet"] or variant.startswith(
+        "fide_"
+    ):
         variant = "standard"
     do_clockstart = league.get_leaguesetting().start_clocks
     clockstart_in = league.get_leaguesetting().start_clock_time
@@ -972,9 +974,7 @@ def _start_unscheduled_games_inner(round_id: int) -> None:
             logger.info("[FINISHED] No games to start.")
             return
         playerpks = [
-            pk
-            for game in games_to_start
-            for pk in (game.white_id, game.black_id)
+            pk for game in games_to_start for pk in (game.white_id, game.black_id)
         ]
         playerslist = list(Player.objects.filter(pk__in=playerpks))
         token_dict = _get_or_set_token(
@@ -1032,9 +1032,7 @@ def validate_season_tokens(season_id: int) -> None:
         return
     players = _unique_players_from_pairings(pairings)
     tokens_by_username = {
-        p.lichess_username: p.get_access_token()
-        for p in players
-        if p.token_valid()
+        p.lichess_username: p.get_access_token() for p in players if p.token_valid()
     }
     missing_token_players = [p for p in players if not p.token_valid()]
     invalid_usernames: list[str] = []
@@ -1045,7 +1043,9 @@ def validate_season_tokens(season_id: int) -> None:
         for token, username in token_to_username.items():
             if token not in valid_map:
                 invalid_usernames.append(username)
-    needs_refresh = [p.lichess_username for p in missing_token_players] + invalid_usernames
+    needs_refresh = [
+        p.lichess_username for p in missing_token_players
+    ] + invalid_usernames
     refreshed: list[str] = []
     failed: list[str] = []
     if needs_refresh:
@@ -1064,16 +1064,14 @@ def validate_season_tokens(season_id: int) -> None:
                         scope="challenge:write",
                     )
                     token_obj.save()
-                    Player.objects.filter(
-                        lichess_username=username
-                    ).update(oauth_token=token_obj)
+                    Player.objects.filter(lichess_username=username).update(
+                        oauth_token=token_obj
+                    )
                     refreshed.append(username)
                 else:
                     failed.append(username)
         except (lichessapi.ApiWorkerError, lichessapi.ApiClientError):
-            logger.exception(
-                f"[ERROR] Failed to refresh tokens for season {season_id}"
-            )
+            logger.exception(f"[ERROR] Failed to refresh tokens for season {season_id}")
             failed = needs_refresh
     success = len(failed) == 0
     _store_token_validation_result(
@@ -1362,6 +1360,9 @@ def do_validate_registration(regs: QuerySet[Registration], **kwargs) -> None:
         usernames=list(regs.values_list("player__lichess_username", flat=True))
     )
     _fetch_fide_profiles_for_registrations(regs)
+    for reg in regs.select_related("season__league", "player"):
+        reg.refresh_from_db()
+        reg.refresh_validation()
 
 
 def _fetch_fide_profiles_for_registrations(regs: QuerySet[Registration]) -> None:
@@ -1383,12 +1384,16 @@ def _fetch_fide_profiles_for_registrations(regs: QuerySet[Registration]) -> None
 @app.task()
 def validate_pending_registrations():
     recently_checked = timezone.now() - timedelta(hours=24)
-    regs = Registration.objects.filter(
-        season__registration_open=True,
-        status__exact="pending",
-    ).exclude(
-        player__date_modified__gt=recently_checked,
-    ).order_by("player__date_modified")[:5]
+    regs = (
+        Registration.objects.filter(
+            season__registration_open=True,
+            status__exact="pending",
+        )
+        .exclude(
+            player__date_modified__gt=recently_checked,
+        )
+        .order_by("player__date_modified")[:5]
+    )
     if regs:
         reg = random.choice(list(regs))
         signals.do_validate_registration.send(
