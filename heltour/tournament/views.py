@@ -2804,6 +2804,34 @@ class GameIdsView(LeagueView):
         return self.render('tournament/game_ids.html', context)
 
 
+class BroadcastPlayersView(LeagueView):
+    def view(self):
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise Http404()
+
+        season_players = SeasonPlayer.objects.filter(
+            season=self.season, is_active=True
+        ).select_related('player').order_by('player__lichess_username')
+
+        lines = []
+        for sp in season_players:
+            player = sp.player
+            if not player.fide_id:
+                continue
+            profile = player.fide_profile or {}
+            title = profile.get("title", "")
+            rating = profile.get(player._fide_rating_key(self.league), "")
+            name = profile.get("name", "")
+            lines.append(
+                f"{player.lichess_username} / {player.fide_id} / {title} / {rating} / {name}"
+            )
+
+        context = {
+            'lines': "\n".join(lines),
+        }
+        return self.render('tournament/broadcast_players.html', context)
+
+
 class ContactView(LoginRequiredMixin, LeagueView):
     def view(self, post=False):
         leagues = [self.league] + list(
