@@ -102,7 +102,6 @@ from heltour.tournament.models import (
     TeamPairing,
     TeamPlayerPairing,
     TeamScore,
-    ValidationMode,
     find,
     get_gameid_from_gamelink,
     getnestedattr,
@@ -3494,7 +3493,7 @@ class RegistrationAdmin(_BaseAdmin):
         is_team = reg.season.league.competitor_type == "team"
 
         predefined_list_detail = None
-        if reg.season.validation_mode == ValidationMode.PREDEFINED_LIST:
+        if reg.season.validate_predefined_list:
             predefined_list_detail = reg.predefined_list_check().detail
 
         context = {

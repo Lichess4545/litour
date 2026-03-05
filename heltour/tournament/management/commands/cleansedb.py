@@ -37,8 +37,6 @@ class Command(BaseCommand):
         for r in Registration.objects.all():
             r.email = "email-{}@example.com".format(r.id)
             r.status = 'approved'
-            r.validation_ok = True
-            r.validation_warning = False
             r.friends = ''
             r.avoid = ''
             r.save()

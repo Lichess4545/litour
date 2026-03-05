@@ -189,12 +189,6 @@ class RegistrationMode(models.TextChoices):
 
 
 # -------------------------------------------------------------------------------
-class ValidationMode(models.TextChoices):
-    STANDARD = "standard", "Standard"
-    PREDEFINED_LIST = "predefined_list", "Predefined Player List"
-
-
-# -------------------------------------------------------------------------------
 class League(_BaseModel):
     name = models.CharField(max_length=255, unique=True)
     tag = models.SlugField(
@@ -597,15 +591,17 @@ class Season(_BaseModel):
         verbose_name="Welcome Message",
     )
 
-    validation_mode = models.CharField(
-        max_length=32,
-        choices=ValidationMode.choices,
-        default=ValidationMode.STANDARD,
-    )
     predefined_player_list = models.TextField(
         blank=True,
         help_text="One entry per line: lichess_username,fide_id",
     )
+
+    validate_account_status = models.BooleanField(default=True)
+    validate_has_rating = models.BooleanField(default=True)
+    validate_not_provisional = models.BooleanField(default=True)
+    validate_agreed_to_rules = models.BooleanField(default=True)
+    validate_agreed_to_tos = models.BooleanField(default=True)
+    validate_predefined_list = models.BooleanField(default=False)
 
     class Meta:
         unique_together = (("league", "name"), ("league", "tag"))
@@ -3011,25 +3007,35 @@ class Registration(_BaseModel):
         )
 
     @property
-    def validation_ok(self):
-        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
+    def validation_ok(self) -> bool:
+        season = self.season
+        checks: list[bool] = []
+        if season.validate_has_rating:
+            checks.append(self.rating != 0)
+        if season.validate_account_status:
+            checks.append(self.player.account_status == "normal")
+        if season.validate_predefined_list:
             check = self.predefined_list_check()
-            return not (not check.username_match and check.fide_match)
-        # a rating of 0 means there were problems retrieving the rating
-        return self.rating != 0 and self.player.account_status == "normal"
+            checks.append(not (not check.username_match and check.fide_match))
+        return all(checks)
 
     @property
-    def validation_warning(self):
-        if self.season.validation_mode == ValidationMode.PREDEFINED_LIST:
+    def validation_warning(self) -> bool:
+        season = self.season
+        warnings: list[bool] = []
+        if season.validate_not_provisional:
+            warnings.append(self.player.provisional_for(league=season.league))
+        if season.validate_agreed_to_rules:
+            warnings.append(not self.agreed_to_rules)
+        if season.validate_agreed_to_tos:
+            warnings.append(not self.agreed_to_tos)
+        if season.validate_predefined_list:
             check = self.predefined_list_check()
-            return (check.username_match and not check.fide_match) or (
-                not check.username_match and not check.fide_match
+            warnings.append(
+                (check.username_match and not check.fide_match)
+                or (not check.username_match and not check.fide_match)
             )
-        return (
-            self.player.provisional_for(league=self.season.league)
-            or not self.agreed_to_rules
-            or not self.agreed_to_tos
-        )
+        return any(warnings)
 
     @classmethod
     def can_register(cls, user, season):
