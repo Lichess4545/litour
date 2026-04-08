@@ -22,6 +22,7 @@ from heltour.tournament.models import (
     LoginToken,
     OauthToken,
     Player,
+    SuperuserInvite,
     create_api_token,
     logger,
 )
@@ -46,11 +47,11 @@ def default_headers():
     }
 
 
-def redirect_for_authorization(request, league_tag, secret_token):
+def redirect_for_authorization(request, league_tag, secret_token, admin_code=None):
     # Redirect to lichess's OAuth2 consent screen
     # We don't care if anyone else initiates a request, so we can use the state variable to store
     # the league tag so we can redirect properly
-    state = {"league": league_tag, "token": secret_token}
+    state = {"league": league_tag, "token": secret_token, "admin": admin_code}
     request.session["oauth_code_verifier"] = get_random_string(64)
     auth = (
         f"{settings.LICHESS_OAUTH_AUTHORIZE_URL}"
@@ -111,6 +112,22 @@ def login_with_code(request, code, encoded_state):
         if token and not token.is_expired() and token.slack_user_id:
             Player.link_slack_account(username, token.slack_user_id)
             request.session["slack_linked"] = True
+
+    # Superuser invite?
+    admin_code = state.get("admin")
+    if admin_code:
+        invite = SuperuserInvite.objects.filter(
+            code=admin_code,
+            username__iexact=_normalize_username(username),
+            used_at__isnull=True,
+        ).first()
+        if invite:
+            user.is_staff = True
+            user.is_superuser = True
+            user.save()
+            invite.used_at = timezone.now()
+            invite.save()
+            return redirect("/admin/")
 
     # Success. Now redirect
     redir_url = request.session.get("login_redirect")

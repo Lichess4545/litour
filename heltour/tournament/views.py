@@ -3898,7 +3898,8 @@ class NotificationsView(LoginRequiredMixin, SeasonView):
 
 class SiteLoginView(View):
     def get(self, request, *args, **kwargs):
-        return oauth.redirect_for_authorization(request, None, None)
+        admin_code = request.GET.get("admin")
+        return oauth.redirect_for_authorization(request, None, None, admin_code=admin_code)
 
 
 class LoginView(LeagueView):

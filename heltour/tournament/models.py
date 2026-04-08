@@ -4666,3 +4666,21 @@ class TeamMultiMatchProgress(_BaseModel):
 
     def __str__(self):
         return f"{self.team.name} vs {self.opponent_team.name} ({self.stage_name}): {self.matches_completed}/{self.total_matches_required}"
+
+
+class SuperuserInvite(models.Model):
+    username = models.CharField(max_length=255)
+    code = models.CharField(max_length=64, unique=True, default=lambda: get_random_string(32))
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        status = "used" if self.used_at else "pending"
+        return f"{self.username} ({status})"
+
+    @property
+    def is_used(self):
+        return self.used_at is not None

@@ -96,6 +96,7 @@ from heltour.tournament.models import (
     SeasonPrize,
     SeasonPrizeWinner,
     Section,
+    SuperuserInvite,
     SectionGroup,
     Team,
     TeamBye,
@@ -4931,3 +4932,15 @@ class TeamMultiMatchProgressAdmin(admin.ModelAdmin):
             )
 
     current_match_status.short_description = "Status"
+
+
+@admin.register(SuperuserInvite)
+class SuperuserInviteAdmin(admin.ModelAdmin):
+    list_display = ("username", "code", "created_at", "used_at")
+    readonly_fields = ("code", "created_at", "used_at")
+    fields = ("username",)
+
+    def get_fields(self, request, obj=None):
+        if obj:
+            return ("username", "code", "created_at", "used_at")
+        return ("username",)
