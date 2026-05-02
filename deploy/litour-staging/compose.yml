@@ -42,6 +42,20 @@ services:
       update_config:
         order: start-first
 
+  api:
+    image: ghcr.io/lichess4545/litour-api:latest
+    env_file: "stack.env"
+    environment:
+      LICHESS_API_TOKEN_FILE: /run/secrets/litour_staging_lichess_api_token
+      HELTOUR_ENV: stage
+    secrets:
+      - litour_staging_lichess_api_token
+    networks:
+      - litour
+    deploy:
+      update_config:
+        order: start-first
+
   celery:
     image: ghcr.io/lichess4545/litour-celery:latest
     env_file: "stack.env"

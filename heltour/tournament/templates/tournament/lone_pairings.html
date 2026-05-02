@@ -11,6 +11,14 @@
                 location.reload();
             }, sleepBuffer);
         }, refreshInterval - sleepBuffer);
+        $(function () {
+            $('.presence-log-trigger[data-toggle="popover"]').popover({
+                container: 'body',
+                trigger: 'hover focus',
+                html: true,
+                placement: 'top'
+            });
+        });
     </script>
 {% endblock %}
 {% block content %}
@@ -115,6 +123,7 @@
                                                         <img src="{% static 'tournament/img/icon-'|add:white_img|add:'.svg' %}"
                                                              title="{{ white_status }}" />
                                                     {% endif %}
+                                                    {% if can_view_presence_log %}{% presence_log_trigger presence_events_map pairing pairing.white %}{% endif %}
                                                 </div>
                                             {% endif %}
                                         </td>
@@ -152,6 +161,7 @@
                                                         <img src="{% static 'tournament/img/icon-'|add:black_img|add:'.svg' %}"
                                                              title="{{ black_status }}" />
                                                     {% endif %}
+                                                    {% if can_view_presence_log %}{% presence_log_trigger presence_events_map pairing pairing.black %}{% endif %}
                                                 </div>
                                             {% endif %}
                                         </td>

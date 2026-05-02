@@ -54,6 +54,53 @@ def runapiworker(c):
         c.run(f"python {manage_py} runserver 0.0.0.0:8880")
 
 
+@task
+def runapi(c):
+    """Run the new FastAPI service (heltour.api) on port 8001."""
+    # Bind to :: so both IPv4 (via mapped) and IPv6 work — Firefox prefers ::1
+    # for `localhost` and silently fails with NS_ERROR_CONNECT_REFUSED if we
+    # only bind 0.0.0.0.
+    c.run(
+        "uvicorn heltour.api.main:app --reload --host :: --port 8001",
+        pty=True,
+    )
+
+
+@task
+def openapi(c):
+    """Export the FastAPI OpenAPI schema to ./openapi.json."""
+    script = project_relative("scripts/export_openapi.py")
+    c.run(f"python {script} > openapi.json")
+
+
+@task
+def fuzz(c, base_url="http://localhost:8001"):
+    """Run Schemathesis against a running API service."""
+    c.run(
+        f"schemathesis run --experimental=openapi-3.1 "
+        f"--base-url={base_url} openapi.json",
+        pty=True,
+    )
+
+
+@task(help={"skip_install": "Skip 'npm install' (use existing node_modules)."})
+def build_api_client(c, skip_install=False):
+    """Generate the OpenAPI schema, bundle the TS API client, copy into static."""
+    openapi(c)
+    ts_dir = project_relative("clients/ts")
+    static_js_dir = project_relative("heltour/tournament/static/tournament/js")
+    os.makedirs(static_js_dir, exist_ok=True)
+    with c.cd(ts_dir):
+        if not skip_install:
+            c.run("npm install --no-audit --no-fund", pty=True)
+        c.run("npm run generate", pty=True)
+        c.run("npm run bundle", pty=True)
+    for name in ("litour-api-client.iife.js", "litour-api-client.iife.js.map"):
+        src = os.path.join(ts_dir, "dist", name)
+        if os.path.exists(src):
+            c.run(f"cp {src} {static_js_dir}/")
+
+
 @task(help={"purge": "Delete all heltour tasks."})
 def celery(c, purge=False):
     """Run Celery worker for background tasks."""

@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     ruby \
     ruby-dev \
     postgresql-client \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN gem install sass
@@ -41,8 +43,16 @@ COPY --chown=litour:litour . .
 ENV DEBUG=True
 ENV DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 ENV STATIC_ROOT=/app/static
+ENV SECRET_KEY=temporary-key-for-static-build
 RUN poetry install --only main && \
-  mkdir -p /app/static && \
+  mkdir -p /app/static /app/heltour/tournament/static/tournament/js && \
+  python scripts/export_openapi.py > openapi.json && \
+  (cd clients/ts && \
+    npm install --no-audit --no-fund --prefer-offline && \
+    npm run generate && \
+    npm run bundle && \
+    cp dist/litour-api-client.iife.js dist/litour-api-client.iife.js.map \
+       /app/heltour/tournament/static/tournament/js/) && \
   python manage.py compilescss && \
   python manage.py collectstatic --noinput
 
