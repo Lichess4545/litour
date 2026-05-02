@@ -151,6 +151,36 @@ def is_fide_rating_type(rating_type: str) -> bool:
     return rating_type == "fide" or rating_type.startswith("fide_")
 
 
+# Lichess game variants accepted by the challenges/swiss/bulk-pairing APIs.
+LICHESS_GAME_VARIANTS = frozenset(
+    {
+        "standard",
+        "chess960",
+        "crazyhouse",
+        "antichess",
+        "atomic",
+        "horde",
+        "kingOfTheHill",
+        "racingKings",
+        "threeCheck",
+        "fromPosition",
+    }
+)
+
+
+def lichess_variant_for(rating_type: str) -> str:
+    """Return the Lichess game variant to use when starting games.
+
+    Default to ``"standard"`` so newly added time-control rating types
+    (e.g. ``rapid``, ``fide_rapid``) work without requiring code changes.
+    Only override when the rating type itself names an actual Lichess
+    board variant (currently just ``chess960``).
+    """
+    if rating_type in LICHESS_GAME_VARIANTS:
+        return rating_type
+    return "standard"
+
+
 COMPETITOR_TYPE_OPTIONS = (
     ("team", "Team"),
     ("individual", "Individual"),

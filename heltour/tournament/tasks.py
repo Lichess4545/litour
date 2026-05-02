@@ -56,6 +56,7 @@ from heltour.tournament.models import (
     get_gameid_from_gamelink,
     get_gamelink_from_gameid,
     is_fide_rating_type,
+    lichess_variant_for,
     logger,
     lone_player_pairing_rank_dict,
 )
@@ -602,11 +603,7 @@ def _init_start_league_games(
     tokenstring = ",".join(tokens)
     clock = league.time_control_initial()
     increment = league.time_control_increment()
-    variant = league.rating_type
-    if variant in ["classical", "rapid", "blitz", "bullet"] or is_fide_rating_type(
-        variant
-    ):
-        variant = "standard"
+    variant = lichess_variant_for(league.rating_type)
     do_clockstart = league.get_leaguesetting().start_clocks
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round(
