@@ -30,12 +30,13 @@ from django.utils import timezone
 from heltour.tournament.lichessapi import default_headers
 from heltour.tournament.models import (
     PlayerPairing,
+    SeasonPlayer,
     get_gamelink_from_gameid,
     is_fide_rating_type,
     logger,
 )
 
-# Lichess accepts up to 1000 usernames per stream connection; keep some margin.
+# Matches chesster's tested chunk size for /api/stream/games-by-users.
 WATCHER_MAX_USERNAMES = 900
 REFRESH_INTERVAL_SECONDS = 60
 INACTIVITY_TIMEOUT_SECONDS = 10 * 60
@@ -105,31 +106,16 @@ def _chunked(seq: list[str], size: int) -> Iterable[list[str]]:
 
 
 def get_active_usernames() -> list[str]:
-    """Lower-cased lichess usernames in active rounds with unresolved pairings."""
-    now = timezone.now()
-    pairings = (
-        PlayerPairing.objects.filter(result="")
-        .filter(
-            Q(
-                loneplayerpairing__round__end_date__gt=now,
-                loneplayerpairing__round__publish_pairings=True,
-                loneplayerpairing__round__is_completed=False,
-            )
-            | Q(
-                teamplayerpairing__team_pairing__round__end_date__gt=now,
-                teamplayerpairing__team_pairing__round__publish_pairings=True,
-                teamplayerpairing__team_pairing__round__is_completed=False,
-            )
-        )
-        .select_related("white", "black")
+    """Lower-cased lichess usernames of active players in not-yet-completed seasons."""
+    season_players = (
+        SeasonPlayer.objects.filter(is_active=True, season__is_completed=False)
+        .select_related("player")
         .nocache()
     )
     usernames: set[str] = set()
-    for p in pairings:
-        if p.white_id and p.white:
-            usernames.add(p.white.lichess_username.lower())
-        if p.black_id and p.black:
-            usernames.add(p.black.lichess_username.lower())
+    for sp in season_players:
+        if sp.player:
+            usernames.add(sp.player.lichess_username.lower())
     return sorted(usernames)
 
 
