@@ -1577,6 +1577,14 @@ class Player(_BaseModel):
             return FIDE_RATING_FALLBACK_KEYS[0]
         return league.rating_type.removeprefix("fide_")
 
+    def rating_type_display_for(self, league):
+        if not league:
+            return ""
+        if league.rating_type == "fide":
+            key = self._fide_rating_key(league)
+            return f"FIDE {key.capitalize()}"
+        return league.get_rating_type_display()
+
     def rating_for(self, league):
         if self._is_fide_rating_type(league):
             return (self.fide_profile or {}).get(

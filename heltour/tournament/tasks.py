@@ -434,6 +434,11 @@ def update_lichess_presence():
 
 @app.task()
 def update_slack_users():
+    if not getattr(settings, "SLACK_API_TOKEN_FILE_PATH", None):
+        logger.info(
+            "Skipping update_slack_users: SLACK_API_TOKEN_FILE_PATH not configured"
+        )
+        return
     slack_users = {u.id: u for u in slackapi.get_user_list()}
     for p in Player.objects.all():
         u = slack_users.get(p.slack_user_id)
