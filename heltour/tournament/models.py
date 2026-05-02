@@ -364,6 +364,27 @@ class League(_BaseModel):
         default="sonneborn_berger",
         help_text="Fourth tiebreak for team tournaments",
     )
+    team_tiebreak_5 = models.CharField(
+        max_length=32,
+        choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
+        default="",
+        help_text="Fifth tiebreak for team tournaments",
+    )
+    team_tiebreak_6 = models.CharField(
+        max_length=32,
+        choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
+        default="",
+        help_text="Sixth tiebreak for team tournaments",
+    )
+    team_tiebreak_7 = models.CharField(
+        max_length=32,
+        choices=TEAM_TIEBREAK_OPTIONS,
+        blank=True,
+        default="",
+        help_text="Seventh tiebreak for team tournaments",
+    )
 
     # Lone league tiebreak configuration (FIDE order by default)
     lone_tiebreak_1 = models.CharField(
@@ -467,6 +488,9 @@ class League(_BaseModel):
             "team_tiebreak_2",
             "team_tiebreak_3",
             "team_tiebreak_4",
+            "team_tiebreak_5",
+            "team_tiebreak_6",
+            "team_tiebreak_7",
         ]:
             value = getattr(self, attr, None)
             if value and value not in tiebreaks:  # Avoid duplicates
