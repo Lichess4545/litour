@@ -179,7 +179,7 @@
                                     {% if not token_validation_status.success %}
                                         — {{ token_validation_status.failed|length }} failed to refresh
                                     {% elif token_validation_status.total == 0 %}
-                                        — no pending pairings to check
+                                        — no active season players
                                     {% elif token_validation_status.refreshed %}
                                         — {{ token_validation_status.refreshed|length }} of {{ token_validation_status.total }} token{{ token_validation_status.total|pluralize }} refreshed
                                     {% else %}
