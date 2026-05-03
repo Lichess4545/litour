@@ -1,7 +1,13 @@
 import json
+import os
 import sys
 
-from heltour.api.main import app
+# `python scripts/export_openapi.py` puts `scripts/` on sys.path but not the
+# project root, so `import heltour` fails. Prepend the parent of this file's
+# directory so the script works regardless of cwd.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from heltour.api.main import app  # noqa: E402
 
 
 def main() -> None:

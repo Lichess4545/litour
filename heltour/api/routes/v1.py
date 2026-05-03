@@ -1,5 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from heltour.api.auth import (
+    Viewer,
+    can_change_pairing_sync,
+    get_viewer_and_user,
+)
 from heltour.api.deps import in_thread
 from heltour.api.match_dto import (
     captains_for_round,
@@ -7,19 +12,30 @@ from heltour.api.match_dto import (
     team_pairing_to_team_match,
     team_player_pairing_to_match,
 )
+from heltour.api.presence import build_presence_for_round
 from heltour.api.schemas import (
     CurrentRoundDTO,
     EventRoundDTO,
     EventSettingsDTO,
     MatchDTO,
+    MatchPresenceDTO,
     RoundMatchesDTO,
+    SetMatchResultRequest,
     TeamMatchDTO,
+    ViewerDTO,
+)
+
+# Mirror of `RESULT_OPTIONS` in heltour/tournament/models.py:2409. Kept
+# in the API layer too so the endpoint can validate without importing
+# Django at import time. Empty string is allowed to clear the result.
+_VALID_RESULTS: frozenset[str] = frozenset(
+    {"", "1-0", "0-1", "1/2-1/2", "1X-0F", "0F-1X", "0F-0F", "1/2Z-1/2Z"}
 )
 
 router = APIRouter()
 
 
-def _build_round_matches(rnd) -> RoundMatchesDTO:
+def _build_round_matches(rnd, viewer: Viewer, user) -> RoundMatchesDTO:
     """Build a RoundMatchesDTO for a Round model instance.
 
     Terminology note: the public API uses terms.md vocabulary. The Django
@@ -65,6 +81,16 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
         for lp in lone_qs:
             matches.append(lone_player_pairing_to_match(lp, league))
 
+    can_change = can_change_pairing_sync(user, league)
+    viewer_dto = ViewerDTO(
+        is_authenticated=viewer.is_authenticated,
+        can_edit_pairings=can_change,
+        can_view_presence_log=can_change,
+    )
+    presence_events: dict[int, MatchPresenceDTO] = (
+        build_presence_for_round(rnd) if can_change else {}
+    )
+
     return RoundMatchesDTO(
         round_id=rnd.pk,
         round_number=rnd.number,
@@ -77,6 +103,8 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
         rounds=_event_rounds(rnd.season),
         matches=matches,
         team_matches=team_matches,
+        viewer=viewer_dto,
+        presence_events=presence_events,
     )
 
 
@@ -105,18 +133,22 @@ def _event_settings(season) -> EventSettingsDTO:
     )
 
 
-def _round_matches_by_id_sync(round_id: int) -> RoundMatchesDTO:
+def _round_matches_by_id_sync(round_id: int, viewer: Viewer, user) -> RoundMatchesDTO:
     from heltour.tournament.models import Round
 
     try:
         rnd = Round.objects.select_related("season__league").get(pk=round_id)
     except Round.DoesNotExist:
         raise HTTPException(status_code=404, detail="round not found")
-    return _build_round_matches(rnd)
+    return _build_round_matches(rnd, viewer, user)
 
 
 def _round_matches_by_slug_sync(
-    league_tag: str, event_tag: str, round_number: int
+    league_tag: str,
+    event_tag: str,
+    round_number: int,
+    viewer: Viewer,
+    user,
 ) -> RoundMatchesDTO:
     from heltour.tournament.models import Round
 
@@ -128,7 +160,7 @@ def _round_matches_by_slug_sync(
         )
     except Round.DoesNotExist:
         raise HTTPException(status_code=404, detail="round not found")
-    return _build_round_matches(rnd)
+    return _build_round_matches(rnd, viewer, user)
 
 
 def _current_round_sync(league_tag: str) -> CurrentRoundDTO:
@@ -165,8 +197,12 @@ _NOT_FOUND_RESPONSE = {404: {"description": "Not found"}}
     response_model=RoundMatchesDTO,
     responses=_NOT_FOUND_RESPONSE,
 )
-async def round_matches_by_id(round_id: int) -> RoundMatchesDTO:
-    return await in_thread(_round_matches_by_id_sync, round_id)
+async def round_matches_by_id(
+    round_id: int,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> RoundMatchesDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(_round_matches_by_id_sync, round_id, viewer, user)
 
 
 @router.get(
@@ -175,10 +211,14 @@ async def round_matches_by_id(round_id: int) -> RoundMatchesDTO:
     responses=_NOT_FOUND_RESPONSE,
 )
 async def round_matches_by_slug(
-    league_tag: str, event_tag: str, round_number: int
+    league_tag: str,
+    event_tag: str,
+    round_number: int,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> RoundMatchesDTO:
+    viewer, user = viewer_and_user
     return await in_thread(
-        _round_matches_by_slug_sync, league_tag, event_tag, round_number
+        _round_matches_by_slug_sync, league_tag, event_tag, round_number, viewer, user
     )
 
 
@@ -189,3 +229,67 @@ async def round_matches_by_slug(
 )
 async def current_round(league_tag: str) -> CurrentRoundDTO:
     return await in_thread(_current_round_sync, league_tag)
+
+
+def _set_match_result_sync(match_id: int, result: str, viewer: Viewer, user) -> MatchDTO:
+    from heltour.tournament.models import LonePlayerPairing, TeamPlayerPairing
+
+    if result not in _VALID_RESULTS:
+        raise HTTPException(status_code=422, detail=f"invalid result: {result!r}")
+    if not viewer.is_authenticated:
+        raise HTTPException(status_code=401, detail="not authenticated")
+
+    # Save the concrete subclass — Django admin does the same — so the
+    # multi-table-inheritance save path runs, the team_pairing aggregate
+    # refresh fires, and `post_save(sender=TeamPlayerPairing)` /
+    # `post_save(sender=LonePlayerPairing)` reach `signals_pubsub.py`
+    # where the WS fan-out lives. Saving the bare PlayerPairing parent
+    # would update the row but skip the concrete-sender signal that the
+    # publisher is registered against.
+    try:
+        concrete = (
+            TeamPlayerPairing.objects.select_related(
+                "white", "black", "team_pairing__round__season__league"
+            ).get(pk=match_id)
+        )
+        league = concrete.team_pairing.round.season.league
+        is_team = True
+    except TeamPlayerPairing.DoesNotExist:
+        try:
+            concrete = LonePlayerPairing.objects.select_related(
+                "white", "black", "round__season__league"
+            ).get(pk=match_id)
+        except LonePlayerPairing.DoesNotExist:
+            raise HTTPException(status_code=404, detail="match not found")
+        league = concrete.round.season.league
+        is_team = False
+
+    if not can_change_pairing_sync(user, league):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    concrete.result = result
+    concrete.save()
+
+    if is_team:
+        captains = captains_for_round(concrete.team_pairing.round)
+        return team_player_pairing_to_match(concrete, league, captains)
+    return lone_player_pairing_to_match(concrete, league)
+
+
+@router.put(
+    "/matches/{match_id}/result",
+    response_model=MatchDTO,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden — viewer lacks change_pairing perm"},
+        404: {"description": "Match not found"},
+        422: {"description": "Invalid result code"},
+    },
+)
+async def set_match_result(
+    match_id: int,
+    body: SetMatchResultRequest,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> MatchDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(_set_match_result_sync, match_id, body.result, viewer, user)

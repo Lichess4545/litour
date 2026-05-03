@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { z } from "zod";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { publicApiBaseUrl, serverClient } from "@/lib/api";
+import { publicApiBaseUrl } from "@/lib/api-public";
+import { serverClient } from "@/lib/api";
 
 import { MatchesLive } from "./MatchesLive";
 
@@ -31,7 +32,7 @@ export default async function RoundMatchesPage({
     );
   }
 
-  const client = serverClient();
+  const client = await serverClient();
   const { data, error, response } = await client.GET(
     "/v1/leagues/{league_tag}/events/{event_tag}/rounds/{round_number}/matches",
     {

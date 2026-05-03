@@ -22,13 +22,13 @@ interface Props {
 // Reusable player label with one source of truth for league-aware display.
 //
 // Layout when FIDE info is shown:
-//   FIDE Name <trailing>
-//   [pill: lichess_user]
+//   <a>FIDE Name</a> <trailing>
+//   <a>[pill: lichess_user]</a>
 // Otherwise:
-//   lichess_user <trailing>
+//   <a>lichess_user</a> <trailing>
 //
-// In both cases the link target is `lichess.org/@/<username>` so FIDE-named
-// players still resolve to a real profile.
+// `trailing` is rendered *outside* the lichess anchor so interactive
+// children (presence-log button, etc.) keep their own click semantics.
 export function PlayerName({
   username,
   fideName,
@@ -42,32 +42,42 @@ export function PlayerName({
 
   const wrapperAlign = align === "end" ? "items-end text-right" : "items-start";
   const inlineJustify = align === "end" ? "justify-end" : "";
+  const lichessHref = `https://lichess.org/@/${username}`;
 
   if (showFideNames && fideName) {
     return (
-      <a
-        href={`https://lichess.org/@/${username}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`group hover:text-primary inline-flex min-w-0 flex-col gap-0.5 ${wrapperAlign}`}
-      >
+      <span className={`flex min-w-0 flex-col gap-0.5 ${wrapperAlign}`}>
         <span
-          className={`flex flex-wrap items-baseline gap-x-1.5 gap-y-0 [overflow-wrap:anywhere] ${inlineJustify}`}
+          className={`flex flex-wrap items-center gap-x-1.5 gap-y-0 [overflow-wrap:anywhere] ${inlineJustify}`}
         >
-          <span className="font-medium group-hover:underline">{fideName}</span>
+          <a
+            href={lichessHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-primary font-medium hover:underline"
+          >
+            {fideName}
+          </a>
           {trailing}
         </span>
-        <UsernamePill username={username} />
-      </a>
+        <a
+          href={lichessHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:opacity-80"
+        >
+          <UsernamePill username={username} />
+        </a>
+      </span>
     );
   }
 
   return (
     <span
-      className={`flex flex-wrap items-baseline gap-x-1.5 gap-y-0 ${inlineJustify}`}
+      className={`flex flex-wrap items-center gap-x-1.5 gap-y-0 ${inlineJustify}`}
     >
       <a
-        href={`https://lichess.org/@/${username}`}
+        href={lichessHref}
         target="_blank"
         rel="noopener noreferrer"
         className="hover:text-primary font-medium hover:underline [overflow-wrap:anywhere]"

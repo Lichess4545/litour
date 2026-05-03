@@ -8,8 +8,12 @@ import {
   ConnectionBadge,
   type ConnectionState,
   LoneMatchesView,
+  MatchesSummary,
   TeamMatchesView,
+  ViewerBadge,
 } from "@/components/matches";
+import { ModeToggle } from "@/components/theme/ModeToggle";
+import type { MatchFilter } from "@/lib/match-filter";
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
 type Match = components["schemas"]["MatchDTO"];
@@ -26,6 +30,7 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
     initial.team_matches,
   );
   const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [filter, setFilter] = useState<MatchFilter>("all");
 
   useEffect(() => {
     let didError = false;
@@ -71,7 +76,11 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
               {initial.is_completed ? " · completed" : " · in progress"}
             </p>
           </div>
-          <ConnectionBadge state={connection} />
+          <div className="flex items-center gap-2">
+            <ViewerBadge viewer={initial.viewer} />
+            <ConnectionBadge state={connection} />
+            <ModeToggle />
+          </div>
         </div>
         <RoundsNav
           rounds={initial.rounds}
@@ -79,6 +88,7 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
           leagueTag={initial.league_tag}
           eventTag={initial.event_tag}
         />
+        <MatchesSummary matches={matches} filter={filter} onFilterChange={setFilter} />
       </header>
 
       {initial.is_team ? (
@@ -86,9 +96,18 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
           teamMatches={teamMatches}
           matches={matches}
           eventSettings={initial.settings}
+          filter={filter}
+          viewer={initial.viewer}
+          presenceEvents={initial.presence_events}
         />
       ) : (
-        <LoneMatchesView matches={matches} eventSettings={initial.settings} />
+        <LoneMatchesView
+          matches={matches}
+          eventSettings={initial.settings}
+          filter={filter}
+          viewer={initial.viewer}
+          presenceEvents={initial.presence_events}
+        />
       )}
     </main>
   );

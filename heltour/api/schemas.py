@@ -75,6 +75,57 @@ class EventSettingsDTO(BaseModel):
     use_fide_information: bool
 
 
+class ViewerDTO(BaseModel):
+    """Permission flags for the current request's viewer, scoped to one round.
+
+    A bag of booleans rather than a single role string so we can grow new
+    surfaces (move history, tagging, etc.) without renumbering enum values.
+    Today both flags are gated on the same Django permission
+    (`tournament.change_pairing` against the league); we keep them
+    separate so the UI doesn't have to know that.
+    """
+
+    is_authenticated: bool
+    can_edit_pairings: bool
+    can_view_presence_log: bool
+
+
+class PresenceEventDTO(BaseModel):
+    """One entry in the staff-visible presence log next to a player.
+
+    Mirrors `PlayerPresenceEvent` (heltour/tournament/models.py:4374) — the
+    same shape the legacy popover renders.
+    """
+
+    timestamp: str
+    event_type: str
+    event_type_display: str
+    game_id: str | None
+
+
+class PlayerPresenceDTO(BaseModel):
+    """Presence info for one player on one match (board pairing).
+
+    `was_online` answers "did this player appear online during the round
+    at all?" — the legacy template's "Online during round" header. The
+    `events` list is ordered ascending by timestamp.
+    """
+
+    was_online: bool
+    plies_played: int
+    events: list[PresenceEventDTO]
+
+
+class MatchPresenceDTO(BaseModel):
+    """Presence pair — one entry per side of a single match. Keyed on the
+    round-level map by `match.id` (= the PlayerPairing pk). `null` for a
+    side means there's no player on that side (bye / unfilled board).
+    """
+
+    white: PlayerPresenceDTO | None
+    black: PlayerPresenceDTO | None
+
+
 class RoundMatchesDTO(BaseModel):
     round_id: int
     round_number: int
@@ -89,6 +140,12 @@ class RoundMatchesDTO(BaseModel):
     rounds: list[EventRoundDTO]
     matches: list[MatchDTO]
     team_matches: list[TeamMatchDTO]
+    # Per-request, viewer-specific. Always present; flags are false for
+    # anonymous viewers, in which case `presence_events` is also empty.
+    viewer: ViewerDTO
+    # Map of `match.id` → presence pair. Empty for viewers without
+    # `can_view_presence_log` — the API is the boundary, not the UI.
+    presence_events: dict[int, MatchPresenceDTO]
 
 
 class CurrentRoundDTO(BaseModel):
@@ -97,6 +154,17 @@ class CurrentRoundDTO(BaseModel):
     event_name: str
     round_id: int
     round_number: int
+
+
+class SetMatchResultRequest(BaseModel):
+    """Body of the staff-only `PUT /v1/matches/{id}/result` endpoint.
+
+    Empty string clears the result. Any other value must be one of
+    ``RESULT_OPTIONS`` from `heltour/tournament/models.py:2409`; the route
+    rejects anything else with a 422.
+    """
+
+    result: str
 
 
 class WSMatchUpdate(BaseModel):

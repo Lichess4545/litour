@@ -3,8 +3,15 @@ import { WebSocket as ReconnectingWebSocket } from "partysocket";
 import type { paths } from "./generated";
 import { type WSMessage, wsMessage } from "./ws-messages";
 
-export function createClient(baseUrl: string) {
-  return createOpenApiClient<paths>({ baseUrl });
+export interface ClientInit {
+  // Default headers applied to every request — used by the Next SSR layer
+  // to forward Django's `sessionid` cookie, which FastAPI resolves into
+  // permission flags on `RoundMatchesDTO.viewer`.
+  headers?: HeadersInit;
+}
+
+export function createClient(baseUrl: string, init: ClientInit = {}) {
+  return createOpenApiClient<paths>({ baseUrl, headers: init.headers });
 }
 
 export interface MatchStream {

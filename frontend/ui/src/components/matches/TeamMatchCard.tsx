@@ -1,5 +1,6 @@
 import type { components } from "@litour/api-client";
 
+import { type MatchFilter, matchMatchesFilter } from "@/lib/match-filter";
 import { formatTeamScore, resultBg } from "@/lib/scores";
 
 import { BoardRow } from "./BoardRow";
@@ -7,21 +8,29 @@ import { BoardRow } from "./BoardRow";
 type Match = components["schemas"]["MatchDTO"];
 type TeamMatch = components["schemas"]["TeamMatchDTO"];
 type EventSettings = components["schemas"]["EventSettingsDTO"];
+type Viewer = components["schemas"]["ViewerDTO"];
+type MatchPresence = components["schemas"]["MatchPresenceDTO"];
 
 interface Props {
   teamMatch: TeamMatch;
   boards: Match[];
   eventSettings: EventSettings;
+  filter: MatchFilter;
+  viewer: Viewer;
+  presenceEvents: Record<string, MatchPresence>;
 }
 
-// Single CSS grid for the whole card — header and board rows share columns
-// via subgrid, so score cells line up exactly. Symmetric 4-column layout
-// (no dedicated board# column); the board number is rendered as a small
-// corner label inside `BoardRow`.
 const GRID =
   "grid-cols-[minmax(0,1fr)_2.5rem_2.5rem_minmax(0,1fr)] sm:grid-cols-[minmax(0,1fr)_3rem_3rem_minmax(0,1fr)]";
 
-export function TeamMatchCard({ teamMatch, boards, eventSettings }: Props) {
+export function TeamMatchCard({
+  teamMatch,
+  boards,
+  eventSettings,
+  filter,
+  viewer,
+  presenceEvents,
+}: Props) {
   if (teamMatch.is_bye) {
     return (
       <div className="border-border overflow-hidden rounded-md border">
@@ -43,6 +52,9 @@ export function TeamMatchCard({ teamMatch, boards, eventSettings }: Props) {
             match={m}
             teamMode
             eventSettings={eventSettings}
+            viewer={viewer}
+            presence={presenceEvents[String(m.id)]}
+            collapsed={!matchMatchesFilter(m, filter)}
           />
         ))}
       </div>

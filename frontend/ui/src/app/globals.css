@@ -36,15 +36,19 @@
 }
 
 :root {
-  --result-win: oklch(0.92 0.058 162);
-  --result-loss: oklch(0.9 0.046 17);
-  --result-tie: oklch(0.94 0.07 92);
+  /* Cool sky for wins, soft pink for losses, neutral stone for ties.
+     Light pink reads less alarming than red while still being warm
+     enough to contrast with the cool sky win cell. Values from
+     Tailwind's OKLCH palette: sky-100, pink-100, stone-200. */
+  --result-win: oklch(0.951 0.026 236.824);
+  --result-loss: oklch(0.952 0.025 348.382);
+  --result-tie: oklch(0.92 0.004 286.32);
 }
 
 .dark {
-  --result-win: oklch(0.42 0.08 162);
-  --result-loss: oklch(0.45 0.09 17);
-  --result-tie: oklch(0.5 0.09 88);
+  --result-win: oklch(0.425 0.123 240.85);
+  --result-loss: oklch(0.408 0.153 2.432);
+  --result-tie: oklch(0.37 0.013 285.805);
 }
 
 :root {
