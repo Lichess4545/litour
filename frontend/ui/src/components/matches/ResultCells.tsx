@@ -1,12 +1,14 @@
 import { Swords } from "lucide-react";
 
+import type { BoardSide } from "@/lib/scores";
+
 import { ScorePill } from "./ScorePill";
 
 interface Props {
-  // Already oriented for the row — the score for the player on the left/
-  // right side of *this card*, not necessarily the chess white/black.
-  leftScore: number | null;
-  rightScore: number | null;
+  // Already oriented for the row — the side for the player on the left/
+  // right of *this card*, not necessarily the chess white/black.
+  leftSide: BoardSide;
+  rightSide: BoardSide;
   gameLink: string;
 }
 
@@ -15,15 +17,15 @@ interface Props {
 // itself uses `grid-cols-subgrid` so the two `ScorePill`s align with the
 // header's score columns. For in-progress / pending states the centre is
 // merged with `col-span-2`.
-export function ResultCells({ leftScore, rightScore, gameLink }: Props) {
-  const finished = leftScore != null && rightScore != null;
+export function ResultCells({ leftSide, rightSide, gameLink }: Props) {
+  const finished = leftSide.points != null && rightSide.points != null;
   const inProgress = !finished && Boolean(gameLink);
 
   if (finished) {
     const inner = (
       <>
-        <ScorePill score={leftScore} oppScore={rightScore} />
-        <ScorePill score={rightScore} oppScore={leftScore} />
+        <ScorePill side={leftSide} oppSide={rightSide} />
+        <ScorePill side={rightSide} oppSide={leftSide} />
       </>
     );
     if (gameLink) {

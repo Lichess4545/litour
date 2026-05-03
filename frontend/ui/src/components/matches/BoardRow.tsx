@@ -1,6 +1,7 @@
 import type { components } from "@litour/api-client";
 
-import { parseBoardScore } from "@/lib/scores";
+import type { BoardSide } from "@/lib/scores";
+import { parseBoardSides } from "@/lib/scores";
 
 import { PlayerCell } from "./PlayerCell";
 import { ResultCells } from "./ResultCells";
@@ -66,15 +67,16 @@ interface OrientedSide {
   fideName: string | null;
   rating: number | null;
   gender: string | null;
+  isCaptain: boolean;
   pieceColor: "white" | "black";
-  score: number | null;
+  score: BoardSide;
 }
 
 function orientForCard(
   match: Match,
   teamMode: boolean,
 ): { left: OrientedSide; right: OrientedSide } {
-  const [whitePieceScore, blackPieceScore] = parseBoardScore(match.result);
+  const [whitePieceSide, blackPieceSide] = parseBoardSides(match.result);
   const board = match.board_number ?? 1;
   // Lone tournaments: no flipping — left = white pieces, right = black pieces.
   // Team tournaments: on even boards the white-team player holds black
@@ -88,16 +90,18 @@ function orientForCard(
         fideName: match.white_fide_name,
         rating: match.white_rating,
         gender: match.white_gender,
+        isCaptain: match.white_is_captain,
         pieceColor: "white",
-        score: whitePieceScore,
+        score: whitePieceSide,
       },
       right: {
         username: match.black_username,
         fideName: match.black_fide_name,
         rating: match.black_rating,
         gender: match.black_gender,
+        isCaptain: match.black_is_captain,
         pieceColor: "black",
-        score: blackPieceScore,
+        score: blackPieceSide,
       },
     };
   }
@@ -107,16 +111,18 @@ function orientForCard(
       fideName: match.black_fide_name,
       rating: match.black_rating,
       gender: match.black_gender,
+      isCaptain: match.black_is_captain,
       pieceColor: "black",
-      score: blackPieceScore,
+      score: blackPieceSide,
     },
     right: {
       username: match.white_username,
       fideName: match.white_fide_name,
       rating: match.white_rating,
       gender: match.white_gender,
+      isCaptain: match.white_is_captain,
       pieceColor: "white",
-      score: whitePieceScore,
+      score: whitePieceSide,
     },
   };
 }

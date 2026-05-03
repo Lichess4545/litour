@@ -1,4 +1,5 @@
 export { BoardRow } from "./BoardRow";
+export { CaptainBadge } from "./CaptainBadge";
 export { ColorDot } from "./ColorDot";
 export { ConnectionBadge, type ConnectionState } from "./ConnectionBadge";
 export { GenderBadge } from "./GenderBadge";
