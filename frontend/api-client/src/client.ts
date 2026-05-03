@@ -11,7 +11,9 @@ export interface ClientInit {
 }
 
 export function createClient(baseUrl: string, init: ClientInit = {}) {
-  return createOpenApiClient<paths>({ baseUrl, headers: init.headers });
+  return createOpenApiClient<paths>(
+    init.headers === undefined ? { baseUrl } : { baseUrl, headers: init.headers },
+  );
 }
 
 export interface MatchStream {
