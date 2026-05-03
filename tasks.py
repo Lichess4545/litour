@@ -527,5 +527,56 @@ def seed_lone(
     c.run(cmd, pty=True)
 
 
+@task(
+    help={
+        "base_url": "FastAPI base URL for schemathesis (default: http://localhost:8001).",
+    }
+)
+def preflight(c, base_url="http://localhost:8001"):
+    """Run every CI check back-to-back. Assumes `invoke runapi` is running.
+
+    Mirrors `.github/workflows/api-contract.yml` plus the Django test suite.
+    Each step runs even if a previous one fails; a non-zero exit is returned
+    if anything failed, with a summary at the end.
+    """
+    frontend_dir = project_relative("frontend")
+    api_client_dir = project_relative("frontend/api-client")
+    ui_dir = project_relative("frontend/ui")
+
+    steps: list[tuple[str, str, str | None]] = [
+        ("export openapi.json", f"python {project_relative('scripts/export_openapi.py')} > openapi.json", None),
+        ("schemathesis", f"schemathesis run --experimental=openapi-3.1 --base-url={base_url} openapi.json", None),
+        ("frontend install", "bun install --frozen-lockfile", frontend_dir),
+        ("regenerate ts client", "bun run generate", api_client_dir),
+        ("typecheck api-client", "bun run typecheck", api_client_dir),
+        ("build api-client", "bun run build", api_client_dir),
+        ("bundle api-client", "bun run bundle", api_client_dir),
+        ("lint api-client", "bun run lint", api_client_dir),
+        ("typecheck ui", "bun run typecheck", ui_dir),
+        ("lint ui", "bun run lint", ui_dir),
+        ("generated.ts drift check", "git diff --exit-code frontend/api-client/src/generated.ts", None),
+        # Django tests last — slowest step, so fast-failing checks surface first.
+        ("django tests", f"python {project_relative('manage.py')} test --settings=heltour.test_settings", None),
+    ]
+
+    results: list[tuple[str, bool]] = []
+    for name, cmd, cwd in steps:
+        print(f"\n=== {name} ===")
+        if cwd is not None:
+            with c.cd(cwd):
+                result = c.run(cmd, warn=True, pty=True)
+        else:
+            result = c.run(cmd, warn=True, pty=True)
+        results.append((name, result.ok))
+
+    print("\n=== preflight summary ===")
+    for name, ok in results:
+        print(f"  {'OK  ' if ok else 'FAIL'}  {name}")
+
+    if any(not ok for _, ok in results):
+        from invoke.exceptions import Exit
+        raise Exit("preflight: one or more checks failed", code=1)
+
+
 # Shortcuts
 up = update
