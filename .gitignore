@@ -23,7 +23,6 @@ data
 /frontend/ui/out
 backups
 .gems/
-/.claude
 backup-wucc.sh
 wucc_backup_*.dump
 
