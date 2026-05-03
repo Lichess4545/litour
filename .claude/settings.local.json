@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(python3 -c \"import environ; help\\(environ.FileAwareEnv\\)\")"
+    ]
+  }
+}
