@@ -1,7 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
 from heltour.api.deps import in_thread
-from heltour.api.schemas import CurrentRoundDTO, MatchDTO, RoundMatchesDTO
+from heltour.api.schemas import (
+    CurrentRoundDTO,
+    EventSettingsDTO,
+    MatchDTO,
+    RoundMatchesDTO,
+    TeamMatchDTO,
+)
 
 router = APIRouter()
 
@@ -14,45 +20,99 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
     ``TeamPlayerPairing`` / ``LonePlayerPairing`` as Match (a Player Match
     inside a Team Match for the team form, a standalone Match otherwise).
     """
-    from heltour.tournament.models import LonePlayerPairing, TeamPlayerPairing
+    from heltour.tournament.models import (
+        LonePlayerPairing,
+        TeamPairing,
+        TeamPlayerPairing,
+    )
+
+    is_team = rnd.season.boards is not None
+    league = rnd.season.league
 
     matches: list[MatchDTO] = []
+    team_matches: list[TeamMatchDTO] = []
 
-    team_qs = TeamPlayerPairing.objects.filter(
-        team_pairing__round_id=rnd.pk
-    ).select_related("white", "black", "team_pairing")
-    for tp in team_qs:
-        matches.append(
-            MatchDTO(
-                id=tp.pk,
-                white_username=tp.white.lichess_username if tp.white else None,
-                black_username=tp.black.lichess_username if tp.black else None,
-                white_rating=tp.white_rating,
-                black_rating=tp.black_rating,
-                result=tp.result,
-                game_link=tp.game_link,
-                board_number=tp.board_number,
-                team_match_id=tp.team_pairing_id,
-            )
-        )
+    def _fide_name(player) -> str | None:
+        if player is None:
+            return None
+        name = (player.fide_profile or {}).get("name")
+        return name if name else None
 
-    lone_qs = LonePlayerPairing.objects.filter(round_id=rnd.pk).select_related(
-        "white", "black"
-    )
-    for lp in lone_qs:
-        matches.append(
-            MatchDTO(
-                id=lp.pk,
-                white_username=lp.white.lichess_username if lp.white else None,
-                black_username=lp.black.lichess_username if lp.black else None,
-                white_rating=lp.white_rating,
-                black_rating=lp.black_rating,
-                result=lp.result,
-                game_link=lp.game_link,
-                board_number=None,
-                team_match_id=None,
-            )
+    def _gender(player) -> str | None:
+        if player is None:
+            return None
+        return player.gender or None
+
+    if is_team:
+        tp_qs = (
+            TeamPairing.objects.filter(round_id=rnd.pk)
+            .select_related("white_team", "black_team")
+            .order_by("pairing_order")
         )
+        for tm in tp_qs:
+            team_matches.append(
+                TeamMatchDTO(
+                    id=tm.pk,
+                    pairing_order=tm.pairing_order,
+                    white_team_name=tm.white_team.name,
+                    white_team_number=tm.white_team.number,
+                    black_team_name=tm.black_team.name if tm.black_team_id else None,
+                    black_team_number=(
+                        tm.black_team.number if tm.black_team_id else None
+                    ),
+                    white_score=float(tm.white_points),
+                    black_score=float(tm.black_points),
+                    is_bye=tm.black_team_id is None,
+                )
+            )
+
+        team_player_qs = (
+            TeamPlayerPairing.objects.filter(team_pairing__round_id=rnd.pk)
+            .select_related("white", "black", "team_pairing")
+            .order_by("team_pairing__pairing_order", "board_number")
+        )
+        for tp in team_player_qs:
+            matches.append(
+                MatchDTO(
+                    id=tp.pk,
+                    white_username=tp.white.lichess_username if tp.white else None,
+                    black_username=tp.black.lichess_username if tp.black else None,
+                    white_fide_name=_fide_name(tp.white),
+                    black_fide_name=_fide_name(tp.black),
+                    white_rating=tp.white_rating_display(league),
+                    black_rating=tp.black_rating_display(league),
+                    white_gender=_gender(tp.white),
+                    black_gender=_gender(tp.black),
+                    result=tp.result,
+                    game_link=tp.game_link,
+                    board_number=tp.board_number,
+                    team_match_id=tp.team_pairing_id,
+                )
+            )
+    else:
+        lone_qs = (
+            LonePlayerPairing.objects.filter(round_id=rnd.pk)
+            .select_related("white", "black")
+            .order_by("pairing_order", "id")
+        )
+        for lp in lone_qs:
+            matches.append(
+                MatchDTO(
+                    id=lp.pk,
+                    white_username=lp.white.lichess_username if lp.white else None,
+                    black_username=lp.black.lichess_username if lp.black else None,
+                    white_fide_name=_fide_name(lp.white),
+                    black_fide_name=_fide_name(lp.black),
+                    white_rating=lp.white_rating_display(league),
+                    black_rating=lp.black_rating_display(league),
+                    white_gender=_gender(lp.white),
+                    black_gender=_gender(lp.black),
+                    result=lp.result,
+                    game_link=lp.game_link,
+                    board_number=None,
+                    team_match_id=None,
+                )
+            )
 
     return RoundMatchesDTO(
         round_id=rnd.pk,
@@ -61,7 +121,20 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
         event_name=rnd.season.name,
         league_tag=rnd.season.league.tag,
         is_completed=rnd.is_completed,
+        is_team=is_team,
+        settings=_event_settings(rnd.season),
         matches=matches,
+        team_matches=team_matches,
+    )
+
+
+def _event_settings(season) -> EventSettingsDTO:
+    """Resolve the `EventSettings` for an Event (Season). Today everything
+    here is sourced from the parent League; if any of these later move
+    onto Season itself the resolution stays in this single function.
+    """
+    return EventSettingsDTO(
+        use_fide_information=bool(season.league.show_fide_names),
     )
 
 

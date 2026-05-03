@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   basePath: basePath === undefined ? "/v2" : basePath,
+  // Consume `@litour/api-client` from source, not a built `dist/`. This
+  // collapses the dev-mode rebuild cascade (schema → generated.ts → dist
+  // → Next) into a single file change, which Next's HMR handles cleanly.
+  // `tsc` still works as a build script for any non-Next consumer.
+  transpilePackages: ["@litour/api-client"],
 };
 
 export default nextConfig;

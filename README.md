@@ -49,8 +49,7 @@ Processes:
 - **watch-games** — `invoke watch-games`
 - **ui** — `bun run dev` in `frontend/ui` (Next.js on port 3000), served at `/v2/*` via Caddy
 - **api-client-iife-watch** — rebuilds the legacy Django pairings IIFE bundle on every change to `frontend/api-client/src/**`
-- **api-client-tsc-watch** — keeps `frontend/api-client/dist/` (the `@litour/api-client` workspace package's compiled JS + `.d.ts`) fresh for the Next.js UI
-- **api-schema-watch** — on changes to `heltour/api/**/*.py`, re-exports `openapi.json` and regenerates `frontend/api-client/src/generated.ts`. The two watchers above then cascade automatically
+- **api-schema-watch** — on changes to `heltour/api/**/*.py`, re-exports `openapi.json` and regenerates `frontend/api-client/src/generated.ts`. Next's HMR (via `transpilePackages: ["@litour/api-client"]`) and the IIFE watcher both pick up the regenerated source directly — no intermediate `dist/` build to race against
 - **caddy** — gateway on port 8080: `/v2/api/*` → FastAPI, `/v2/*` → Next.js, everything else → Django
 
 Stop everything with `Ctrl-C` in the `devenv up` window. Service data persists under `.devenv/state/` between runs.

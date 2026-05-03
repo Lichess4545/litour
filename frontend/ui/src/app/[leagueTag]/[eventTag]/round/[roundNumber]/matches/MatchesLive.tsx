@@ -1,23 +1,17 @@
 "use client";
 
 import { type WSMessage, connectMatchStream, type components } from "@litour/api-client";
-import { ExternalLink } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ConnectionBadge,
+  type ConnectionState,
+  LoneMatchesView,
+  TeamMatchesView,
+} from "@/components/matches";
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
 type Match = components["schemas"]["MatchDTO"];
-
-type ConnectionState = "connecting" | "live" | "reconnecting";
 
 interface Props {
   initial: RoundMatches;
@@ -54,8 +48,6 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
     };
   }, [apiBaseUrl, initial.round_id]);
 
-  const sorted = useMemo(() => sortMatches(matches), [matches]);
-
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between gap-4">
@@ -73,68 +65,17 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
         <ConnectionBadge state={connection} />
       </header>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-12">Bd</TableHead>
-            <TableHead>White</TableHead>
-            <TableHead className="w-20 text-right">Rating</TableHead>
-            <TableHead className="w-28 text-center">Result</TableHead>
-            <TableHead>Black</TableHead>
-            <TableHead className="w-20 text-right">Rating</TableHead>
-            <TableHead className="w-12 text-center">Game</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sorted.map((m) => (
-            <MatchRow key={m.id} match={m} />
-          ))}
-        </TableBody>
-      </Table>
+      {initial.is_team ? (
+        <TeamMatchesView
+          teamMatches={initial.team_matches}
+          matches={matches}
+          eventSettings={initial.settings}
+        />
+      ) : (
+        <LoneMatchesView matches={matches} eventSettings={initial.settings} />
+      )}
     </main>
   );
-}
-
-function MatchRow({ match }: { match: Match }) {
-  return (
-    <TableRow>
-      <TableCell className="text-muted-foreground font-mono">
-        {match.board_number ?? "—"}
-      </TableCell>
-      <TableCell className="font-medium">{match.white_username ?? "—"}</TableCell>
-      <TableCell className="text-muted-foreground text-right font-mono">
-        {match.white_rating ?? ""}
-      </TableCell>
-      <TableCell className="text-center font-mono">{formatResult(match.result)}</TableCell>
-      <TableCell className="font-medium">{match.black_username ?? "—"}</TableCell>
-      <TableCell className="text-muted-foreground text-right font-mono">
-        {match.black_rating ?? ""}
-      </TableCell>
-      <TableCell className="text-center">
-        {match.game_link ? (
-          <a
-            href={match.game_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open game on lichess"
-            className="text-primary inline-flex items-center justify-center"
-          >
-            <ExternalLink className="size-4" />
-          </a>
-        ) : null}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function ConnectionBadge({ state }: { state: ConnectionState }) {
-  if (state === "live") {
-    return <Badge variant="secondary">Live</Badge>;
-  }
-  if (state === "reconnecting") {
-    return <Badge variant="destructive">Reconnecting…</Badge>;
-  }
-  return <Badge variant="outline">Connecting…</Badge>;
 }
 
 function patchMatch(prev: Match[], msg: WSMessage): Match[] {
@@ -159,21 +100,4 @@ function patchMatch(prev: Match[], msg: WSMessage): Match[] {
     };
   });
   return changed ? next : prev;
-}
-
-function sortMatches(matches: Match[]): Match[] {
-  return [...matches].sort((a, b) => {
-    const aTeam = a.team_match_id ?? Number.POSITIVE_INFINITY;
-    const bTeam = b.team_match_id ?? Number.POSITIVE_INFINITY;
-    if (aTeam !== bTeam) return aTeam - bTeam;
-    const aBoard = a.board_number ?? Number.POSITIVE_INFINITY;
-    const bBoard = b.board_number ?? Number.POSITIVE_INFINITY;
-    if (aBoard !== bBoard) return aBoard - bBoard;
-    return a.id - b.id;
-  });
-}
-
-function formatResult(result: string): string {
-  if (!result) return "—";
-  return result.replace("1/2", "½");
 }

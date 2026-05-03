@@ -130,15 +130,10 @@ in
     celery.exec = "invoke celery";
     watch-games.exec = "invoke watch-games";
 
-    # Next.js dev server for frontend/ui (HMR built in).
-    # The UI imports `@litour/api-client` through its built `dist/index.js`;
-    # ensure dist exists before `next dev` boots so first-load resolution
-    # doesn't race the tsc-watch process. tsc is incremental, so this is a
-    # no-op on warm starts.
-    ui.exec = ''
-      (cd frontend/api-client && bun run build) && \
-      cd frontend/ui && bun run dev
-    '';
+    # Next.js dev server for frontend/ui (HMR built in). The UI consumes
+    # `@litour/api-client` from source via `transpilePackages` in
+    # next.config.ts — no separate build step needed in dev.
+    ui.exec = "cd frontend/ui && bun run dev";
 
     # Rebuild the api-client IIFE bundle into Django statics on every TS change
     # so the legacy Django pairings page picks up edits without a manual step.
@@ -147,24 +142,10 @@ in
       bun run bundle:watch
     '';
 
-    # Keep `frontend/api-client/dist/` (the workspace package's compiled JS +
-    # .d.ts) fresh for the Next.js UI. The UI imports `@litour/api-client`
-    # canonically through its `dist/index.js` export — `tsc --watch` rebuilds
-    # on every src change, and `transpilePackages` is intentionally NOT used
-    # in next.config.ts so the package is consumed like any other.
-    api-client-tsc-watch.exec = ''
-      cd frontend/api-client && \
-      bun run build:watch
-    '';
-
     # When FastAPI routes / DTOs / pydantic schemas change, re-export
-    # openapi.json and regenerate the typed TS client (`generated.ts`).
-    # The api-client-tsc-watch and api-client-iife-watch processes then
-    # cascade — `dist/` and the IIFE bundle both refresh automatically.
-    # Watches `heltour/api/**` (FastAPI surface). Models are intentionally
-    # NOT watched — DTO changes happen in `heltour/api/schemas.py`, not
-    # in `heltour/tournament/models.py`, so a model edit shouldn't kick
-    # off a full schema regen on every save.
+    # openapi.json and regenerate the typed TS client (`generated.ts`). Next's
+    # HMR + the iife-watch process pick up the regenerated source directly
+    # (no intermediate `dist/` build to race against).
     api-schema-watch.exec = ''
       watchexec \
         --watch heltour/api \
