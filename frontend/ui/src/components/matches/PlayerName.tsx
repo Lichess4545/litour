@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Badge } from "@/components/ui/badge";
+
 interface Props {
   username: string | null;
   fideName: string | null;
@@ -79,8 +81,11 @@ export function PlayerName({
 
 function UsernamePill({ username }: { username: string }) {
   return (
-    <span className="bg-muted text-muted-foreground inline-flex w-fit max-w-full items-center rounded px-1.5 py-0.5 font-mono text-[10px] leading-none [overflow-wrap:anywhere]">
+    <Badge
+      variant="secondary"
+      className="px-1.5 font-mono text-[10px] leading-none whitespace-normal [overflow-wrap:anywhere]"
+    >
       {username}
-    </span>
+    </Badge>
   );
 }

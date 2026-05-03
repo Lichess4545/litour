@@ -2,8 +2,8 @@ export { createClient, connectMatchStream } from "./client";
 export type { MatchStream } from "./client";
 export type {
   WSMessage,
-  WSMatchResultUpdate,
-  WSMatchGameLinkUpdate,
+  WSMatchUpdate,
+  WSTeamMatchUpdate,
   WSPing,
 } from "./ws-messages";
 export { wsMessage } from "./ws-messages";

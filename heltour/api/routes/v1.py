@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
 from heltour.api.deps import in_thread
+from heltour.api.match_dto import (
+    captains_for_round,
+    lone_player_pairing_to_match,
+    team_pairing_to_team_match,
+    team_player_pairing_to_match,
+)
 from heltour.api.schemas import (
     CurrentRoundDTO,
     EventRoundDTO,
@@ -33,17 +39,6 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
     matches: list[MatchDTO] = []
     team_matches: list[TeamMatchDTO] = []
 
-    def _fide_name(player) -> str | None:
-        if player is None:
-            return None
-        name = (player.fide_profile or {}).get("name")
-        return name if name else None
-
-    def _gender(player) -> str | None:
-        if player is None:
-            return None
-        return player.gender or None
-
     if is_team:
         tp_qs = (
             TeamPairing.objects.filter(round_id=rnd.pk)
@@ -51,45 +46,16 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
             .order_by("pairing_order")
         )
         for tm in tp_qs:
-            team_matches.append(
-                TeamMatchDTO(
-                    id=tm.pk,
-                    pairing_order=tm.pairing_order,
-                    white_team_name=tm.white_team.name,
-                    white_team_number=tm.white_team.number,
-                    black_team_name=tm.black_team.name if tm.black_team_id else None,
-                    black_team_number=(
-                        tm.black_team.number if tm.black_team_id else None
-                    ),
-                    white_score=float(tm.white_points),
-                    black_score=float(tm.black_points),
-                    is_bye=tm.black_team_id is None,
-                )
-            )
+            team_matches.append(team_pairing_to_team_match(tm))
 
+        captains = captains_for_round(rnd)
         team_player_qs = (
             TeamPlayerPairing.objects.filter(team_pairing__round_id=rnd.pk)
             .select_related("white", "black", "team_pairing")
             .order_by("team_pairing__pairing_order", "board_number")
         )
         for tp in team_player_qs:
-            matches.append(
-                MatchDTO(
-                    id=tp.pk,
-                    white_username=tp.white.lichess_username if tp.white else None,
-                    black_username=tp.black.lichess_username if tp.black else None,
-                    white_fide_name=_fide_name(tp.white),
-                    black_fide_name=_fide_name(tp.black),
-                    white_rating=tp.white_rating_display(league),
-                    black_rating=tp.black_rating_display(league),
-                    white_gender=_gender(tp.white),
-                    black_gender=_gender(tp.black),
-                    result=tp.result,
-                    game_link=tp.game_link,
-                    board_number=tp.board_number,
-                    team_match_id=tp.team_pairing_id,
-                )
-            )
+            matches.append(team_player_pairing_to_match(tp, league, captains))
     else:
         lone_qs = (
             LonePlayerPairing.objects.filter(round_id=rnd.pk)
@@ -97,23 +63,7 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
             .order_by("pairing_order", "id")
         )
         for lp in lone_qs:
-            matches.append(
-                MatchDTO(
-                    id=lp.pk,
-                    white_username=lp.white.lichess_username if lp.white else None,
-                    black_username=lp.black.lichess_username if lp.black else None,
-                    white_fide_name=_fide_name(lp.white),
-                    black_fide_name=_fide_name(lp.black),
-                    white_rating=lp.white_rating_display(league),
-                    black_rating=lp.black_rating_display(league),
-                    white_gender=_gender(lp.white),
-                    black_gender=_gender(lp.black),
-                    result=lp.result,
-                    game_link=lp.game_link,
-                    board_number=None,
-                    team_match_id=None,
-                )
-            )
+            matches.append(lone_player_pairing_to_match(lp, league))
 
     return RoundMatchesDTO(
         round_id=rnd.pk,
@@ -191,6 +141,7 @@ def _current_round_sync(league_tag: str) -> CurrentRoundDTO:
 
     rnd = (
         Round.objects.filter(season__league=league, publish_pairings=True)
+        .select_related("season")
         .order_by("is_completed", "-number")
         .first()
     )

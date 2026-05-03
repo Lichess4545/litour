@@ -5,7 +5,7 @@ export type { MatchStream } from "./client";
 export { wsMessage } from "./ws-messages";
 export type {
   WSMessage,
-  WSMatchResultUpdate,
-  WSMatchGameLinkUpdate,
+  WSMatchUpdate,
+  WSTeamMatchUpdate,
   WSPing,
 } from "./ws-messages";

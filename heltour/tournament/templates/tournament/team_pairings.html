@@ -83,8 +83,8 @@
                 }
 
                 window.LitourApi.connectMatchStream(apiBase, roundId, function (msg) {
-                    if (msg.type === 'match.result' || msg.type === 'match.game_link') {
-                        schedule(msg.match_id);
+                    if (msg.type === 'match.update' && msg.match) {
+                        schedule(msg.match.id);
                     }
                 });
             })();

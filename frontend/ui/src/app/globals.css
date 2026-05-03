@@ -27,6 +27,24 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Result tints used by Match outcome cells and Team Match score header.
+     Modern Tailwind-aligned green/rose/amber palette — readable but not
+     loud, with dark-mode equivalents that hold contrast against muted text. */
+  --color-result-win: var(--result-win);
+  --color-result-loss: var(--result-loss);
+  --color-result-tie: var(--result-tie);
+}
+
+:root {
+  --result-win: oklch(0.92 0.058 162);
+  --result-loss: oklch(0.9 0.046 17);
+  --result-tie: oklch(0.94 0.07 92);
+}
+
+.dark {
+  --result-win: oklch(0.42 0.08 162);
+  --result-loss: oklch(0.45 0.09 17);
+  --result-tie: oklch(0.5 0.09 88);
 }
 
 :root {

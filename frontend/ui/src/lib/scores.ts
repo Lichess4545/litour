@@ -22,12 +22,12 @@ export function formatTeamScore(score: number): string {
     : score.toFixed(1).replace(".5", "½");
 }
 
-// Match the exact legacy palette from `_common.scss` (cell-win / cell-loss /
-// cell-tie). Arbitrary Tailwind values keep us pixel-identical to the Django
-// pairings page rather than approximating with `emerald-200` / `rose-200`.
+// CSS-variable backed tints (see `app/globals.css`) so light/dark mode are
+// theme-aware while staying pixel-identical to the legacy `_common.scss`
+// palette in light mode.
 export function resultBg(score: number | null, opp: number | null): string {
   if (score == null || opp == null) return "";
-  if (score > opp) return "bg-[#b7e1cd]";
-  if (score < opp) return "bg-[#f4c7c3]";
-  return "bg-[#fce8b2]";
+  if (score > opp) return "bg-result-win";
+  if (score < opp) return "bg-result-loss";
+  return "bg-result-tie";
 }

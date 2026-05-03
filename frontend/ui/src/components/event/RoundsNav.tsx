@@ -2,6 +2,8 @@ import type { components } from "@litour/api-client";
 import { Check } from "lucide-react";
 import Link from "next/link";
 
+import { Badge } from "@/components/ui/badge";
+
 type EventRound = components["schemas"]["EventRoundDTO"];
 
 interface Props {
@@ -12,7 +14,7 @@ interface Props {
 }
 
 // Horizontal round navigator for round-scoped Event pages.
-//   - completed (past): linked, muted background, with a check
+//   - completed (past): linked, muted Badge, with a check
 //   - current: bold border, no link (you're already on it)
 //   - unpublished (future): faded, not interactive
 // Pills wrap on narrow viewports rather than scrolling, so the whole season
@@ -41,6 +43,8 @@ export function RoundsNav({
   );
 }
 
+const PILL_CLASS = "h-7 min-w-7 rounded-full font-mono tabular-nums";
+
 function RoundPill({
   round,
   isCurrent,
@@ -52,32 +56,33 @@ function RoundPill({
   leagueTag: string;
   eventTag: string;
 }) {
-  const base =
-    "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border px-2 font-mono text-xs tabular-nums select-none";
   const number = round.round_number;
   const completed = round.is_completed;
+  const checkIcon = completed ? <Check aria-hidden /> : null;
 
   if (isCurrent) {
     return (
-      <span
+      <Badge
         aria-current="page"
-        className={`${base} border-primary bg-primary/10 text-foreground border-2 font-bold`}
+        variant="outline"
+        className={`${PILL_CLASS} border-primary bg-primary/10 text-foreground border-2 font-bold`}
       >
         {number}
-        {completed ? <Check className="size-3" aria-hidden /> : null}
-      </span>
+        {checkIcon}
+      </Badge>
     );
   }
 
   if (!round.is_published) {
     return (
-      <span
+      <Badge
         aria-disabled
+        variant="outline"
         title="Pairings not yet published"
-        className={`${base} text-muted-foreground/50 border-border/40`}
+        className={`${PILL_CLASS} text-muted-foreground/50 border-border/40`}
       >
         {number}
-      </span>
+      </Badge>
     );
   }
 
@@ -85,10 +90,14 @@ function RoundPill({
     <Link
       href={`/${leagueTag}/${eventTag}/round/${number}/matches`}
       aria-label={`Round ${number}${completed ? " (completed)" : ""}`}
-      className={`${base} border-border bg-muted/40 hover:bg-muted hover:text-foreground text-muted-foreground transition-colors`}
     >
-      {number}
-      {completed ? <Check className="size-3" aria-hidden /> : null}
+      <Badge
+        variant="secondary"
+        className={`${PILL_CLASS} hover:bg-secondary/80 cursor-pointer`}
+      >
+        {number}
+        {checkIcon}
+      </Badge>
     </Link>
   );
 }

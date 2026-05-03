@@ -13,6 +13,7 @@ import {
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
 type Match = components["schemas"]["MatchDTO"];
+type TeamMatch = components["schemas"]["TeamMatchDTO"];
 
 interface Props {
   initial: RoundMatches;
@@ -21,6 +22,9 @@ interface Props {
 
 export function MatchesLive({ initial, apiBaseUrl }: Props) {
   const [matches, setMatches] = useState<Match[]>(initial.matches);
+  const [teamMatches, setTeamMatches] = useState<TeamMatch[]>(
+    initial.team_matches,
+  );
   const [connection, setConnection] = useState<ConnectionState>("connecting");
 
   useEffect(() => {
@@ -31,8 +35,11 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
       (msg: WSMessage) => {
         didError = false;
         setConnection("live");
-        if (msg.type === "ping") return;
-        setMatches((prev) => patchMatch(prev, msg));
+        if (msg.type === "match.update") {
+          setMatches((prev) => replaceById(prev, msg.match));
+        } else if (msg.type === "team_match.update") {
+          setTeamMatches((prev) => replaceById(prev, msg.team_match));
+        }
       },
       (err: unknown) => {
         didError = true;
@@ -76,7 +83,7 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
 
       {initial.is_team ? (
         <TeamMatchesView
-          teamMatches={initial.team_matches}
+          teamMatches={teamMatches}
           matches={matches}
           eventSettings={initial.settings}
         />
@@ -87,26 +94,12 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
   );
 }
 
-function patchMatch(prev: Match[], msg: WSMessage): Match[] {
-  if (msg.type === "ping") return prev;
+function replaceById<T extends { id: number }>(prev: T[], next: T): T[] {
   let changed = false;
-  const next = prev.map((m) => {
-    if (m.id !== msg.match_id) return m;
+  const out = prev.map((item) => {
+    if (item.id !== next.id) return item;
     changed = true;
-    if (msg.type === "match.result") {
-      return {
-        ...m,
-        result: msg.result,
-        white_username: msg.white_username,
-        black_username: msg.black_username,
-      };
-    }
-    return {
-      ...m,
-      game_link: msg.game_link,
-      white_username: msg.white_username,
-      black_username: msg.black_username,
-    };
+    return next;
   });
-  return changed ? next : prev;
+  return changed ? out : prev;
 }

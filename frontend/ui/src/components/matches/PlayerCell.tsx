@@ -1,5 +1,6 @@
 import type { components } from "@litour/api-client";
 
+import { CaptainBadge } from "./CaptainBadge";
 import { ColorDot } from "./ColorDot";
 import { GenderBadge } from "./GenderBadge";
 import { PlayerName } from "./PlayerName";
@@ -11,6 +12,7 @@ interface Props {
   fideName: string | null;
   rating: number | null;
   gender: string | null;
+  isCaptain: boolean;
   side: "left" | "right";
   pieceColor: "white" | "black";
   // When provided, the dot becomes a labeled marker (team mode shows the
@@ -29,6 +31,7 @@ export function PlayerCell({
   fideName,
   rating,
   gender,
+  isCaptain,
   side,
   pieceColor,
   boardLabel,
@@ -38,6 +41,7 @@ export function PlayerCell({
   const trailing = (
     <>
       <GenderBadge gender={gender} />
+      <CaptainBadge isCaptain={isCaptain} />
       {rating != null ? (
         <span className="text-muted-foreground font-mono text-xs">({rating})</span>
       ) : null}

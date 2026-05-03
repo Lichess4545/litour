@@ -24,6 +24,8 @@ class MatchDTO(BaseModel):
     black_rating: int | None
     white_gender: str | None
     black_gender: str | None
+    white_is_captain: bool
+    black_is_captain: bool
     result: str
     game_link: str
     board_number: int | None
@@ -97,21 +99,26 @@ class CurrentRoundDTO(BaseModel):
     round_number: int
 
 
-class _WSMatchBase(BaseModel):
-    match_id: int
+class WSMatchUpdate(BaseModel):
+    """One Match (board pairing) changed. Carries the *full* current state
+    so the client can replace the row with the message contents — no need
+    to refetch and no patch-merge logic for individual fields.
+    """
+
+    type: Literal["match.update"] = "match.update"
     round_id: int
-    result: str
-    game_link: str
-    white_username: str | None
-    black_username: str | None
+    match: MatchDTO
 
 
-class WSMatchResultUpdate(_WSMatchBase):
-    type: Literal["match.result"] = "match.result"
+class WSTeamMatchUpdate(BaseModel):
+    """One Team Match (parent of board pairings) changed — typically score
+    aggregates after a board's result was set. Carries the full current
+    state of the Team Match.
+    """
 
-
-class WSMatchGameLinkUpdate(_WSMatchBase):
-    type: Literal["match.game_link"] = "match.game_link"
+    type: Literal["team_match.update"] = "team_match.update"
+    round_id: int
+    team_match: TeamMatchDTO
 
 
 class WSPing(BaseModel):
@@ -119,6 +126,6 @@ class WSPing(BaseModel):
 
 
 WSMessage = Annotated[
-    Union[WSMatchResultUpdate, WSMatchGameLinkUpdate, WSPing],
+    Union[WSMatchUpdate, WSTeamMatchUpdate, WSPing],
     Field(discriminator="type"),
 ]

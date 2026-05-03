@@ -35,14 +35,15 @@ export function BoardRow({ match, teamMode, eventSettings }: Props) {
         fideName={oriented.left.fideName}
         rating={oriented.left.rating}
         gender={oriented.left.gender}
+        isCaptain={oriented.left.isCaptain}
         pieceColor={oriented.left.pieceColor}
         boardLabel={boardLabel}
         side="left"
         eventSettings={eventSettings}
       />
       <ResultCells
-        leftScore={oriented.left.score}
-        rightScore={oriented.right.score}
+        leftSide={oriented.left.score}
+        rightSide={oriented.right.score}
         gameLink={match.game_link}
       />
       <PlayerCell
@@ -50,6 +51,7 @@ export function BoardRow({ match, teamMode, eventSettings }: Props) {
         fideName={oriented.right.fideName}
         rating={oriented.right.rating}
         gender={oriented.right.gender}
+        isCaptain={oriented.right.isCaptain}
         pieceColor={oriented.right.pieceColor}
         boardLabel={boardLabel}
         side="right"
