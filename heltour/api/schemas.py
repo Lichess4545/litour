@@ -47,6 +47,19 @@ class TeamMatchDTO(BaseModel):
     is_bye: bool
 
 
+class EventRoundDTO(BaseModel):
+    """Summary of one round in an Event, used by the round navigator at the
+    top of round-scoped pages. ``is_published`` mirrors the Django
+    ``Round.publish_pairings`` flag — pairings are visible to the public
+    only when this is true; the UI fades unpublished (future) rounds.
+    """
+
+    round_id: int
+    round_number: int
+    is_completed: bool
+    is_published: bool
+
+
 class EventSettingsDTO(BaseModel):
     """Display / behaviour preferences resolved for an Event (Season).
 
@@ -69,6 +82,9 @@ class RoundMatchesDTO(BaseModel):
     is_completed: bool
     is_team: bool
     settings: EventSettingsDTO
+    # All rounds in the Event, ordered by `round_number`. Used by the round
+    # navigator so callers don't need a second request to render it.
+    rounds: list[EventRoundDTO]
     matches: list[MatchDTO]
     team_matches: list[TeamMatchDTO]
 

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from heltour.api.deps import in_thread
 from heltour.api.schemas import (
     CurrentRoundDTO,
+    EventRoundDTO,
     EventSettingsDTO,
     MatchDTO,
     RoundMatchesDTO,
@@ -123,9 +124,25 @@ def _build_round_matches(rnd) -> RoundMatchesDTO:
         is_completed=rnd.is_completed,
         is_team=is_team,
         settings=_event_settings(rnd.season),
+        rounds=_event_rounds(rnd.season),
         matches=matches,
         team_matches=team_matches,
     )
+
+
+def _event_rounds(season) -> list[EventRoundDTO]:
+    from heltour.tournament.models import Round
+
+    rounds = Round.objects.filter(season=season).order_by("number")
+    return [
+        EventRoundDTO(
+            round_id=r.pk,
+            round_number=r.number,
+            is_completed=r.is_completed,
+            is_published=r.publish_pairings,
+        )
+        for r in rounds
+    ]
 
 
 def _event_settings(season) -> EventSettingsDTO:

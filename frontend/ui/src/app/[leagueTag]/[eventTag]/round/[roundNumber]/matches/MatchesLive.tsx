@@ -3,6 +3,7 @@
 import { type WSMessage, connectMatchStream, type components } from "@litour/api-client";
 import { useEffect, useState } from "react";
 
+import { RoundsNav } from "@/components/event";
 import {
   ConnectionBadge,
   type ConnectionState,
@@ -50,19 +51,27 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {initial.event_name} — Round {initial.round_number}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            <span className="font-mono">
-              {initial.league_tag}/{initial.event_tag}
-            </span>
-            {initial.is_completed ? " · completed" : " · in progress"}
-          </p>
+      <header className="mb-6 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {initial.event_name} — Round {initial.round_number}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              <span className="font-mono">
+                {initial.league_tag}/{initial.event_tag}
+              </span>
+              {initial.is_completed ? " · completed" : " · in progress"}
+            </p>
+          </div>
+          <ConnectionBadge state={connection} />
         </div>
-        <ConnectionBadge state={connection} />
+        <RoundsNav
+          rounds={initial.rounds}
+          currentRoundNumber={initial.round_number}
+          leagueTag={initial.league_tag}
+          eventTag={initial.event_tag}
+        />
       </header>
 
       {initial.is_team ? (
