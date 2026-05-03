@@ -170,11 +170,30 @@ _connect()
 # firing if the new state is still readable through the slug surface.
 
 
+def _annotated_season(season):
+    """Re-fetch via the annotated queryset so build_card / status_group
+    don't fall back to N+1 round queries inside the signal handler."""
+
+    from heltour.api.discovery.permissions import visible_queryset
+    from heltour.api.shared.auth import Viewer
+
+    return (
+        visible_queryset(Viewer.anonymous())
+        .filter(pk=season.pk)
+        .first()
+    )
+
+
 def _discovery_publish_card(season) -> None:
+    if not season.slug:
+        return
     from heltour.api.discovery.services import build_card
 
+    annotated = _annotated_season(season)
+    if annotated is None:
+        return
     try:
-        card = build_card(season)
+        card = build_card(annotated)
     except Exception:
         logger.exception("discovery: build_card failed slug=%s", season.slug)
         return
@@ -189,6 +208,8 @@ def _discovery_publish_card(season) -> None:
 
 
 def _discovery_publish_detail(season) -> None:
+    if not season.slug:
+        return
     from heltour.api.discovery.services import get_event_with_tabs
     from heltour.api.shared.auth import Viewer
 
@@ -205,6 +226,36 @@ def _discovery_publish_detail(season) -> None:
             "type": "event.update",
             "slug": season.slug,
             "detail": detail.model_dump(mode="json"),
+        },
+    )
+
+
+def _discovery_publish_staff_detail(season) -> None:
+    """Publish to the staff-only slug channel for drafts.
+
+    Mirrors `_discovery_publish_detail` but bypasses anon visibility so
+    staff WS subscribers on a draft slug get live updates.
+    """
+
+    if not season.slug:
+        return
+    from heltour.api.discovery.services import build_header
+
+    try:
+        header = build_header(season)
+    except Exception:
+        logger.exception("discovery: build_header failed slug=%s", season.slug)
+        return
+    _publish(
+        f"events:slug:{season.slug}:staff",
+        {
+            "type": "event.update",
+            "slug": season.slug,
+            "detail": {
+                "header": header.model_dump(mode="json"),
+                "tabs_available": [],
+                "pairings": None,
+            },
         },
     )
 
@@ -229,32 +280,43 @@ def _on_commit(fn) -> None:
 def _discovery_connect():
     from heltour.tournament.models import Registration, Round, Season, SeasonPlayer
 
+    def _fan_out(season, *, prior_visibility=None):
+        slug = season.slug
+        new = season.visibility
+        leaving_public = prior_visibility == "public" and new != "public"
+
+        if leaving_public:
+            _publish(
+                "events:home",
+                {
+                    "type": "event.removed",
+                    "slug": slug,
+                    "reason": "visibility_change",
+                },
+            )
+        elif new == "public":
+            _discovery_publish_card(season)
+
+        if new in ("public", "unlisted"):
+            _discovery_publish_detail(season)
+        elif new == "draft":
+            _discovery_publish_staff_detail(season)
+
     @receiver(post_save, sender=Season, dispatch_uid="discovery_season_post_save")
     def _season_saved(sender, instance, created, **kwargs):
-        slug = instance.slug
         prior = getattr(instance, "initial_visibility", instance.visibility)
-        new = instance.visibility
-        leaving_public = prior == "public" and new != "public"
+        snapshot_pk = instance.pk
+        instance.initial_visibility = instance.visibility
 
-        def _publish_now():
-            if leaving_public:
-                _publish(
-                    "events:home",
-                    {
-                        "type": "event.removed",
-                        "slug": slug,
-                        "reason": "visibility_change",
-                    },
-                )
-            elif new == "public":
-                _discovery_publish_card(instance)
+        def _run():
+            from heltour.tournament.models import Season as SeasonModel
 
-            if new in ("public", "unlisted"):
-                _discovery_publish_detail(instance)
+            fresh = SeasonModel.objects.filter(pk=snapshot_pk).first()
+            if fresh is None:
+                return
+            _fan_out(fresh, prior_visibility=prior)
 
-            instance.initial_visibility = new
-
-        _on_commit(_publish_now)
+        _on_commit(_run)
 
     @receiver(post_delete, sender=Season, dispatch_uid="discovery_season_post_delete")
     def _season_deleted(sender, instance, **kwargs):
@@ -263,29 +325,45 @@ def _discovery_connect():
 
     @receiver(post_save, sender=Round, dispatch_uid="discovery_round_post_save")
     def _round_saved(sender, instance, **kwargs):
-        # `Round N of M` and pairings-tab availability both follow
-        # publish_pairings; republish both surfaces.
-        season = instance.season
-        if season.visibility == "public":
-            _on_commit(lambda: _discovery_publish_card(season))
-        if season.visibility in ("public", "unlisted"):
-            _on_commit(lambda: _discovery_publish_detail(season))
+        season_pk = instance.season_id
+
+        def _run():
+            from heltour.tournament.models import Season as SeasonModel
+
+            season = SeasonModel.objects.filter(pk=season_pk).first()
+            if season is None:
+                return
+            _fan_out(season)
+
+        _on_commit(_run)
 
     @receiver(post_save, sender=SeasonPlayer, dispatch_uid="discovery_sp_post_save")
     def _sp_saved(sender, instance, **kwargs):
-        season = instance.season
-        if season.visibility == "public":
-            _on_commit(lambda: _discovery_publish_card(season))
-        if season.visibility in ("public", "unlisted"):
-            _on_commit(lambda: _discovery_publish_detail(season))
+        season_pk = instance.season_id
+
+        def _run():
+            from heltour.tournament.models import Season as SeasonModel
+
+            season = SeasonModel.objects.filter(pk=season_pk).first()
+            if season is None:
+                return
+            _fan_out(season)
+
+        _on_commit(_run)
 
     @receiver(post_save, sender=Registration, dispatch_uid="discovery_reg_post_save")
     def _reg_saved(sender, instance, **kwargs):
-        season = instance.season
-        if season.visibility == "public":
-            _on_commit(lambda: _discovery_publish_card(season))
-        if season.visibility in ("public", "unlisted"):
-            _on_commit(lambda: _discovery_publish_detail(season))
+        season_pk = instance.season_id
+
+        def _run():
+            from heltour.tournament.models import Season as SeasonModel
+
+            season = SeasonModel.objects.filter(pk=season_pk).first()
+            if season is None:
+                return
+            _fan_out(season)
+
+        _on_commit(_run)
 
 
 _discovery_connect()

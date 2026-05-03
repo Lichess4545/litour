@@ -3,13 +3,17 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 
-import { publicApiBaseUrl } from "@/lib/api-public";
 import { serverClient } from "@/lib/api";
+import { publicApiBaseUrl } from "@/lib/api-public";
 
 import { EventLive } from "./EventLive";
 
 // Discovery slugs are slugify(league.tag + season.tag + season.id), max 100.
-const slugSchema = z.string().min(1).max(100).regex(/^[-a-zA-Z0-9_]+$/);
+const slugSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[-a-zA-Z0-9_]+$/);
 
 async function loadDetail(rawSlug: string) {
   const parsed = slugSchema.safeParse(rawSlug);
@@ -36,8 +40,7 @@ export async function generateMetadata({
   // Both must signal `noindex` so search engines don't treat them as
   // discoverable. (The home channel already filters them out client-side;
   // this is the SEO complement.)
-  const noindex =
-    detail.header.visibility === "unlisted" || detail.header.visibility === "draft";
+  const noindex = detail.header.visibility === "unlisted" || detail.header.visibility === "draft";
 
   return {
     title: `${detail.header.name} — ${detail.header.organizer_label}`,

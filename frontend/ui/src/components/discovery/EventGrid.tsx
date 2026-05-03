@@ -15,11 +15,7 @@ export function EventGrid({ cards }: Props) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {cards.map((card) => (
-        <EventCard
-          key={card.slug}
-          card={card}
-          featured={card.slug === featuredSlug}
-        />
+        <EventCard key={card.slug} card={card} featured={card.slug === featuredSlug} />
       ))}
     </div>
   );

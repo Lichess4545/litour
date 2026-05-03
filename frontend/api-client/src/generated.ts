@@ -241,6 +241,12 @@ export interface components {
              */
             pairings?: Record<string, never> | null;
             /**
+             * Pairings Error
+             * @description True when the pairings DTO failed to build. Distinguishes a rendered empty state ('Pairings will appear once...') from a broken backend ('Couldn't load pairings, retry').
+             * @default false
+             */
+            pairings_error: boolean;
+            /**
              * Tabs Available
              * @description Always at least ["pairings"] today. "standings" / "roster" join when their packages graduate from placeholder.
              */
@@ -544,7 +550,7 @@ export interface operations {
             query?: {
                 /** @description Status group filter, repeatable. Default (when omitted) is active + upcoming + awaiting; completed requires an explicit ?status=completed. */
                 status?: ("active" | "upcoming" | "awaiting" | "completed")[] | null;
-                /** @description Organizer filter by tag (formerly League.tag), repeatable. Omitted = all organizers. */
+                /** @description Organizer filter by tag (formerly League.tag), repeatable. Omitted = all organizers. Each tag must match [-a-zA-Z0-9_]+ (max 64 chars). */
                 organizer?: string[] | null;
                 limit?: number;
                 offset?: number;

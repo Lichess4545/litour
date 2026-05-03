@@ -90,12 +90,16 @@ async def discovery_event_ws(ws: WebSocket, slug: str) -> None:
             "ws reject discovery:slug=%s client=%s reason=visibility",
             slug, client,
         )
-        # 4403 = application close code for forbidden; keeps the failure
-        # distinct from a transient transport drop on the client.
         await ws.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    channel = f"events:slug:{slug}"
+    # Drafts only fan out on the staff channel; public/unlisted use the
+    # public channel. Picking the right channel is what makes staff
+    # subscribers see live updates on a draft.
+    if season.visibility == "draft" and viewer.is_staff:
+        channel = f"events:slug:{slug}:staff"
+    else:
+        channel = f"events:slug:{slug}"
     logger.info("ws connect discovery:slug=%s client=%s", slug, client)
     sent = 0
     try:

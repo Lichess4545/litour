@@ -15,9 +15,7 @@ export function OrganizerFilter({ organizers, selected, onToggle }: Props) {
   if (organizers.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-muted-foreground text-xs uppercase tracking-wide">
-        Organizer
-      </span>
+      <span className="text-muted-foreground text-xs uppercase tracking-wide">Organizer</span>
       {organizers.map((o) => {
         const pressed = selected.has(o.tag);
         return (

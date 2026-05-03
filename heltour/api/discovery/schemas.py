@@ -127,3 +127,11 @@ class EventDetailDTO(BaseModel):
             "no round has been published yet. Shape: round_management.RoundMatchesDTO."
         ),
     )
+    pairings_error: bool = Field(
+        default=False,
+        description=(
+            "True when the pairings DTO failed to build. Distinguishes a "
+            "rendered empty state ('Pairings will appear once...') from a "
+            "broken backend ('Couldn't load pairings, retry')."
+        ),
+    )

@@ -6,12 +6,7 @@ import { z } from "zod";
 // are unprefixed (not in the OpenAPI doc anyway).
 
 export const statusGroup = z.enum(["active", "upcoming", "awaiting", "completed"]);
-export const statusLabel = z.enum([
-  "Now playing",
-  "Open",
-  "Awaiting results",
-  "Finished",
-]);
+export const statusLabel = z.enum(["Now playing", "Open", "Awaiting results", "Finished"]);
 export const visibility = z.enum(["public", "unlisted", "draft"]);
 
 export const eventCardDto = z.object({
@@ -42,10 +37,8 @@ export const eventHeaderDto = eventCardDto.extend({
 export const eventDetailDto = z.object({
   header: eventHeaderDto,
   tabs_available: z.array(z.string()),
-  // The pairings payload reuses the round-management DTO shape verbatim;
-  // we don't re-validate it here — it's forwarded to the existing
-  // round-management views which own that shape.
   pairings: z.unknown().nullable(),
+  pairings_error: z.boolean().default(false),
 });
 
 export const wsEventCardUpdate = z.object({

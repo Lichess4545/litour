@@ -85,10 +85,7 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8 space-y-4">
         <div className="flex items-center justify-between gap-4">
-          <Link
-            href="/"
-            className="text-muted-foreground text-sm hover:text-foreground"
-          >
+          <Link href="/" className="text-muted-foreground text-sm hover:text-foreground">
             ← All events
           </Link>
           <ConnectionBadge state={connection} />
@@ -98,9 +95,7 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
             {header.organizer_label}
           </p>
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <h1 className="font-display text-4xl tracking-tight md:text-5xl">
-              {header.name}
-            </h1>
+            <h1 className="font-display text-4xl tracking-tight md:text-5xl">{header.name}</h1>
             <StatusPill group={header.status_group} label={header.status_label} />
           </div>
           <dl className="text-muted-foreground space-y-0.5 text-sm">
@@ -124,6 +119,13 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
       <EventTabs tabs={tabs}>
         {(active) => {
           if (active === "pairings") {
+            if (detail.pairings_error) {
+              return (
+                <p className="text-muted-foreground py-12 text-center text-sm">
+                  Couldn&apos;t load pairings. The page will refresh when the connection comes back.
+                </p>
+              );
+            }
             if (detail.pairings == null) {
               return (
                 <p className="text-muted-foreground py-12 text-center text-sm">
@@ -131,19 +133,10 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
                 </p>
               );
             }
-            // The pairings payload is RoundMatchesDTO from round_management;
-            // discovery's get_event_with_tabs() forwards it verbatim. Render
-            // the existing matches view embedded — no duplicate page chrome,
-            // and it opens its own matches:round:{round_id} WS for live
-            // board-level updates that the discovery channel doesn't carry.
             const pairings = detail.pairings as RoundMatches;
             return <MatchesLive initial={pairings} apiBaseUrl={apiBaseUrl} embedded />;
           }
-          return (
-            <p className="text-muted-foreground py-12 text-center text-sm">
-              Coming soon.
-            </p>
-          );
+          return <p className="text-muted-foreground py-12 text-center text-sm">Coming soon.</p>;
         }}
       </EventTabs>
     </main>

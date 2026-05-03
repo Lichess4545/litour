@@ -29,9 +29,6 @@ const TONE: Record<StatusGroup, string> = {
 
 function LiveDot() {
   return (
-    <span
-      aria-hidden
-      className="inline-block size-1.5 rounded-full bg-[var(--status-active)]"
-    />
+    <span aria-hidden className="inline-block size-1.5 rounded-full bg-[var(--status-active)]" />
   );
 }

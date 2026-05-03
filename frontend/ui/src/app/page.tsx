@@ -1,7 +1,7 @@
 import { eventCardsPageDto } from "@litour/api-client";
 
-import { publicApiBaseUrl } from "@/lib/api-public";
 import { serverApiBaseUrl, serverClient } from "@/lib/api";
+import { publicApiBaseUrl } from "@/lib/api-public";
 
 import { HomeLive } from "./HomeLive";
 

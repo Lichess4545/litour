@@ -9,9 +9,7 @@ interface Props {
 }
 
 export function EventCard({ card, featured = false }: Props) {
-  const featuredBorder = featured
-    ? "border-t-[var(--status-active)]"
-    : "border-t-border";
+  const featuredBorder = featured ? "border-t-[var(--status-active)]" : "border-t-border";
 
   return (
     <article
@@ -24,10 +22,7 @@ export function EventCard({ card, featured = false }: Props) {
             {card.organizer_label}
           </p>
           <h2 className="font-display text-2xl leading-tight">
-            <Link
-              href={`/events/${card.slug}`}
-              className="hover:text-[var(--status-active)]"
-            >
+            <Link href={`/events/${card.slug}`} className="hover:text-[var(--status-active)]">
               {card.name}
             </Link>
           </h2>
@@ -38,9 +33,7 @@ export function EventCard({ card, featured = false }: Props) {
       <dl className="text-muted-foreground space-y-1 text-sm">
         <div>{card.format_line}</div>
         {card.schedule_line ? <div>{card.schedule_line}</div> : null}
-        {card.slot_status ? (
-          <div className="text-foreground">{card.slot_status}</div>
-        ) : null}
+        {card.slot_status ? <div className="text-foreground">{card.slot_status}</div> : null}
       </dl>
 
       <footer className="mt-auto flex items-center justify-between gap-3 pt-2">

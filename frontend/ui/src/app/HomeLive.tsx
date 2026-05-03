@@ -8,11 +8,7 @@ import {
 } from "@litour/api-client";
 import { useEffect, useMemo, useState } from "react";
 
-import {
-  EmptyState,
-  EventGrid,
-  OrganizerFilter,
-} from "@/components/discovery";
+import { EmptyState, EventGrid, OrganizerFilter } from "@/components/discovery";
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
 
 interface Props {
@@ -66,12 +62,8 @@ export function HomeLive({ initial, apiBaseUrl }: Props) {
     <main className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
       <header className="mb-8 flex items-end justify-between gap-6">
         <div>
-          <p className="font-display text-muted-foreground text-base italic">
-            Palamedes
-          </p>
-          <h1 className="font-display mt-1 text-4xl tracking-tight md:text-5xl">
-            What's playing
-          </h1>
+          <p className="font-display text-muted-foreground text-base italic">Palamedes</p>
+          <h1 className="font-display mt-1 text-4xl tracking-tight md:text-5xl">What's playing</h1>
         </div>
         <ConnectionBadge state={connection} />
       </header>

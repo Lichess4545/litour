@@ -137,6 +137,7 @@ class CardCompositionTests(TestCase):
             league_tag="bc-1", league_name="Team 4545",
             season_tag="s30", is_active=True,
         )
+        publish_round(s, 1)
         card = build_card(s)
         self.assertEqual(card.organizer_label, "Team 4545")
         self.assertEqual(card.organizer_tag, "bc-1")

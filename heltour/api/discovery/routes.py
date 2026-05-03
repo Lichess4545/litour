@@ -12,6 +12,7 @@ into service calls and map None to 404.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -20,6 +21,8 @@ from heltour.api.deps import in_thread
 from heltour.api.discovery.schemas import EventCardsPage, EventDetailDTO
 from heltour.api.discovery.services import get_event_with_tabs, list_events
 from heltour.api.shared.auth import Viewer, get_viewer
+
+_ORG_TAG_RE = re.compile(r"^[-a-zA-Z0-9_]+$")
 
 router = APIRouter()
 
@@ -49,11 +52,20 @@ OrganizerQuery = Annotated[
         alias="organizer",
         description=(
             "Organizer filter by tag (formerly League.tag), repeatable. "
-            "Omitted = all organizers."
+            "Omitted = all organizers. Each tag must match "
+            "[-a-zA-Z0-9_]+ (max 64 chars)."
         ),
-        max_length=64,
     ),
 ]
+
+
+def _validate_organizer_tags(tags: list[str] | None) -> list[str] | None:
+    if not tags:
+        return tags
+    for t in tags:
+        if not isinstance(t, str) or len(t) == 0 or len(t) > 64 or not _ORG_TAG_RE.match(t):
+            raise HTTPException(status_code=422, detail="invalid organizer tag")
+    return tags
 LimitQuery = Annotated[int, Query(ge=1, le=100)]
 OffsetQuery = Annotated[int, Query(ge=0)]
 
@@ -70,6 +82,7 @@ async def list_events_route(
     limit: LimitQuery = 20,
     offset: OffsetQuery = 0,
 ) -> EventCardsPage:
+    organizer = _validate_organizer_tags(organizer)
     return await in_thread(
         list_events,
         viewer,

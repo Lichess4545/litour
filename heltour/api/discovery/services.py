@@ -181,8 +181,8 @@ def schedule_line(season) -> str:
         parts.append(tc)
     if season.start_date is not None:
         date_str = season.start_date.strftime("%b %-d")
-        time_str = season.start_date.strftime("%-I%p UTC").lower()
-        parts.append(f"{date_str}, {time_str}")
+        meridiem = season.start_date.strftime("%-I%p").lower()
+        parts.append(f"{date_str}, {meridiem} UTC")
     return " · ".join(parts)
 
 
@@ -378,34 +378,21 @@ def get_event_with_tabs(slug: str, viewer: Viewer) -> EventDetailDTO | None:
     header = build_header(season)
     tabs_available: list[str] = []
 
-    # Pairings: reuse round_management. Imports are local to keep the
-    # screaming-architecture isolation invariant explicit at file scope.
-    pairings = _build_pairings_payload(season, viewer)
+    pairings, pairings_error = _build_pairings_payload(season, viewer)
     if pairings is not None:
         tabs_available.append("pairings")
-
-    # standings + roster: deliberately NOT in tabs_available — the
-    # frontend renders them as "Coming soon" placeholders.
 
     return EventDetailDTO(
         header=header,
         tabs_available=tabs_available,
         pairings=pairings,
+        pairings_error=pairings_error,
     )
 
 
-def _build_pairings_payload(season, viewer: Viewer) -> dict | None:
-    """Build the latest-published-round's pairings DTO as a dict.
-
-    Returns None when no round is published yet (rendered as the empty
-    state on the frontend). Reuses `round_management.round_matches_by_id_sync`,
-    mirroring the existing `/v1/leagues/.../rounds/<n>/matches` payload
-    so the frontend reuses round_management/* components verbatim.
-
-    `user` is passed as None because the discovery surface is read-only;
-    write predicates downstream (set_match_result, etc.) are gated at
-    the round_management routes layer, not here.
-    """
+def _build_pairings_payload(season, viewer: Viewer) -> tuple[dict | None, bool]:
+    """Returns (payload, error). payload is None for genuine empty state
+    (no round published) AND for errors; the error flag distinguishes."""
 
     from heltour.tournament.models import Round
 
@@ -415,21 +402,18 @@ def _build_pairings_payload(season, viewer: Viewer) -> dict | None:
         .first()
     )
     if rnd is None:
-        return None
+        return None, False
 
-    # Lazy import keeps the screaming-architecture isolation invariant
-    # explicit at file scope. If round_management changes its build
-    # signature, this is the only discovery-side call site to touch.
     try:
         from heltour.api.round_management.service import round_matches_by_id_sync
     except ImportError:
         logger.exception("round_matches_by_id_sync unavailable")
-        return None
+        return None, True
 
     try:
         dto = round_matches_by_id_sync(rnd.pk, viewer, None)
     except Exception:
         logger.exception("failed to build pairings dto for round=%s", rnd.pk)
-        return None
+        return None, True
 
-    return dto.model_dump(mode="json")
+    return dto.model_dump(mode="json"), False

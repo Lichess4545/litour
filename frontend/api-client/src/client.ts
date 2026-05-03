@@ -67,13 +67,7 @@ export function connectDiscoveryHomeStream(
   onMessage: (msg: WSHomeMessage) => void,
   onError?: (err: unknown) => void,
 ): DiscoveryStream {
-  return openValidatedStream(
-    baseUrl,
-    "/ws/discovery/home",
-    wsHomeMessage,
-    onMessage,
-    onError,
-  );
+  return openValidatedStream(baseUrl, "/ws/discovery/home", wsHomeMessage, onMessage, onError);
 }
 
 export function connectDiscoveryEventStream(

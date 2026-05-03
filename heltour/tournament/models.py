@@ -756,12 +756,6 @@ class Season(_BaseModel):
         self.initial_is_completed = self.is_completed
         self.initial_visibility = self.visibility
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if not self.slug:
-            self.slug = slugify(f"{self.league.tag}-{self.tag}-{self.id}")
-            super().save(update_fields=["slug"])
-
     def parse_predefined_player_list(self) -> dict[str, str]:
         result: dict[str, str] = {}
         for line in self.predefined_player_list.splitlines():
@@ -857,6 +851,10 @@ class Season(_BaseModel):
         if self.is_completed and self.registration_open:
             self.registration_open = False
         super(Season, self).save(*args, **kwargs)
+
+        if not self.slug:
+            self.slug = slugify(f"{self.league.tag}-{self.tag}-{self.id}")
+            super(Season, self).save(update_fields=["slug"])
 
         if rounds_changed or round_duration_changed or start_date_changed:
             date = self.start_date
