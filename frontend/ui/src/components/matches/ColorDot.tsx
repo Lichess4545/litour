@@ -3,7 +3,7 @@ interface Props {
   // Optional label rendered inside the dot. Used in team mode to put the
   // board number on both color markers — neat, symmetric, and removes the
   // need for a separate corner label.
-  label?: string | number;
+  label?: string | number | undefined;
 }
 
 // Piece-color marker. Uses fixed light/dark colors rather than theme tokens
@@ -28,9 +28,6 @@ export function ColorDot({ color, label }: Props) {
   }
 
   return (
-    <span
-      aria-hidden
-      className={`inline-block size-2.5 shrink-0 rounded-full border ${swatch}`}
-    />
+    <span aria-hidden className={`inline-block size-2.5 shrink-0 rounded-full border ${swatch}`} />
   );
 }

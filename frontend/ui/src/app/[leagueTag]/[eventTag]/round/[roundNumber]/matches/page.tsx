@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { z } from "zod";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { publicApiBaseUrl } from "@/lib/api-public";
 import { serverClient } from "@/lib/api";
+import { publicApiBaseUrl } from "@/lib/api-public";
 
 import { MatchesLive } from "./MatchesLive";
 

@@ -19,17 +19,10 @@ interface Props {
 //   - unpublished (future): faded, not interactive
 // Pills wrap on narrow viewports rather than scrolling, so the whole season
 // stays visible at a glance even on phones.
-export function RoundsNav({
-  rounds,
-  currentRoundNumber,
-  leagueTag,
-  eventTag,
-}: Props) {
+export function RoundsNav({ rounds, currentRoundNumber, leagueTag, eventTag }: Props) {
   return (
     <nav aria-label="Rounds" className="flex flex-wrap items-center gap-1.5">
-      <span className="text-muted-foreground mr-1 text-xs uppercase tracking-wide">
-        Rounds
-      </span>
+      <span className="text-muted-foreground mr-1 text-xs uppercase tracking-wide">Rounds</span>
       {rounds.map((r) => (
         <RoundPill
           key={r.round_number}
@@ -91,10 +84,7 @@ function RoundPill({
       href={`/${leagueTag}/${eventTag}/round/${number}/matches`}
       aria-label={`Round ${number}${completed ? " (completed)" : ""}`}
     >
-      <Badge
-        variant="secondary"
-        className={`${PILL_CLASS} hover:bg-secondary/80 cursor-pointer`}
-      >
+      <Badge variant="secondary" className={`${PILL_CLASS} hover:bg-secondary/80 cursor-pointer`}>
         {number}
         {checkIcon}
       </Badge>

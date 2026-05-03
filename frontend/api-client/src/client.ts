@@ -26,15 +26,11 @@ export function connectMatchStream(
   onMessage: (msg: WSMessage) => void,
   onError?: (err: unknown) => void,
 ): MatchStream {
-  const ws = new ReconnectingWebSocket(
-    toWsUrl(baseUrl, `/ws/rounds/${roundId}/matches`),
-    [],
-    {
-      minReconnectionDelay: 1000,
-      maxReconnectionDelay: 30_000,
-      reconnectionDelayGrowFactor: 2,
-    },
-  );
+  const ws = new ReconnectingWebSocket(toWsUrl(baseUrl, `/ws/rounds/${roundId}/matches`), [], {
+    minReconnectionDelay: 1000,
+    maxReconnectionDelay: 30_000,
+    reconnectionDelayGrowFactor: 2,
+  });
 
   ws.addEventListener("message", (ev) => {
     try {

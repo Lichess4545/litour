@@ -2,13 +2,7 @@
 
 import { type components, createClient } from "@litour/api-client";
 import { Activity, ExternalLink } from "lucide-react";
-import {
-  type ReactNode,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { z } from "zod";
 
@@ -64,11 +58,7 @@ export function ResultPopover({ match, viewer, presence, children }: Props) {
   }
 
   if (!hasContent) {
-    return (
-      <span className="col-span-2 grid grid-cols-subgrid items-stretch">
-        {children}
-      </span>
-    );
+    return <span className="col-span-2 grid grid-cols-subgrid items-stretch">{children}</span>;
   }
 
   return (
@@ -290,12 +280,7 @@ interface PresenceSectionProps {
 // dedicated per-player activity icons in the row functional (quick peek
 // at one side) while consolidating both sides plus the event lists in
 // the same panel as the game.
-function PresenceSection({
-  whiteUsername,
-  blackUsername,
-  white,
-  black,
-}: PresenceSectionProps) {
+function PresenceSection({ whiteUsername, blackUsername, white, black }: PresenceSectionProps) {
   return (
     <div className="grid grid-cols-1 gap-px border-t bg-border sm:grid-cols-2">
       <PresenceColumn username={whiteUsername} side="White" presence={white} />
@@ -327,9 +312,7 @@ function PresenceColumn({ username, side, presence }: PresenceColumnProps) {
         <Activity className={`size-3.5 ${tone}`} />
         <span className="text-muted-foreground">{side}:</span>
         <strong>{username}</strong>
-        <span className="text-muted-foreground ml-auto">
-          {presence.plies_played} plies
-        </span>
+        <span className="text-muted-foreground ml-auto">{presence.plies_played} plies</span>
       </div>
       {presence.events.length === 0 ? (
         <p className="text-muted-foreground italic">No events recorded.</p>
@@ -341,9 +324,7 @@ function PresenceColumn({ username, side, presence }: PresenceColumnProps) {
                 {formatTimestamp(ev.timestamp)}
               </time>{" "}
               · {ev.event_type_display}
-              {ev.game_id ? (
-                <span className="text-muted-foreground"> ({ev.game_id})</span>
-              ) : null}
+              {ev.game_id ? <span className="text-muted-foreground"> ({ev.game_id})</span> : null}
             </li>
           ))}
         </ul>
@@ -400,10 +381,8 @@ function detectForfeit(
   const white = presence?.white;
   const black = presence?.black;
   if (!white || !black || !whiteUsername || !blackUsername) return null;
-  const whiteActive =
-    white.was_online || white.plies_played > 0 || white.events.length > 0;
-  const blackActive =
-    black.was_online || black.plies_played > 0 || black.events.length > 0;
+  const whiteActive = white.was_online || white.plies_played > 0 || white.events.length > 0;
+  const blackActive = black.was_online || black.plies_played > 0 || black.events.length > 0;
   if (whiteActive && !blackActive) {
     return { result: "1X-0F", winner: whiteUsername, loser: blackUsername };
   }

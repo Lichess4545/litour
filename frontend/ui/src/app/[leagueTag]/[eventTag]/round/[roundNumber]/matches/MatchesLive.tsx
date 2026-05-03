@@ -1,6 +1,6 @@
 "use client";
 
-import { type WSMessage, connectMatchStream, type components } from "@litour/api-client";
+import { type WSMessage, type components, connectMatchStream } from "@litour/api-client";
 import { useEffect, useState } from "react";
 
 import { RoundsNav } from "@/components/event";
@@ -26,9 +26,7 @@ interface Props {
 
 export function MatchesLive({ initial, apiBaseUrl }: Props) {
   const [matches, setMatches] = useState<Match[]>(initial.matches);
-  const [teamMatches, setTeamMatches] = useState<TeamMatch[]>(
-    initial.team_matches,
-  );
+  const [teamMatches, setTeamMatches] = useState<TeamMatch[]>(initial.team_matches);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [filter, setFilter] = useState<MatchFilter>("all");
 

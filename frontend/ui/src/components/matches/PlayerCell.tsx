@@ -99,9 +99,7 @@ export function PlayerCell({
         <ColorDot color={pieceColor} label={dotLabel} />
       </div>
       {presenceTrigger ? (
-        <span className="self-start sm:order-first sm:mr-auto sm:self-auto">
-          {presenceTrigger}
-        </span>
+        <span className="self-start sm:order-first sm:mr-auto sm:self-auto">{presenceTrigger}</span>
       ) : null}
     </div>
   );

@@ -21,13 +21,7 @@ interface Props {
   presenceEvents: Record<string, MatchPresence>;
 }
 
-export function LoneMatchesView({
-  matches,
-  eventSettings,
-  filter,
-  viewer,
-  presenceEvents,
-}: Props) {
+export function LoneMatchesView({ matches, eventSettings, filter, viewer, presenceEvents }: Props) {
   const sorted = useMemo(() => [...matches].sort((a, b) => a.id - b.id), [matches]);
   return (
     <div className="border-border overflow-hidden rounded-md border">

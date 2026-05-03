@@ -15,7 +15,9 @@
     "rules": {
       "recommended": true,
       "suspicious": { "noExplicitAny": "error" },
-      "style": { "noNonNullAssertion": "error" }
+      "style": { "noNonNullAssertion": "error" },
+      "a11y": { "useSemanticElements": "off" },
+      "complexity": { "useLiteralKeys": "off" }
     }
   }
 }

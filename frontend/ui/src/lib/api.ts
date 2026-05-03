@@ -24,7 +24,7 @@ export async function serverClient(): Promise<LitourClient> {
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
-  return createClient(serverApiBaseUrl(), {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-  });
+  return cookieHeader
+    ? createClient(serverApiBaseUrl(), { headers: { cookie: cookieHeader } })
+    : createClient(serverApiBaseUrl());
 }

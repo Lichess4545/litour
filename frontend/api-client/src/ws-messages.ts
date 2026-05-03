@@ -47,11 +47,7 @@ export const wsTeamMatchUpdate = z.object({
 
 export const wsPing = z.object({ type: z.literal("ping") });
 
-export const wsMessage = z.discriminatedUnion("type", [
-  wsMatchUpdate,
-  wsTeamMatchUpdate,
-  wsPing,
-]);
+export const wsMessage = z.discriminatedUnion("type", [wsMatchUpdate, wsTeamMatchUpdate, wsPing]);
 
 export type WSMatchUpdate = z.infer<typeof wsMatchUpdate>;
 export type WSTeamMatchUpdate = z.infer<typeof wsTeamMatchUpdate>;

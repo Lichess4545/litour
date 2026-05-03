@@ -73,9 +73,7 @@ export function PlayerName({
   }
 
   return (
-    <span
-      className={`flex flex-wrap items-center gap-x-1.5 gap-y-0 ${inlineJustify}`}
-    >
+    <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-0 ${inlineJustify}`}>
       <a
         href={lichessHref}
         target="_blank"

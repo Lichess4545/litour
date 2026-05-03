@@ -127,8 +127,7 @@ function PresencePortal({
       const top = placeAbove
         ? Math.max(window.scrollY + 8, rect.top + window.scrollY - panelHeight - 4)
         : rect.bottom + window.scrollY + 4;
-      const rawLeft =
-        side === "right" ? rect.right - PANEL_WIDTH_PX : rect.left;
+      const rawLeft = side === "right" ? rect.right - PANEL_WIDTH_PX : rect.left;
       // Clamp to viewport so the panel never escapes the screen edges.
       const maxLeft = window.scrollX + document.documentElement.clientWidth - PANEL_WIDTH_PX - 8;
       const minLeft = window.scrollX + 8;
@@ -215,9 +214,7 @@ function PresencePortal({
                 {formatTimestamp(ev.timestamp)}
               </time>{" "}
               · {ev.event_type_display}
-              {ev.game_id ? (
-                <span className="text-muted-foreground"> ({ev.game_id})</span>
-              ) : null}
+              {ev.game_id ? <span className="text-muted-foreground"> ({ev.game_id})</span> : null}
             </li>
           ))}
         </ul>

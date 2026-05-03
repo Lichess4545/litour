@@ -14,8 +14,16 @@ const EMPTY: BoardSide = { points: null, display: "" };
 export function parseBoardSides(result: string): [BoardSide, BoardSide] {
   if (!result) return [EMPTY, EMPTY];
   const r = result.trim();
-  if (r === "1-0") return [{ points: 1, display: "1" }, { points: 0, display: "0" }];
-  if (r === "0-1") return [{ points: 0, display: "0" }, { points: 1, display: "1" }];
+  if (r === "1-0")
+    return [
+      { points: 1, display: "1" },
+      { points: 0, display: "0" },
+    ];
+  if (r === "0-1")
+    return [
+      { points: 0, display: "0" },
+      { points: 1, display: "1" },
+    ];
   if (r === "1/2-1/2")
     return [
       { points: 0.5, display: "½" },
@@ -45,9 +53,7 @@ export function parseBoardSides(result: string): [BoardSide, BoardSide] {
 }
 
 export function formatTeamScore(score: number): string {
-  return Number.isInteger(score)
-    ? String(score)
-    : score.toFixed(1).replace(".5", "½");
+  return Number.isInteger(score) ? String(score) : score.toFixed(1).replace(".5", "½");
 }
 
 // CSS-variable backed tints (see `app/globals.css`) so light/dark mode are
