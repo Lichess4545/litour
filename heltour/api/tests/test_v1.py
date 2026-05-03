@@ -15,11 +15,14 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
 
+from heltour.api.auth import Viewer
 from heltour.api.routes.v1 import (
     _current_round_sync,
     _round_matches_by_id_sync,
     _round_matches_by_slug_sync,
 )
+
+_ANON = Viewer.anonymous()
 from heltour.tournament.models import (
     League,
     LonePlayerPairing,
@@ -147,7 +150,7 @@ class RoundMatchesByIdTeamTests(TestCase):
         rnd = _make_team_round(
             league_tag="tl1", season_tag="s1", boards=2, team_count=2,
         )
-        dto = _round_matches_by_id_sync(rnd.pk)
+        dto = _round_matches_by_id_sync(rnd.pk, _ANON, None)
 
         self.assertEqual(dto.round_id, rnd.pk)
         self.assertEqual(dto.round_number, 1)
@@ -193,7 +196,7 @@ class RoundMatchesByIdTeamTests(TestCase):
         rounds[1].save()
         # rounds[2] left as default (unpublished, not completed).
 
-        dto = _round_matches_by_id_sync(rounds[1].pk)
+        dto = _round_matches_by_id_sync(rounds[1].pk, _ANON, None)
         self.assertEqual(len(dto.rounds), 3)
         self.assertEqual([r.round_number for r in dto.rounds], [1, 2, 3])
         self.assertEqual(
@@ -208,12 +211,12 @@ class RoundMatchesByIdTeamTests(TestCase):
             league_tag="fideleague", season_tag="s1", boards=2, team_count=2,
             show_fide_names=True,
         )
-        dto = _round_matches_by_id_sync(rnd.pk)
+        dto = _round_matches_by_id_sync(rnd.pk, _ANON, None)
         self.assertTrue(dto.settings.use_fide_information)
 
     def test_404_when_round_missing(self):
         with self.assertRaises(HTTPException) as ctx:
-            _round_matches_by_id_sync(999_999)
+            _round_matches_by_id_sync(999_999, _ANON, None)
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -222,7 +225,7 @@ class RoundMatchesByIdLoneTests(TestCase):
         rnd = _make_lone_round(
             league_tag="ll1", season_tag="ls1", pairing_count=3,
         )
-        dto = _round_matches_by_id_sync(rnd.pk)
+        dto = _round_matches_by_id_sync(rnd.pk, _ANON, None)
         self.assertFalse(dto.is_team)
         self.assertEqual(dto.team_matches, [])
         self.assertEqual(len(dto.matches), 3)
@@ -244,7 +247,7 @@ class RoundMatchesByIdLoneTests(TestCase):
             round=rnd, white=solo, black=None, pairing_order=2, result="",
             game_link="",
         )
-        dto = _round_matches_by_id_sync(rnd.pk)
+        dto = _round_matches_by_id_sync(rnd.pk, _ANON, None)
         self.assertEqual(len(dto.matches), 2)
         bye = dto.matches[1]
         self.assertEqual(bye.white_username, "ll2_solo")
@@ -257,12 +260,12 @@ class RoundMatchesBySlugTests(TestCase):
         rnd = _make_team_round(
             league_tag="slug-l", season_tag="slug-s", boards=2, team_count=2,
         )
-        dto = _round_matches_by_slug_sync("slug-l", "slug-s", 1)
+        dto = _round_matches_by_slug_sync("slug-l", "slug-s", 1, _ANON, None)
         self.assertEqual(dto.round_id, rnd.pk)
 
     def test_404_on_missing_slug(self):
         with self.assertRaises(HTTPException) as ctx:
-            _round_matches_by_slug_sync("nope", "nope", 1)
+            _round_matches_by_slug_sync("nope", "nope", 1, _ANON, None)
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -346,16 +349,16 @@ class NoNPlusOneTests(TestCase):
         )
 
         small_count = self._count_queries(
-            lambda: _round_matches_by_id_sync(small.pk)
+            lambda: _round_matches_by_id_sync(small.pk, _ANON, None)
         )
         large_count = self._count_queries(
-            lambda: _round_matches_by_id_sync(large.pk)
+            lambda: _round_matches_by_id_sync(large.pk, _ANON, None)
         )
 
         # Sanity: returned matches really do scale, so any per-row query
         # would show up.
-        small_dto = _round_matches_by_id_sync(small.pk)
-        large_dto = _round_matches_by_id_sync(large.pk)
+        small_dto = _round_matches_by_id_sync(small.pk, _ANON, None)
+        large_dto = _round_matches_by_id_sync(large.pk, _ANON, None)
         self.assertEqual(len(small_dto.matches), 2)
         self.assertEqual(len(large_dto.matches), 12)
         self.assertEqual(len(small_dto.team_matches), 1)
@@ -377,13 +380,13 @@ class NoNPlusOneTests(TestCase):
         )
 
         small_count = self._count_queries(
-            lambda: _round_matches_by_id_sync(small.pk)
+            lambda: _round_matches_by_id_sync(small.pk, _ANON, None)
         )
         large_count = self._count_queries(
-            lambda: _round_matches_by_id_sync(large.pk)
+            lambda: _round_matches_by_id_sync(large.pk, _ANON, None)
         )
 
-        large_dto = _round_matches_by_id_sync(large.pk)
+        large_dto = _round_matches_by_id_sync(large.pk, _ANON, None)
         self.assertEqual(len(large_dto.matches), 20)
 
         self.assertEqual(
