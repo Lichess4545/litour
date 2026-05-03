@@ -13,6 +13,9 @@ interface Props {
   gender: string | null;
   side: "left" | "right";
   pieceColor: "white" | "black";
+  // When provided, the dot becomes a labeled marker (team mode shows the
+  // board number inside). Omit for lone tournaments — small unlabeled dot.
+  boardLabel?: number | null;
   eventSettings: EventSettings;
 }
 
@@ -28,8 +31,10 @@ export function PlayerCell({
   gender,
   side,
   pieceColor,
+  boardLabel,
   eventSettings,
 }: Props) {
+  const dotLabel = boardLabel != null ? boardLabel : undefined;
   const trailing = (
     <>
       <GenderBadge gender={gender} />
@@ -42,7 +47,7 @@ export function PlayerCell({
   if (side === "left") {
     return (
       <div className="flex items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3 sm:py-2.5">
-        <ColorDot color={pieceColor} />
+        <ColorDot color={pieceColor} label={dotLabel} />
         <PlayerName
           username={username}
           fideName={fideName}
@@ -62,7 +67,7 @@ export function PlayerCell({
         align="end"
         trailing={trailing}
       />
-      <ColorDot color={pieceColor} />
+      <ColorDot color={pieceColor} label={dotLabel} />
     </div>
   );
 }

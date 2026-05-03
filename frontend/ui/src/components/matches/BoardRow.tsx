@@ -23,19 +23,20 @@ interface Props {
 export function BoardRow({ match, teamMode, eventSettings }: Props) {
   const oriented = orientForCard(match, teamMode);
 
+  // Team mode: put the board number inside both color markers (so each
+  // side of the row visibly carries the board) instead of a separate
+  // corner label.
+  const boardLabel = teamMode ? match.board_number : null;
+
   return (
-    <div className="relative col-span-full grid min-h-14 grid-cols-subgrid items-stretch text-sm">
-      {teamMode && match.board_number != null ? (
-        <span className="text-muted-foreground pointer-events-none absolute top-0.5 left-1.5 font-mono text-[10px] leading-none opacity-70">
-          {match.board_number}
-        </span>
-      ) : null}
+    <div className="col-span-full grid min-h-14 grid-cols-subgrid items-stretch text-sm">
       <PlayerCell
         username={oriented.left.username}
         fideName={oriented.left.fideName}
         rating={oriented.left.rating}
         gender={oriented.left.gender}
         pieceColor={oriented.left.pieceColor}
+        boardLabel={boardLabel}
         side="left"
         eventSettings={eventSettings}
       />
@@ -50,6 +51,7 @@ export function BoardRow({ match, teamMode, eventSettings }: Props) {
         rating={oriented.right.rating}
         gender={oriented.right.gender}
         pieceColor={oriented.right.pieceColor}
+        boardLabel={boardLabel}
         side="right"
         eventSettings={eventSettings}
       />
