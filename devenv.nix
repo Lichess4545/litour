@@ -84,6 +84,12 @@ in
   # NEXT_PUBLIC_LITOUR_API_URL, DATABASE_URL, etc.
   dotenv.enable = true;
 
+  # Pin javafo to the Nix-provided JRE. Without this, `java` resolves to
+  # /usr/bin/java which then mis-loads libjli.so from .devenv/profile/lib
+  # (a jre21_minimal lib that's on LD_LIBRARY_PATH) and prints a noisy
+  # "no version information available" warning on every invocation.
+  env.JAVAFO_COMMAND = "${pkgs.jre21_minimal}/bin/java -jar ./thirdparty/javafo.jar";
+
   languages.python = {
     enable = true;
     package = pkgs.python311;
