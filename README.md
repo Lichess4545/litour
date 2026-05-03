@@ -85,10 +85,15 @@ Then open a pairings page; with `LITOUR_API_BASE_URL` set in `.env` (default poi
 ### Endpoints
 
 - `GET /health` — liveness
+- `GET /v1/discovery/events` — paginated list of discoverable events (home page)
+- `GET /v1/discovery/events/{slug}` — event detail (header + tab availability + composed pairings)
 - `GET /v1/rounds/{round_id}/matches` — round matches by primary-key (used by the legacy IIFE / internal callers)
 - `GET /v1/leagues/{league_tag}/events/{event_tag}/rounds/{round_number}/matches` — slug-routed round matches (used by the new UI; uniqueness enforced by league)
 - `GET /v1/leagues/{league_tag}/current-round` — convenience for clients
+- `PUT /v1/matches/{match_id}/result` — record a match result (auth-gated)
 - `WebSocket /ws/rounds/{round_id}/matches` — public, no auth; emits `match.result` and `match.game_link` messages
+- `WebSocket /ws/discovery/home` — emits `event.update` / `event.removed` envelopes for the home grid
+- `WebSocket /ws/discovery/events/{slug}` — per-event detail updates (staff session sees draft channel)
 - `GET /docs` — Scalar UI for the OpenAPI schema
 
 ### Frontend workspace (`frontend/`)
@@ -96,7 +101,10 @@ Then open a pairings page; with `LITOUR_API_BASE_URL` set in `.env` (default poi
 The browser-side code lives in a bun workspace at `frontend/`:
 
 - `frontend/api-client/` — `@litour/api-client`. OpenAPI bindings via `openapi-typescript` + `openapi-fetch`, plus a hand-written `zod` discriminated union for WebSocket messages (`src/ws-messages.ts`). Bundled to a self-contained IIFE that the legacy Django pairings template loads via `{% static %}` and calls as `window.LitourApi.connectMatchStream(...)`.
-- `frontend/ui/` — `litour-ui`. Next.js 15 + shadcn (default theme, neutral). The first page is `/v2/<leagueTag>/<eventTag>/round/<n>/matches`: server-rendered initial fetch via `@litour/api-client`, then a client-side WebSocket subscription that patches local state on `match.result` / `match.game_link` messages. The legacy Django URL shape `/<leagueTag>/season/<eventTag>/...` is mirrored in the new tree because `Season.tag` is unique only within a league.
+- `frontend/ui/` — `litour-ui`. Next.js 15 + shadcn, **Editorial Industrial** theme (Instrument Serif display + Geist body — see [`DESIGN.md`](DESIGN.md)). Pages:
+  - `/v2/` — discovery home grid (server-rendered list + `events:home` WebSocket for live card updates).
+  - `/v2/events/<slug>` — event detail with tabs (server-rendered header + composed pairings + `events:slug:<slug>` WebSocket).
+  - `/v2/<leagueTag>/<eventTag>/round/<n>/matches` — slug-routed pairings page (legacy Django URL shape mirrored because `Season.tag` is unique only within a league). Reused as the embedded "Pairings" tab on the event detail page.
 
 Terminology in the new API/UI follows `terms.md`: a Django `Season` is exposed as **event**, a `TeamPairing` as **Team Match**, and individual board pairings (both `TeamPlayerPairing` and `LonePlayerPairing`) as **Match**. The old names live on at the model layer for back-compat.
 

@@ -24,6 +24,10 @@ loose-coupled and own their own DTOs, services, routes, and permissions:
    live websocket fan-out. Supports swiss / knockout / round robin etc.
 5. **Final standings** — final score, prize tiebreaks, and (for staged
    tournaments) qualification for the next stage.
+6. **Discovery** — the public read surface. Lists discoverable events
+   on `/v2/` (home), drives the per-event detail page, and fans out
+   real-time card / detail updates over `events:home` and
+   `events:slug:<slug>` websocket channels.
 
 ## FastAPI layout (`heltour/api/`)
 
@@ -62,6 +66,13 @@ heltour/api/
       # preflight time, not TestClient — see test_http.py for the
       # rationale (asgiref worker thread + psycopg2 + Django teardown).
   standings/
+  discovery/
+    routes.py            # /v1/discovery/events[, /{slug}]
+    schemas.py
+    services.py
+    permissions.py       # visible_queryset / can_view_season
+    ws.py                # /ws/discovery/home, /ws/discovery/events/{slug}
+    tests/
 ```
 
 Adding a new chess domain is one `include_router(...)` line in

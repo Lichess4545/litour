@@ -182,9 +182,11 @@ SaaS that picked blue*. Restraint is the signal.
 ### Status terminology (chess-native)
 
 ```
-"Now playing"  — event is in progress (uses lichess-blue dot)
-"Open"         — registration is accepting signups
-"Finished"     — event has ended
+"Now playing"       — event is in progress (uses lichess-blue dot)
+"Open"              — registration is accepting signups
+"Awaiting results"  — all rounds played but the event hasn't been
+                       marked complete yet (final results pending)
+"Finished"          — event has ended
 ```
 
 These replace the generic "Active / Upcoming / Completed" admin labels.
@@ -345,8 +347,9 @@ components/discovery/
   EventCard.tsx         single event card (featured + standard variants)
   EventGrid.tsx         3-column grid with featured slot
   EventTabs.tsx         tabs with "Coming soon" disabled state
-  StatusPill.tsx        Now playing / Open / Finished pill
+  StatusPill.tsx        Now playing / Open / Awaiting results / Finished pill
   EmptyState.tsx        cold-start + filter-mismatch empty states
+  OrganizerFilter.tsx   chip-row organizer filter for the home grid
 ```
 
 `StatusPill` lives at `components/discovery/` (it's chess-domain), not

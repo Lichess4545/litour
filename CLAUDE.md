@@ -17,8 +17,8 @@ These are non-negotiable for new features:
 
 1. **Screaming architecture.** Top-level folders name chess concepts,
    not technical layers. The six domains are `event_setup`,
-   `registration`, `roster_formation`, `round_management`, and
-   `standings`. See [`design/architecture.md`](design/architecture.md)
+   `registration`, `roster_formation`, `round_management`,
+   `standings`, and `discovery`. See [`design/architecture.md`](design/architecture.md)
    for the FastAPI layout, frontend layout, and which concepts live in
    which domain.
 2. **Simple DI for testability only.** Constructor / property
@@ -90,6 +90,12 @@ zod or proper narrowing); `as const` is fine.
 - Don't create new files unless the task requires it.
 - Respect existing code structure and patterns.
 - Ask for clarification before assuming.
+
+## Deferred work
+
+[`TODOS.md`](TODOS.md) tracks deferred follow-up work captured during
+planning — each entry has the context, trigger, and dependencies
+needed to pick it up later.
 
 ## Historical context
 
