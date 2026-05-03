@@ -33,6 +33,10 @@
   --color-result-win: var(--result-win);
   --color-result-loss: var(--result-loss);
   --color-result-tie: var(--result-tie);
+  /* Discovery status accent — lichess-blue. Used sparingly per DESIGN.md:
+     live indicator, hairline on active-tab + featured card, "Now playing"
+     pill text/border. Never as a CTA fill. */
+  --color-status-active: var(--status-active);
 }
 
 :root {
@@ -43,12 +47,14 @@
   --result-win: oklch(0.951 0.026 236.824);
   --result-loss: oklch(0.952 0.025 348.382);
   --result-tie: oklch(0.92 0.004 286.32);
+  --status-active: oklch(0.62 0.16 245);
 }
 
 .dark {
   --result-win: oklch(0.425 0.123 240.85);
   --result-loss: oklch(0.408 0.153 2.432);
   --result-tie: oklch(0.37 0.013 285.805);
+  --status-active: oklch(0.70 0.16 245);
 }
 
 :root {

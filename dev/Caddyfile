@@ -5,6 +5,12 @@
     }
 
     # Next.js UI. Keep the /v2 prefix because next.config.ts has basePath: '/v2'.
+    # Both `/v2` (basePath root) and `/v2/*` need to route to Next; without the
+    # bare `/v2` handler, Next's default trailing-slash strip on `/v2/` falls
+    # through to Django and creates a redirect loop.
+    handle /v2 {
+        reverse_proxy localhost:3000
+    }
     handle /v2/* {
         reverse_proxy localhost:3000
     }

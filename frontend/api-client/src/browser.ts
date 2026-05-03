@@ -1,7 +1,12 @@
 // Browser entry point: bundled to an IIFE that assigns these exports to
 // `window.LitourApi`. Used by Django templates via a {% static %} <script> tag.
-export { createClient, connectMatchStream } from "./client";
-export type { MatchStream } from "./client";
+export {
+  createClient,
+  connectMatchStream,
+  connectDiscoveryHomeStream,
+  connectDiscoveryEventStream,
+} from "./client";
+export type { MatchStream, DiscoveryStream } from "./client";
 export { wsMessage } from "./ws-messages";
 export type {
   WSMessage,
@@ -9,3 +14,22 @@ export type {
   WSTeamMatchUpdate,
   WSPing,
 } from "./ws-messages";
+export {
+  wsHomeMessage,
+  wsEventMessage,
+  eventCardDto,
+  eventCardsPageDto,
+  eventDetailDto,
+  eventHeaderDto,
+} from "./discovery-messages";
+export type {
+  StatusGroup,
+  StatusLabel,
+  Visibility,
+  EventCardDTO,
+  EventCardsPageDTO,
+  EventHeaderDTO,
+  EventDetailDTO,
+  WSHomeMessage,
+  WSEventMessage,
+} from "./discovery-messages";

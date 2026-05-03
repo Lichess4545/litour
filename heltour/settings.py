@@ -214,8 +214,8 @@ EMAIL_USE_TLS = env("EMAIL_USE_TLS")
 EMAIL_HOST_USER = env("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
 
-SERVER_EMAIL = env("SERVER_EMAIL", default="webmaster@lots.lichess.ca")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@lots.lichess.ca")
+SERVER_EMAIL = env("SERVER_EMAIL", default="webmaster@palamedes.app")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@palamedes.app")
 
 REDIS_URL = env("REDIS_URL")
 
@@ -319,7 +319,7 @@ CACHEOPS = {
 
 # API Keys and External Services
 # Lichess OAuth
-LICHESS_OAUTH_CLIENTID = env("LICHESS_OAUTH_CLIENTID", default="lots.lichess.ca")
+LICHESS_OAUTH_CLIENTID = env("LICHESS_OAUTH_CLIENTID", default="palamedes")
 LICHESS_DOMAIN = env("LICHESS_DOMAIN")
 LICHESS_NAME = env("LICHESS_NAME")
 LICHESS_TOPLEVEL = env("LICHESS_TOPLEVEL")
@@ -376,7 +376,7 @@ CUSTOM_THEME_LOGO_URL = env(
 SLEEP_UNIT = env("SLEEP_UNIT", default=1.0)
 
 # Base URL for the FastAPI service (heltour.api). Empty to disable the live
-# pairings client-side script. Set to e.g. "https://lots.lichess.ca/api" or
+# pairings client-side script. Set to e.g. "https://palamedes.app/api" or
 # "http://localhost:8001" for development.
 LITOUR_API_BASE_URL = env("LITOUR_API_BASE_URL")
 

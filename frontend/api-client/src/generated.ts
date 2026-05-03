@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discovery/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List discoverable events. */
+        get: operations["list_events_route_v1_discovery_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discovery/events/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event detail (header + composed pairings + tab availability). */
+        get: operations["event_detail_route_v1_discovery_events__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leagues/{league_tag}/current-round": {
         parameters: {
             query?: never;
@@ -105,6 +139,154 @@ export interface components {
             round_id: number;
             /** Round Number */
             round_number: number;
+        };
+        /**
+         * EventCardDTO
+         * @description The shape rendered into one card on /v2/.
+         *
+         *     Card hierarchy (DESIGN.md): name -> status pill -> organizer label
+         *     -> format / schedule -> slot status. Field order in this class
+         *     matches that visual order to make the contract self-documenting.
+         */
+        EventCardDTO: {
+            /**
+             * Format Line
+             * @description Composed format summary, e.g. "Team Swiss · 8 rounds".
+             */
+            format_line: string;
+            /**
+             * Name
+             * @description Tournament name (Season.name).
+             */
+            name: string;
+            /**
+             * Organizer Label
+             * @description Organizer name shown under the tournament title.
+             */
+            organizer_label: string;
+            /**
+             * Organizer Tag
+             * @description Machine slug for the organizer chip filter. Currently League.tag.
+             */
+            organizer_tag: string;
+            /**
+             * Registration Url
+             * @description Absolute path that the Register CTA links to (legacy Django form).
+             */
+            registration_url: string;
+            /**
+             * Schedule Line
+             * @description Composed schedule summary, e.g. "45+45 · Sundays 11am UTC". Empty string when start_date is unset.
+             */
+            schedule_line: string;
+            /**
+             * Slot Status
+             * @description Free-form status string the card renders next to the pill, e.g. "Round 4 of 8" for active events or "23 / 32 players" for open ones. Empty string for finished events.
+             */
+            slot_status: string;
+            /**
+             * Slug
+             * @description Globally-unique URL identifier.
+             */
+            slug: string;
+            /**
+             * Status Group
+             * @description Machine status key. URL filter contract: ?status=active|upcoming|completed.
+             * @enum {string}
+             */
+            status_group: "active" | "upcoming" | "awaiting" | "completed";
+            /**
+             * Status Label
+             * @description Display string for the status pill. Chess-native per DESIGN.md.
+             * @enum {string}
+             */
+            status_label: "Now playing" | "Open" | "Awaiting results" | "Finished";
+            /**
+             * Visibility
+             * @description Carried for the noindex hint on detail pages.
+             * @enum {string}
+             */
+            visibility: "public" | "unlisted" | "draft";
+        };
+        /**
+         * EventCardsPage
+         * @description Paginated card list returned by GET /v1/discovery/events.
+         *
+         *     `total` is the unpaginated count after filters apply, for client-side
+         *     pagination UIs that render "Showing N of T".
+         */
+        EventCardsPage: {
+            /** Events */
+            events: components["schemas"]["EventCardDTO"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * EventDetailDTO
+         * @description Full payload for GET /v1/discovery/events/<slug>.
+         *
+         *     `tabs_available` lists the machine names of tabs whose payload is
+         *     real (not a "Coming soon" placeholder). Frontend reads this to
+         *     decide which tabs are interactive vs. disabled.
+         */
+        EventDetailDTO: {
+            header: components["schemas"]["EventHeaderDTO"];
+            /**
+             * Pairings
+             * @description Latest published round's pairings DTO when available, or None when no round has been published yet. Shape: round_management.RoundMatchesDTO.
+             */
+            pairings?: Record<string, never> | null;
+            /**
+             * Tabs Available
+             * @description Always at least ["pairings"] today. "standings" / "roster" join when their packages graduate from placeholder.
+             */
+            tabs_available: ("pairings" | "standings" | "roster")[];
+        };
+        /**
+         * EventHeaderDTO
+         * @description Header block on /v2/events/<slug>/... (card-shaped, plus richer fields).
+         */
+        EventHeaderDTO: {
+            /** Format Line */
+            format_line: string;
+            /** Name */
+            name: string;
+            /** Organizer Label */
+            organizer_label: string;
+            /** Organizer Tag */
+            organizer_tag: string;
+            /**
+             * Registration Open
+             * @description Whether the Register CTA should render as an active button.
+             */
+            registration_open: boolean;
+            /** Registration Url */
+            registration_url: string;
+            /** Schedule Line */
+            schedule_line: string;
+            /** Slot Status */
+            slot_status: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Status Group
+             * @enum {string}
+             */
+            status_group: "active" | "upcoming" | "awaiting" | "completed";
+            /**
+             * Status Label
+             * @enum {string}
+             */
+            status_label: "Now playing" | "Open" | "Awaiting results" | "Finished";
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "public" | "unlisted" | "draft";
         };
         /**
          * EventRoundDTO
@@ -353,6 +535,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDTO"];
+                };
+            };
+        };
+    };
+    list_events_route_v1_discovery_events_get: {
+        parameters: {
+            query?: {
+                /** @description Status group filter, repeatable. Default (when omitted) is active + upcoming + awaiting; completed requires an explicit ?status=completed. */
+                status?: ("active" | "upcoming" | "awaiting" | "completed")[] | null;
+                /** @description Organizer filter by tag (formerly League.tag), repeatable. Omitted = all organizers. */
+                organizer?: string[] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventCardsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    event_detail_route_v1_discovery_events__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailDTO"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

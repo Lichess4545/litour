@@ -8,6 +8,11 @@ matching row in-place — no refetch, no diffing.
 
 Team-match-level changes (score aggregates after a result is set) emit a
 companion `team_match.update` event on the same channel.
+
+Discovery (home + drill-in) gets its own `events:home` and
+`events:slug:{slug}` channels, fanning out `event.update` /
+`event.removed` envelopes carrying the full EventCardDTO / EventDetailDTO
+so subscribed browsers replace state without a refetch.
 """
 
 import json
@@ -15,7 +20,8 @@ import logging
 
 import redis
 from django.conf import settings
-from django.db.models.signals import post_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -142,3 +148,144 @@ def _connect():
 
 
 _connect()
+
+
+# ---------- Discovery domain fan-out ------------------------------------------
+#
+# Channels:
+#   events:home              — list-level changes (visible card list)
+#   events:slug:{slug}       — one event's detail surface
+#
+# Envelopes:
+#   {"type": "event.update",  "slug": str, "card":   EventCardDTO}     (events:home)
+#   {"type": "event.update",  "slug": str, "detail": EventDetailDTO}   (events:slug:{slug})
+#   {"type": "event.removed", "slug": str, "reason": str}              (both channels)
+#
+# Visibility rules (matches `discovery.permissions`):
+#   public   → home + slug channels both fire.
+#   unlisted → only the slug channel fires (home stays narrow).
+#   draft    → no fan-out (drafts are admin-only via Django admin).
+# A visibility transition from public→{unlisted,draft} fires `event.removed`
+# on `events:home` so subscribers prune the card; the slug channel keeps
+# firing if the new state is still readable through the slug surface.
+
+
+def _discovery_publish_card(season) -> None:
+    from heltour.api.discovery.services import build_card
+
+    try:
+        card = build_card(season)
+    except Exception:
+        logger.exception("discovery: build_card failed slug=%s", season.slug)
+        return
+    _publish(
+        "events:home",
+        {
+            "type": "event.update",
+            "slug": season.slug,
+            "card": card.model_dump(mode="json"),
+        },
+    )
+
+
+def _discovery_publish_detail(season) -> None:
+    from heltour.api.discovery.services import get_event_with_tabs
+    from heltour.api.shared.auth import Viewer
+
+    try:
+        detail = get_event_with_tabs(season.slug, Viewer.anonymous())
+    except Exception:
+        logger.exception("discovery: get_event_with_tabs failed slug=%s", season.slug)
+        return
+    if detail is None:
+        return
+    _publish(
+        f"events:slug:{season.slug}",
+        {
+            "type": "event.update",
+            "slug": season.slug,
+            "detail": detail.model_dump(mode="json"),
+        },
+    )
+
+
+def _discovery_publish_removed(slug: str, reason: str) -> None:
+    if not slug:
+        return
+    payload = {"type": "event.removed", "slug": slug, "reason": reason}
+    _publish("events:home", payload)
+    _publish(f"events:slug:{slug}", payload)
+
+
+def _on_commit(fn) -> None:
+    """Run a publish on transaction commit, or immediately if no tx is open."""
+
+    try:
+        transaction.on_commit(fn)
+    except transaction.TransactionManagementError:
+        fn()
+
+
+def _discovery_connect():
+    from heltour.tournament.models import Registration, Round, Season, SeasonPlayer
+
+    @receiver(post_save, sender=Season, dispatch_uid="discovery_season_post_save")
+    def _season_saved(sender, instance, created, **kwargs):
+        slug = instance.slug
+        prior = getattr(instance, "initial_visibility", instance.visibility)
+        new = instance.visibility
+        leaving_public = prior == "public" and new != "public"
+
+        def _publish_now():
+            if leaving_public:
+                _publish(
+                    "events:home",
+                    {
+                        "type": "event.removed",
+                        "slug": slug,
+                        "reason": "visibility_change",
+                    },
+                )
+            elif new == "public":
+                _discovery_publish_card(instance)
+
+            if new in ("public", "unlisted"):
+                _discovery_publish_detail(instance)
+
+            instance.initial_visibility = new
+
+        _on_commit(_publish_now)
+
+    @receiver(post_delete, sender=Season, dispatch_uid="discovery_season_post_delete")
+    def _season_deleted(sender, instance, **kwargs):
+        slug = instance.slug
+        _on_commit(lambda: _discovery_publish_removed(slug, "deleted"))
+
+    @receiver(post_save, sender=Round, dispatch_uid="discovery_round_post_save")
+    def _round_saved(sender, instance, **kwargs):
+        # `Round N of M` and pairings-tab availability both follow
+        # publish_pairings; republish both surfaces.
+        season = instance.season
+        if season.visibility == "public":
+            _on_commit(lambda: _discovery_publish_card(season))
+        if season.visibility in ("public", "unlisted"):
+            _on_commit(lambda: _discovery_publish_detail(season))
+
+    @receiver(post_save, sender=SeasonPlayer, dispatch_uid="discovery_sp_post_save")
+    def _sp_saved(sender, instance, **kwargs):
+        season = instance.season
+        if season.visibility == "public":
+            _on_commit(lambda: _discovery_publish_card(season))
+        if season.visibility in ("public", "unlisted"):
+            _on_commit(lambda: _discovery_publish_detail(season))
+
+    @receiver(post_save, sender=Registration, dispatch_uid="discovery_reg_post_save")
+    def _reg_saved(sender, instance, **kwargs):
+        season = instance.season
+        if season.visibility == "public":
+            _on_commit(lambda: _discovery_publish_card(season))
+        if season.visibility in ("public", "unlisted"):
+            _on_commit(lambda: _discovery_publish_detail(season))
+
+
+_discovery_connect()

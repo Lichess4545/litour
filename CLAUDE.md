@@ -5,7 +5,7 @@ Guidance for Claude Code working in this repository.
 ## What this is
 
 Litour (formerly heltour) is a Django + FastAPI tournament-management
-app for online chess events, branded as **lots.lichess.ca**. Backend:
+app for online chess events, branded as **Palamedes**. Backend:
 Django 4.2 / Python 3.11 / PostgreSQL 15 / Celery+Redis / FastAPI for
 the new API surface. Frontend: a Next.js + shadcn UI alongside the
 legacy jQuery + Bootstrap templates. Detailed dev setup, services, and
@@ -94,8 +94,15 @@ zod or proper narrowing); `as const` is fine.
 ## Historical context
 
 The project was originally `heltour` for lichess4545 and was rebranded
-to Litour for lots.lichess.ca. The `heltour` name still appears in many
-places for backwards compatibility — that's expected.
+to Litour (public name: Palamedes). The `heltour` name still appears in
+many places for backwards compatibility — that's expected.
+
+## Design System
+
+Always read [`DESIGN.md`](DESIGN.md) before making any visual or UI
+decisions. All font choices, colors, spacing, and aesthetic direction
+are defined there. Do not deviate without explicit user approval. In
+QA / review mode, flag any code that doesn't match DESIGN.md.
 
 ## gstack
 

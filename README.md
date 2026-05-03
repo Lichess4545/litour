@@ -1,6 +1,6 @@
 # Litour (formerly heltour)
 
-League management software for chess leagues on Lichess, now branded as lots.lichess.ca.
+League management software for chess leagues on Lichess, now branded as Palamedes.
 
 # Quick Start
 
@@ -182,6 +182,6 @@ Key settings:
 
 ## Historical Note
 
-This project was previously known as heltour and served lichess4545. It has been rebranded to support lots.lichess.ca (Lichess Online Tournament System).
+This project was previously known as heltour and served lichess4545. It has been rebranded as Palamedes — a multi-tenant tournament platform for online chess events.
 
 .

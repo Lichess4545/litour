@@ -21,9 +21,13 @@ type TeamMatch = components["schemas"]["TeamMatchDTO"];
 interface Props {
   initial: RoundMatches;
   apiBaseUrl: string;
+  // When true, render only the matches body (RoundsNav + summary + view) so
+  // a host page like the discovery event detail can supply its own page
+  // chrome (heading, ConnectionBadge, ModeToggle) without duplication.
+  embedded?: boolean;
 }
 
-export function MatchesLive({ initial, apiBaseUrl }: Props) {
+export function MatchesLive({ initial, apiBaseUrl, embedded = false }: Props) {
   const [matches, setMatches] = useState<Match[]>(initial.matches);
   const [teamMatches, setTeamMatches] = useState<TeamMatch[]>(initial.team_matches);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -58,35 +62,47 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
     };
   }, [apiBaseUrl, initial.round_id]);
 
-  return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-6 space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {initial.event_name} — Round {initial.round_number}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              <span className="font-mono">
-                {initial.league_tag}/{initial.event_tag}
-              </span>
-              {initial.is_completed ? " · completed" : " · in progress"}
-            </p>
+  const body = (
+    <>
+      {!embedded ? (
+        <header className="mb-6 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {initial.event_name} — Round {initial.round_number}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                <span className="font-mono">
+                  {initial.league_tag}/{initial.event_tag}
+                </span>
+                {initial.is_completed ? " · completed" : " · in progress"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ViewerBadge viewer={initial.viewer} />
+              <ConnectionBadge state={connection} />
+              <ModeToggle />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <ViewerBadge viewer={initial.viewer} />
-            <ConnectionBadge state={connection} />
-            <ModeToggle />
-          </div>
+          <RoundsNav
+            rounds={initial.rounds}
+            currentRoundNumber={initial.round_number}
+            leagueTag={initial.league_tag}
+            eventTag={initial.event_tag}
+          />
+          <MatchesSummary matches={matches} filter={filter} onFilterChange={setFilter} />
+        </header>
+      ) : (
+        <div className="mb-6 space-y-4">
+          <RoundsNav
+            rounds={initial.rounds}
+            currentRoundNumber={initial.round_number}
+            leagueTag={initial.league_tag}
+            eventTag={initial.event_tag}
+          />
+          <MatchesSummary matches={matches} filter={filter} onFilterChange={setFilter} />
         </div>
-        <RoundsNav
-          rounds={initial.rounds}
-          currentRoundNumber={initial.round_number}
-          leagueTag={initial.league_tag}
-          eventTag={initial.event_tag}
-        />
-        <MatchesSummary matches={matches} filter={filter} onFilterChange={setFilter} />
-      </header>
+      )}
 
       {initial.is_team ? (
         <TeamMatchesView
@@ -106,8 +122,11 @@ export function MatchesLive({ initial, apiBaseUrl }: Props) {
           presenceEvents={initial.presence_events}
         />
       )}
-    </main>
+    </>
   );
+
+  if (embedded) return body;
+  return <main className="mx-auto max-w-5xl px-6 py-10">{body}</main>;
 }
 
 function replaceById<T extends { id: number }>(prev: T[], next: T): T[] {

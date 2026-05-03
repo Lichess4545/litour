@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
+from heltour.api.discovery import routes as discovery_routes
+from heltour.api.discovery import ws as discovery_ws
 from heltour.api.event_setup import routes as event_setup_routes
 from heltour.api.middleware import DjangoConnectionMiddleware
 from heltour.api.registration import routes as registration_routes
@@ -36,8 +38,9 @@ app.add_middleware(
 # Health is unprefixed; everything else lives under /v1.
 app.include_router(health.router)
 
-# Round-management WS is unprefixed (matches the existing client URL).
+# WS routers are unprefixed (matches the existing client URLs).
 app.include_router(round_management_ws.router)
+app.include_router(discovery_ws.router)
 
 # Per-domain v1 routers — adding a new chess domain means adding one
 # include_router line here, nothing else.
@@ -46,6 +49,7 @@ app.include_router(event_setup_routes.router, prefix="/v1")
 app.include_router(registration_routes.router, prefix="/v1")
 app.include_router(roster_formation_routes.router, prefix="/v1")
 app.include_router(standings_routes.router, prefix="/v1")
+app.include_router(discovery_routes.router, prefix="/v1")
 
 
 @app.get("/docs", include_in_schema=False)

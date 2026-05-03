@@ -17,6 +17,7 @@ from django.db import connection, models, transaction
 from django.db.models import JSONField, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+from django.utils.text import slugify
 from django_comments.models import Comment
 from phonenumber_field.modelfields import PhoneNumberField
 from django_countries.fields import CountryField
@@ -634,11 +635,64 @@ PLAYOFF_OPTIONS = (
 
 
 # -------------------------------------------------------------------------------
+VISIBILITY_PUBLIC = "public"
+VISIBILITY_UNLISTED = "unlisted"
+VISIBILITY_DRAFT = "draft"
+
+VISIBILITY_CHOICES = (
+    (VISIBILITY_PUBLIC, "Public — listed on the discovery home and indexed."),
+    (VISIBILITY_UNLISTED, "Unlisted — accessible by URL, hidden from discovery, noindex."),
+    (VISIBILITY_DRAFT, "Draft — visible only to staff."),
+)
+
+
 class Season(_BaseModel):
     league = models.ForeignKey(League, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     tag = models.SlugField(
         help_text="The season will be accessible at /{league_tag}/season/{season_tag}/"
+    )
+    slug = models.SlugField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text=(
+            "Globally-unique URL identifier for the discovery domain "
+            "(/v2/events/<slug>/...). Auto-populated on first save from "
+            "league.tag + tag + id; immutable once assigned to keep URLs stable. "
+            "null=True only because a one-shot data migration backfills existing "
+            "rows; new rows always get a slug via Season.save()."
+        ),
+    )
+    visibility = models.CharField(
+        max_length=16,
+        choices=VISIBILITY_CHOICES,
+        default=VISIBILITY_PUBLIC,
+        help_text=(
+            "Discovery visibility. 'public' lists on /v2/ and indexes. "
+            "'unlisted' is accessible by URL only and emits noindex. "
+            "'draft' is staff-only (404 to anonymous)."
+        ),
+    )
+    organizer_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Override the organizer label shown on /v2/. Leave blank to "
+            "default to the league's name. Use when a season runs under "
+            "a different organizer than the league suggests (cross-league "
+            "events, guest hosts, qualifiers)."
+        ),
+    )
+    organizer_tag_override = models.SlugField(
+        max_length=64,
+        blank=True,
+        help_text=(
+            "Override the organizer chip-filter slug on /v2/. Leave blank "
+            "to default to league.tag. Group seasons by organizer in the "
+            "filter chip without renaming the league."
+        ),
     )
     start_date = models.DateTimeField(blank=True, null=True)
     rounds = models.PositiveIntegerField()
@@ -700,6 +754,13 @@ class Season(_BaseModel):
         self.initial_round_duration = self.round_duration
         self.initial_start_date = self.start_date
         self.initial_is_completed = self.is_completed
+        self.initial_visibility = self.visibility
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.slug:
+            self.slug = slugify(f"{self.league.tag}-{self.tag}-{self.id}")
+            super().save(update_fields=["slug"])
 
     def parse_predefined_player_list(self) -> dict[str, str]:
         result: dict[str, str] = {}

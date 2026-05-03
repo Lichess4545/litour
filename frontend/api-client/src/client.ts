@@ -1,5 +1,11 @@
 import createOpenApiClient from "openapi-fetch";
 import { WebSocket as ReconnectingWebSocket } from "partysocket";
+import {
+  type WSEventMessage,
+  type WSHomeMessage,
+  wsEventMessage,
+  wsHomeMessage,
+} from "./discovery-messages";
 import type { paths } from "./generated";
 import { type WSMessage, wsMessage } from "./ws-messages";
 
@@ -35,6 +41,72 @@ export function connectMatchStream(
   ws.addEventListener("message", (ev) => {
     try {
       const parsed = wsMessage.parse(JSON.parse(ev.data as string));
+      onMessage(parsed);
+    } catch (err) {
+      onError?.(err);
+    }
+  });
+
+  if (onError) {
+    ws.addEventListener("error", onError);
+  }
+
+  return {
+    close() {
+      ws.close();
+    },
+  };
+}
+
+export interface DiscoveryStream {
+  close(): void;
+}
+
+export function connectDiscoveryHomeStream(
+  baseUrl: string,
+  onMessage: (msg: WSHomeMessage) => void,
+  onError?: (err: unknown) => void,
+): DiscoveryStream {
+  return openValidatedStream(
+    baseUrl,
+    "/ws/discovery/home",
+    wsHomeMessage,
+    onMessage,
+    onError,
+  );
+}
+
+export function connectDiscoveryEventStream(
+  baseUrl: string,
+  slug: string,
+  onMessage: (msg: WSEventMessage) => void,
+  onError?: (err: unknown) => void,
+): DiscoveryStream {
+  return openValidatedStream(
+    baseUrl,
+    `/ws/discovery/events/${encodeURIComponent(slug)}`,
+    wsEventMessage,
+    onMessage,
+    onError,
+  );
+}
+
+function openValidatedStream<T>(
+  baseUrl: string,
+  path: string,
+  schema: { parse(data: unknown): T },
+  onMessage: (msg: T) => void,
+  onError?: (err: unknown) => void,
+): DiscoveryStream {
+  const ws = new ReconnectingWebSocket(toWsUrl(baseUrl, path), [], {
+    minReconnectionDelay: 1000,
+    maxReconnectionDelay: 30_000,
+    reconnectionDelayGrowFactor: 2,
+  });
+
+  ws.addEventListener("message", (ev) => {
+    try {
+      const parsed = schema.parse(JSON.parse(ev.data as string));
       onMessage(parsed);
     } catch (err) {
       onError?.(err);
