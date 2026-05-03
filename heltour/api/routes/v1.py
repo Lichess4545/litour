@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path
 
 from heltour.api.auth import (
     Viewer,
@@ -31,6 +33,12 @@ from heltour.api.schemas import (
 _VALID_RESULTS: frozenset[str] = frozenset(
     {"", "1-0", "0-1", "1/2-1/2", "1X-0F", "0F-1X", "0F-0F", "1/2Z-1/2Z"}
 )
+
+# Django SlugField charset. Constraining path params to this rejects NUL
+# bytes and other oddities at the FastAPI layer with a 422 instead of
+# letting them reach Postgres (which raises on NUL → 500).
+_SLUG_PATTERN = r"^[-a-zA-Z0-9_]+$"
+_SlugPath = Annotated[str, Path(pattern=_SLUG_PATTERN, max_length=64)]
 
 router = APIRouter()
 
@@ -211,8 +219,8 @@ async def round_matches_by_id(
     responses=_NOT_FOUND_RESPONSE,
 )
 async def round_matches_by_slug(
-    league_tag: str,
-    event_tag: str,
+    league_tag: _SlugPath,
+    event_tag: _SlugPath,
     round_number: int,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> RoundMatchesDTO:
@@ -227,7 +235,7 @@ async def round_matches_by_slug(
     response_model=CurrentRoundDTO,
     responses=_NOT_FOUND_RESPONSE,
 )
-async def current_round(league_tag: str) -> CurrentRoundDTO:
+async def current_round(league_tag: _SlugPath) -> CurrentRoundDTO:
     return await in_thread(_current_round_sync, league_tag)
 
 
