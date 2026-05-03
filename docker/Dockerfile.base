@@ -6,14 +6,18 @@ RUN apt-get update && apt-get install -y \
     g++ \
     libpq-dev \
     curl \
+    unzip \
     git \
     build-essential \
     ruby \
     ruby-dev \
     postgresql-client \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install bun (used to install + bundle the TypeScript api-client below).
+ENV BUN_INSTALL=/usr/local
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.1.38" \
+    && bun --version
 
 RUN gem install sass
 
@@ -47,10 +51,10 @@ ENV SECRET_KEY=temporary-key-for-static-build
 RUN poetry install --only main && \
   mkdir -p /app/static /app/heltour/tournament/static/tournament/js && \
   python scripts/export_openapi.py > openapi.json && \
-  (cd clients/ts && \
-    npm install --no-audit --no-fund --prefer-offline && \
-    npm run generate && \
-    npm run bundle && \
+  (cd frontend && bun install) && \
+  (cd frontend/api-client && \
+    bun run generate && \
+    bun run bundle && \
     cp dist/litour-api-client.iife.js dist/litour-api-client.iife.js.map \
        /app/heltour/tournament/static/tournament/js/) && \
   python manage.py compilescss && \

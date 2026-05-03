@@ -7,7 +7,7 @@ on:
       - "heltour/api/**"
       - "heltour/tournament/models.py"
       - "heltour/tournament/signals_pubsub.py"
-      - "clients/ts/**"
+      - "frontend/**"
       - "scripts/export_openapi.py"
       - "pyproject.toml"
       - "poetry.lock"
@@ -17,7 +17,7 @@ on:
       - "heltour/api/**"
       - "heltour/tournament/models.py"
       - "heltour/tournament/signals_pubsub.py"
-      - "clients/ts/**"
+      - "frontend/**"
       - "scripts/export_openapi.py"
       - "pyproject.toml"
       - "poetry.lock"
@@ -91,33 +91,41 @@ jobs:
             --base-url=http://127.0.0.1:8001 \
             openapi.json
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: "20"
+          bun-version: "1.1.38"
 
-      - name: Install TS deps
-        working-directory: clients/ts
-        run: npm install --no-audit --no-fund
+      - name: Install frontend deps
+        working-directory: frontend
+        run: bun install --frozen-lockfile
 
       - name: Regenerate TS client
-        working-directory: clients/ts
-        run: npm run generate
+        working-directory: frontend/api-client
+        run: bun run generate
 
       - name: Typecheck TS client
-        working-directory: clients/ts
-        run: npm run typecheck
+        working-directory: frontend/api-client
+        run: bun run typecheck
 
       - name: Build TS client (ESM)
-        working-directory: clients/ts
-        run: npm run build
+        working-directory: frontend/api-client
+        run: bun run build
 
       - name: Bundle TS client (IIFE for browser)
-        working-directory: clients/ts
-        run: npm run bundle
+        working-directory: frontend/api-client
+        run: bun run bundle
 
       - name: Lint TS client
-        working-directory: clients/ts
-        run: npm run lint
+        working-directory: frontend/api-client
+        run: bun run lint
+
+      - name: Typecheck UI
+        working-directory: frontend/ui
+        run: bun run typecheck
+
+      - name: Lint UI
+        working-directory: frontend/ui
+        run: bun run lint
 
       - name: Fail if generated.ts drifted
-        run: git diff --exit-code clients/ts/src/generated.ts
+        run: git diff --exit-code frontend/api-client/src/generated.ts

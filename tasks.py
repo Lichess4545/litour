@@ -83,22 +83,32 @@ def fuzz(c, base_url="http://localhost:8001"):
     )
 
 
-@task(help={"skip_install": "Skip 'npm install' (use existing node_modules)."})
+@task(help={"skip_install": "Skip 'bun install' (use existing node_modules)."})
 def build_api_client(c, skip_install=False):
     """Generate the OpenAPI schema, bundle the TS API client, copy into static."""
     openapi(c)
-    ts_dir = project_relative("clients/ts")
+    frontend_dir = project_relative("frontend")
+    api_client_dir = project_relative("frontend/api-client")
     static_js_dir = project_relative("heltour/tournament/static/tournament/js")
     os.makedirs(static_js_dir, exist_ok=True)
-    with c.cd(ts_dir):
-        if not skip_install:
-            c.run("npm install --no-audit --no-fund", pty=True)
-        c.run("npm run generate", pty=True)
-        c.run("npm run bundle", pty=True)
+    if not skip_install:
+        with c.cd(frontend_dir):
+            c.run("bun install", pty=True)
+    with c.cd(api_client_dir):
+        c.run("bun run generate", pty=True)
+        c.run("bun run bundle", pty=True)
     for name in ("litour-api-client.iife.js", "litour-api-client.iife.js.map"):
-        src = os.path.join(ts_dir, "dist", name)
+        src = os.path.join(api_client_dir, "dist", name)
         if os.path.exists(src):
             c.run(f"cp {src} {static_js_dir}/")
+
+
+@task
+def run_ui(c):
+    """Run the Next.js UI dev server (frontend/ui) on port 3000."""
+    ui_dir = project_relative("frontend/ui")
+    with c.cd(ui_dir):
+        c.run("bun run dev", pty=True)
 
 
 @task(help={"purge": "Delete all heltour tasks."})
