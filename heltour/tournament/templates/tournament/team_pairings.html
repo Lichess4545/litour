@@ -82,9 +82,9 @@
                     }, 250);
                 }
 
-                window.LitourApi.connectPairingStream(apiBase, roundId, function (msg) {
-                    if (msg.type === 'pairing.result' || msg.type === 'pairing.game_link') {
-                        schedule(msg.pairing_id);
+                window.LitourApi.connectMatchStream(apiBase, roundId, function (msg) {
+                    if (msg.type === 'match.result' || msg.type === 'match.game_link') {
+                        schedule(msg.match_id);
                     }
                 });
             })();
@@ -106,6 +106,12 @@
                             <strong data-stat="started">{{ pairings_summary.started }}</strong> in progress &middot;
                             <strong data-stat="finished">{{ pairings_summary.finished }}</strong> finished &middot;
                             <strong data-stat="remaining">{{ pairings_summary.remaining }}</strong> unstarted
+                        </p>
+                    {% endif %}
+                    {% if league.tag and season.tag and round_number %}
+                        <p style="margin-top: 4px; font-size: 11px; color: #999;">
+                            <a href="/v2/{{ league.tag }}/{{ season.tag }}/round/{{ round_number }}/matches"
+                               style="color: #999; text-decoration: underline;">try the new pairings page</a>
                         </p>
                     {% endif %}
                 </div>

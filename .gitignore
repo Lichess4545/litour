@@ -17,8 +17,10 @@ data
 /heltour/tournament/static/tournament/js/litour-api-client.iife.js
 /heltour/tournament/static/tournament/js/litour-api-client.iife.js.map
 /openapi.json
-/clients/ts/node_modules
-/clients/ts/dist
+/frontend/node_modules
+/frontend/api-client/dist
+/frontend/ui/.next
+/frontend/ui/out
 backups
 .gems/
 /.claude

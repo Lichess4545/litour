@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from heltour.api.middleware import DjangoConnectionMiddleware
-from heltour.api.routes import health, pairings, v1
+from heltour.api.routes import health, matches, v1
 
 app = FastAPI(title="Litour API", version="1")
 
@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
-app.include_router(pairings.router)
+app.include_router(matches.router)
 app.include_router(v1.router, prefix="/v1")
 
 

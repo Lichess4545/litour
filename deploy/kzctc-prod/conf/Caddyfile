@@ -7,6 +7,10 @@
         }
     }
 
+    handle_path /v2/api/* {
+        reverse_proxy api:8001
+    }
+
     handle /v2/* {
         reverse_proxy ui:3000
     }

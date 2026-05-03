@@ -27,6 +27,12 @@
             <div class="well">
                 <div class="well-head">
                     <h3>Pairings</h3>
+                    {% if league.tag and season.tag and round_.number %}
+                        <p style="margin-top: 4px; font-size: 11px; color: #999;">
+                            <a href="/v2/{{ league.tag }}/{{ season.tag }}/round/{{ round_.number }}/matches"
+                               style="color: #999; text-decoration: underline;">try the new pairings page</a>
+                        </p>
+                    {% endif %}
                 </div>
                 <div class="well-body">
                     {% include 'tournament/section_switcher.html' with url_name='pairings' %}

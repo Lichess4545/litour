@@ -4,14 +4,14 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from heltour.api.pubsub import subscribe
 
-logger = logging.getLogger("heltour.api.pairings")
+logger = logging.getLogger("heltour.api.matches")
 router = APIRouter()
 
 
-@router.websocket("/ws/pairings/{round_id}")
-async def pairings_ws(ws: WebSocket, round_id: int) -> None:
+@router.websocket("/ws/rounds/{round_id}/matches")
+async def round_matches_ws(ws: WebSocket, round_id: int) -> None:
     await ws.accept()
-    channel = f"pairings:round:{round_id}"
+    channel = f"matches:round:{round_id}"
     client = ws.client
     logger.info("ws connect round=%s client=%s", round_id, client)
     sent = 0

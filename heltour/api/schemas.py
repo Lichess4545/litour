@@ -3,7 +3,11 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field
 
 
-class PairingDTO(BaseModel):
+class MatchDTO(BaseModel):
+    """A single Match. In team Events this is a Player Match (one board of a
+    Team Match); in lone Events it's a standalone Match.
+    """
+
     id: int
     white_username: str | None
     black_username: str | None
@@ -12,27 +16,29 @@ class PairingDTO(BaseModel):
     result: str
     game_link: str
     board_number: int | None
-    team_pairing_id: int | None
+    team_match_id: int | None
 
 
-class RoundPairingsDTO(BaseModel):
+class RoundMatchesDTO(BaseModel):
     round_id: int
     round_number: int
-    season_name: str
+    event_tag: str
+    event_name: str
     league_tag: str
     is_completed: bool
-    pairings: list[PairingDTO]
+    matches: list[MatchDTO]
 
 
 class CurrentRoundDTO(BaseModel):
     league_tag: str
-    season_name: str
+    event_tag: str
+    event_name: str
     round_id: int
     round_number: int
 
 
-class _WSPairingBase(BaseModel):
-    pairing_id: int
+class _WSMatchBase(BaseModel):
+    match_id: int
     round_id: int
     result: str
     game_link: str
@@ -40,12 +46,12 @@ class _WSPairingBase(BaseModel):
     black_username: str | None
 
 
-class WSPairingResultUpdate(_WSPairingBase):
-    type: Literal["pairing.result"] = "pairing.result"
+class WSMatchResultUpdate(_WSMatchBase):
+    type: Literal["match.result"] = "match.result"
 
 
-class WSPairingGameLinkUpdate(_WSPairingBase):
-    type: Literal["pairing.game_link"] = "pairing.game_link"
+class WSMatchGameLinkUpdate(_WSMatchBase):
+    type: Literal["match.game_link"] = "match.game_link"
 
 
 class WSPing(BaseModel):
@@ -53,6 +59,6 @@ class WSPing(BaseModel):
 
 
 WSMessage = Annotated[
-    Union[WSPairingResultUpdate, WSPairingGameLinkUpdate, WSPing],
+    Union[WSMatchResultUpdate, WSMatchGameLinkUpdate, WSPing],
     Field(discriminator="type"),
 ]

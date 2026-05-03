@@ -1,9 +1,9 @@
-export { createClient, connectPairingStream } from "./client";
-export type { PairingStream } from "./client";
+export { createClient, connectMatchStream } from "./client";
+export type { MatchStream } from "./client";
 export type {
   WSMessage,
-  WSPairingResultUpdate,
-  WSPairingGameLinkUpdate,
+  WSMatchResultUpdate,
+  WSMatchGameLinkUpdate,
   WSPing,
 } from "./ws-messages";
 export { wsMessage } from "./ws-messages";

@@ -7,22 +7,25 @@ export function createClient(baseUrl: string) {
   return createOpenApiClient<paths>({ baseUrl });
 }
 
-export interface PairingStream {
+export interface MatchStream {
   close(): void;
 }
 
-export function connectPairingStream(
+export function connectMatchStream(
   baseUrl: string,
   roundId: number,
   onMessage: (msg: WSMessage) => void,
   onError?: (err: unknown) => void,
-): PairingStream {
-  const wsBase = baseUrl.replace(/^http/, "ws");
-  const ws = new ReconnectingWebSocket(`${wsBase}/ws/pairings/${roundId}`, [], {
-    minReconnectionDelay: 1000,
-    maxReconnectionDelay: 30_000,
-    reconnectionDelayGrowFactor: 2,
-  });
+): MatchStream {
+  const ws = new ReconnectingWebSocket(
+    toWsUrl(baseUrl, `/ws/rounds/${roundId}/matches`),
+    [],
+    {
+      minReconnectionDelay: 1000,
+      maxReconnectionDelay: 30_000,
+      reconnectionDelayGrowFactor: 2,
+    },
+  );
 
   ws.addEventListener("message", (ev) => {
     try {
@@ -42,4 +45,15 @@ export function connectPairingStream(
       ws.close();
     },
   };
+}
+
+// Resolve a WebSocket URL from a baseUrl that may be absolute (`http(s)://host`)
+// or path-relative (`/v2/api`). For path-relative, we resolve against the
+// current page's origin so the connection rides the same TLS cert as the page.
+function toWsUrl(baseUrl: string, path: string): string {
+  if (/^https?:\/\//i.test(baseUrl)) {
+    return baseUrl.replace(/^http/i, "ws") + path;
+  }
+  const wsOrigin = window.location.origin.replace(/^http/i, "ws");
+  return `${wsOrigin}${baseUrl}${path}`;
 }
