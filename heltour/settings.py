@@ -363,7 +363,9 @@ FWUTCC_BANNER_URL = env("FWUTCC_BANNER_URL", default="")
 # Custom theme colors — used by leagues with theme="custom".
 # Defaults match the FIDE World University Team Chess Championship 2026 brand.
 CUSTOM_THEME_PRIMARY_COLOR = env("CUSTOM_THEME_PRIMARY_COLOR", default="#2d3892")
-CUSTOM_THEME_DARK_PRIMARY_COLOR = env("CUSTOM_THEME_DARK_PRIMARY_COLOR", default="#1a2466")
+CUSTOM_THEME_DARK_PRIMARY_COLOR = env(
+    "CUSTOM_THEME_DARK_PRIMARY_COLOR", default="#1a2466"
+)
 CUSTOM_THEME_SECONDARY_COLOR = env("CUSTOM_THEME_SECONDARY_COLOR", default="#5662b5")
 CUSTOM_THEME_NAV_FOCUS_COLOR = env("CUSTOM_THEME_NAV_FOCUS_COLOR", default="#3f4ba3")
 # URL of the logo shown in the navbar and league tile for theme="custom".
