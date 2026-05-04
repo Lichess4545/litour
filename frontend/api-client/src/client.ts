@@ -13,6 +13,7 @@ import {
   wsHomeMessage,
 } from "./discovery-messages";
 import type { paths } from "./generated";
+import { type WSJobEvent, wsJobEvent } from "./jobs-messages";
 import { type WSMessage, wsMessage } from "./ws-messages";
 
 export interface ClientInit {
@@ -110,6 +111,38 @@ export function connectCockpitStream(
   );
 }
 
+export interface JobsStream {
+  close(): void;
+}
+
+/**
+ * Subscribe to background-job events for a season slug. The server
+ * filters events by scope; the client receives created/started/progress/completed
+ * envelopes carrying the full job snapshot so state replacement is trivial.
+ */
+export function connectJobsSeasonStream(
+  baseUrl: string,
+  seasonSlug: string,
+  onMessage: (msg: WSJobEvent) => void,
+  onError?: (err: unknown) => void,
+): JobsStream {
+  return openValidatedStream(
+    baseUrl,
+    `/ws/jobs/season/${encodeURIComponent(seasonSlug)}`,
+    wsJobEvent,
+    onMessage,
+    onError,
+  );
+}
+
+export function connectJobsAllStream(
+  baseUrl: string,
+  onMessage: (msg: WSJobEvent) => void,
+  onError?: (err: unknown) => void,
+): JobsStream {
+  return openValidatedStream(baseUrl, "/ws/jobs/all", wsJobEvent, onMessage, onError);
+}
+
 function openValidatedStream<T>(
   baseUrl: string,
   path: string,
@@ -173,6 +206,24 @@ export type CockpitActionName =
   | "finalize-tournament"
   | "generate-next-match-set"
   | "create-missing-matches";
+
+// Fetch the initial list of active + recent jobs for a season scope.
+// The API returns the most recent ``limit`` jobs; the cockpit pre-renders
+// these so the panel isn't empty on first paint, then patches via WS.
+export async function listJobsForSeason(
+  baseUrl: string,
+  seasonSlug: string,
+  options: { activeOnly?: boolean; limit?: number } = {},
+): Promise<unknown[]> {
+  const params = new URLSearchParams();
+  params.set("season_slug", seasonSlug);
+  if (options.activeOnly) params.set("active_only", "true");
+  params.set("limit", String(options.limit ?? 50));
+  const url = `${baseUrl.replace(/\/$/, "")}/v1/jobs?${params.toString()}`;
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) return [];
+  return response.json();
+}
 
 export async function callCockpitAction(
   baseUrl: string,

@@ -4,6 +4,7 @@ import type { CockpitDTO } from "@litour/api-client";
 
 import { CockpitPrimaryAction } from "./CockpitPrimaryAction";
 import { CockpitRoundSelector } from "./CockpitRoundSelector";
+import { JobsButton } from "./JobsButton";
 
 // DR2: live → blue dot + "Now playing — Round N of M"; history → muted
 // dot + "Round N of M · Finished"; pre_round + empty handled by ModeBanner.
@@ -42,13 +43,18 @@ export function CockpitHeader({
           </h1>
           <StatusLine dto={dto} totalRounds={totalRounds} />
         </div>
-        {dto.rounds.length > 0 ? (
-          <CockpitRoundSelector
-            rounds={dto.rounds}
-            currentRoundId={dto.round_id}
-            eventSlug={eventSlug}
-          />
-        ) : null}
+        <div className="flex items-start gap-2 sm:gap-3">
+          {dto.management?.can_view_dashboard ? (
+            <JobsButton apiBaseUrl={apiBaseUrl} eventSlug={eventSlug} />
+          ) : null}
+          {dto.rounds.length > 0 ? (
+            <CockpitRoundSelector
+              rounds={dto.rounds}
+              currentRoundId={dto.round_id}
+              eventSlug={eventSlug}
+            />
+          ) : null}
+        </div>
       </div>
       {showPrimaryCta && dto.management?.primary_action ? (
         <div className="flex flex-wrap items-center gap-3">

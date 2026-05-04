@@ -257,6 +257,10 @@ class CockpitActionResultDTO(BaseModel):
     decide whether to refetch the snapshot. ``status="warning"`` means
     the action partially succeeded (e.g. some tokens refreshed, some
     failed) and the UI should still refresh.
+
+    When ``job_id`` is set, the action ran asynchronously via the
+    background-job system; the client can subscribe to the jobs WS to
+    watch progress / completion.
     """
 
     model_config = ConfigDict(title="CockpitActionResultDTO")
@@ -265,6 +269,7 @@ class CockpitActionResultDTO(BaseModel):
     title: str
     detail: str = ""
     refresh: bool = True
+    job_id: int | None = None
 
 
 class GeneratePairingsRequest(BaseModel):

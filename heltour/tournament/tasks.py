@@ -24,6 +24,12 @@ from more_itertools import divide, first
 
 from django.conf import settings
 from heltour.celery import app
+
+# Force-import background-job definitions so the @background_job
+# decorators run at Celery worker startup and the jobs are registered
+# with the Celery app. Each module's import is a no-op at runtime
+# beyond decorator execution.
+from heltour.api.round_management.cockpit import jobs as _cockpit_jobs  # noqa: F401, E402
 from heltour.tournament import (
     alternates_manager,
     lichessapi,

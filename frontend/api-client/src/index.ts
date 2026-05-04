@@ -4,14 +4,20 @@ export {
   connectDiscoveryHomeStream,
   connectDiscoveryEventStream,
   connectCockpitStream,
+  connectJobsSeasonStream,
+  connectJobsAllStream,
   callCockpitAction,
+  listJobsForSeason,
 } from "./client";
 export type {
   MatchStream,
   DiscoveryStream,
   CockpitStream,
+  JobsStream,
   CockpitActionName,
 } from "./client";
+export { backgroundJobDto, wsJobEvent } from "./jobs-messages";
+export type { BackgroundJobDTO, JobStatus, JobSource, WSJobEvent } from "./jobs-messages";
 export type {
   WSMessage,
   WSMatchUpdate,

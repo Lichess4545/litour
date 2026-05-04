@@ -4911,3 +4911,92 @@ class CockpitAuditEntry(_BaseModel):
 
     def __str__(self):
         return f"{self.intervention_type} pairing={self.pairing_id} by={self.actor_id}"
+
+
+class BackgroundJob(_BaseModel):
+    """Tracked background job — one row per execution.
+
+    Sits on top of Celery: the row owns identity (kind, who triggered,
+    scope, human-readable title), progress, log excerpt, and result.
+    Celery owns the actual execution. Use ``@background_job`` from
+    ``heltour.api.shared.jobs`` to register a kind and produce a
+    Celery task that creates / updates this row automatically.
+
+    The row exists from enqueue (``status=queued``) through completion
+    (``ok`` / ``warning`` / ``failed``). It is the source of truth the
+    cockpit reads to render the jobs panel.
+    """
+
+    STATUS_CHOICES = (
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("ok", "Ok"),
+        ("warning", "Warning"),
+        ("failed", "Failed"),
+    )
+
+    SOURCE_CHOICES = (
+        ("manual", "Manual"),
+        ("scheduled", "Scheduled"),
+        ("system", "System"),
+    )
+
+    kind = models.CharField(max_length=64, db_index=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="queued")
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="manual")
+
+    triggered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggered_jobs",
+    )
+
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+
+    progress = models.PositiveSmallIntegerField(null=True, blank=True)
+    progress_message = models.CharField(max_length=255, blank=True, default="")
+
+    input_json = JSONField(default=dict, blank=True)
+    result_json = JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True, default="")
+
+    # Scope FKs — nullable because ops jobs (e.g. clear caches at the
+    # cluster level) don't always tie to a specific season/league.
+    season = models.ForeignKey(
+        Season,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jobs",
+    )
+    league = models.ForeignKey(
+        League,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jobs",
+    )
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    celery_task_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "-date_created"]),
+            models.Index(fields=["kind", "-date_created"]),
+            models.Index(fields=["season", "-date_created"]),
+            models.Index(fields=["league", "-date_created"]),
+            models.Index(fields=["triggered_by", "-date_created"]),
+        ]
+        ordering = ["-date_created"]
+
+    def __str__(self) -> str:
+        return f"{self.kind}[{self.status}] {self.title}"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in {"ok", "warning", "failed", "cancelled"}

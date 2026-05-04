@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leagues/{league_tag}/current-round": {
         parameters: {
             query?: never;
@@ -149,7 +183,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Post Clear Caches */
+        /**
+         * Post Clear Caches
+         * @description POC migration to the background-job runtime.
+         *
+         *     Enqueues `clear_caches_job` and returns a result envelope carrying
+         *     `job_id` so the client can subscribe to live progress. The action
+         *     no longer blocks the request thread.
+         */
         post: operations["post_clear_caches_v1_round_management_cockpit_events__event_slug__actions_clear_caches_post"];
         delete?: never;
         options?: never;
@@ -426,6 +467,52 @@ export interface components {
             /** Reasons */
             reasons: ("no_schedule_near_deadline" | "scheduled_but_not_started" | "past_deadline_no_result")[];
         };
+        /**
+         * BackgroundJobDTO
+         * @description Compact wire format — matches ``_job_to_dict`` in jobs.py.
+         */
+        BackgroundJobDTO: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string;
+            /** Error Message */
+            error_message: string;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** League Tag */
+            league_tag: string | null;
+            /** Progress */
+            progress: number | null;
+            /** Progress Message */
+            progress_message: string;
+            /** Result */
+            result?: Record<string, never>;
+            /** Season Id */
+            season_id: number | null;
+            /** Season Slug */
+            season_slug: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "scheduled" | "system";
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "ok" | "warning" | "failed";
+            /** Title */
+            title: string;
+            /** Triggered By Username */
+            triggered_by_username: string | null;
+        };
         /** CockpitCloseRoundRequest */
         CloseRoundRequest: {
             /** Round Id */
@@ -447,6 +534,10 @@ export interface components {
          *     decide whether to refetch the snapshot. ``status="warning"`` means
          *     the action partially succeeded (e.g. some tokens refreshed, some
          *     failed) and the UI should still refresh.
+         *
+         *     When ``job_id`` is set, the action ran asynchronously via the
+         *     background-job system; the client can subscribe to the jobs WS to
+         *     watch progress / completion.
          */
         CockpitActionResultDTO: {
             /**
@@ -454,6 +545,8 @@ export interface components {
              * @default
              */
             detail: string;
+            /** Job Id */
+            job_id?: number | null;
             /**
              * Refresh
              * @default true
@@ -1360,6 +1453,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_v1_jobs_get: {
+        parameters: {
+            query?: {
+                season_slug?: string | null;
+                league_tag?: string | null;
+                active_only?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobDTO"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_v1_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobDTO"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -25,6 +25,8 @@ from heltour.api.round_management import ws as round_management_ws
 from heltour.api.round_management.cockpit import routes as cockpit_routes
 from heltour.api.round_management.cockpit import ws as cockpit_ws
 from heltour.api.shared import health
+from heltour.api.shared import jobs_routes
+from heltour.api.shared import jobs_ws
 from heltour.api.standings import routes as standings_routes
 
 app = FastAPI(title="Litour API", version="1")
@@ -44,6 +46,7 @@ app.include_router(health.router)
 app.include_router(round_management_ws.router)
 app.include_router(cockpit_ws.router)
 app.include_router(discovery_ws.router)
+app.include_router(jobs_ws.router)
 
 # Per-domain v1 routers — adding a new chess domain means adding one
 # include_router line here, nothing else.
@@ -54,6 +57,7 @@ app.include_router(registration_routes.router, prefix="/v1")
 app.include_router(roster_formation_routes.router, prefix="/v1")
 app.include_router(standings_routes.router, prefix="/v1")
 app.include_router(discovery_routes.router, prefix="/v1")
+app.include_router(jobs_routes.router, prefix="/v1")
 
 
 @app.get("/docs", include_in_schema=False)

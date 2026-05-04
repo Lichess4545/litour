@@ -10,13 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from heltour.api.deps import in_thread
 from heltour.api.round_management.cockpit.actions import (
     advance_tournament_sync,
     backfill_fide_data_sync,
-    clear_caches_sync,
     close_round_sync,
     close_season_sync,
     create_missing_matches_sync,
@@ -177,8 +176,42 @@ async def post_clear_caches(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(clear_caches_sync, event_slug, viewer, user)
+    """POC migration to the background-job runtime.
+
+    Enqueues `clear_caches_job` and returns a result envelope carrying
+    `job_id` so the client can subscribe to live progress. The action
+    no longer blocks the request thread.
+    """
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_clear_caches, event_slug, user)
+
+
+def _enqueue_clear_caches(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import clear_caches_job
+    from heltour.tournament.models import Season
+
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise HTTPException(status_code=401, detail="not authenticated")
+    try:
+        season = Season.objects.select_related("league").get(slug=event_slug)
+    except Season.DoesNotExist as exc:
+        raise HTTPException(status_code=404, detail="event not found") from exc
+    if not user.has_perm("tournament.view_dashboard", season.league):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    job = clear_caches_job.enqueue(
+        user=user,
+        source="manual",
+        season=season,
+        league=season.league,
+    )
+    return CockpitActionResultDTO(
+        status="ok",
+        title="Cache clear started",
+        detail="Running in the background.",
+        refresh=False,
+        job_id=job.pk,
+    )
 
 
 @router.post(

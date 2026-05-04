@@ -14,6 +14,8 @@ export { CockpitPrimaryAction } from "./CockpitPrimaryAction";
 export { CockpitRoundSelector } from "./CockpitRoundSelector";
 export { CockpitStatusStrip } from "./CockpitStatusStrip";
 export { CockpitToolbar } from "./CockpitToolbar";
+export { JobsButton } from "./JobsButton";
+export { JobsPanel } from "./JobsPanel";
 export {
   ConfirmActionDialog,
   GeneratePairingsDialog,
