@@ -48,9 +48,7 @@ def build_presence_for_round(round_obj) -> dict[int, MatchPresenceDTO]:
     # `plies_played` lives on the base PlayerPairing, so a single base-table
     # query gets it for both team and lone forms.
     team_pp_ids = list(
-        TeamPlayerPairing.objects.filter(team_pairing__round=round_obj).values_list(
-            "pk", flat=True
-        )
+        TeamPlayerPairing.objects.filter(team_pairing__round=round_obj).values_list("pk", flat=True)
     )
     lone_pp_ids = list(
         LonePlayerPairing.objects.filter(round=round_obj).values_list("pk", flat=True)

@@ -56,9 +56,7 @@ def compute_attention(
         and not pairing.has_result
     )
     no_schedule_near = (
-        pairing.scheduled_at is None
-        and not pairing.has_result
-        and 0 < hours_to_deadline < 72
+        pairing.scheduled_at is None and not pairing.has_result and 0 < hours_to_deadline < 72
     )
 
     if past_deadline:

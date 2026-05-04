@@ -44,15 +44,11 @@ class EventCardDTO(BaseModel):
     status_label: StatusLabel = Field(
         description="Display string for the status pill. Chess-native per DESIGN.md."
     )
-    organizer_label: str = Field(
-        description="Organizer name shown under the tournament title."
-    )
+    organizer_label: str = Field(description="Organizer name shown under the tournament title.")
     organizer_tag: str = Field(
         description="Machine slug for the organizer chip filter. Currently League.tag."
     )
-    format_line: str = Field(
-        description='Composed format summary, e.g. "Team Swiss · 8 rounds".'
-    )
+    format_line: str = Field(description='Composed format summary, e.g. "Team Swiss · 8 rounds".')
     schedule_line: str = Field(
         description='Composed schedule summary, e.g. "45+45 · Sundays 11am UTC". '
         "Empty string when start_date is unset."
@@ -67,9 +63,7 @@ class EventCardDTO(BaseModel):
     registration_url: str = Field(
         description="Absolute path that the Register CTA links to (legacy Django form)."
     )
-    visibility: Visibility = Field(
-        description="Carried for the noindex hint on detail pages."
-    )
+    visibility: Visibility = Field(description="Carried for the noindex hint on detail pages.")
 
 
 class EventCardsPage(BaseModel):

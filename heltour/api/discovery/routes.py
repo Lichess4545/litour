@@ -63,12 +63,7 @@ def _validate_organizer_tags(tags: list[str] | None) -> list[str] | None:
     if not tags:
         return tags
     for t in tags:
-        if (
-            not isinstance(t, str)
-            or len(t) == 0
-            or len(t) > 64
-            or not _ORG_TAG_RE.match(t)
-        ):
+        if not isinstance(t, str) or len(t) == 0 or len(t) > 64 or not _ORG_TAG_RE.match(t):
             raise HTTPException(status_code=422, detail="invalid organizer tag")
     return tags
 
@@ -108,9 +103,7 @@ async def list_events_route(
 )
 async def event_detail_route(
     slug: EventSlugPath,
-    viewer_and_user: Annotated[
-        tuple[Viewer, object | None], Depends(get_viewer_and_user)
-    ],
+    viewer_and_user: Annotated[tuple[Viewer, object | None], Depends(get_viewer_and_user)],
 ) -> EventDetailDTO:
     viewer, user = viewer_and_user
     detail = await in_thread(get_event_with_tabs, slug, viewer, user)

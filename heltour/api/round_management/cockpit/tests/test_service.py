@@ -92,9 +92,7 @@ class BuildCockpitTests(TestCase):
     def test_history_mode_for_past_round_id(self):
         rnd = _make_live_round("evt-hist")
         # Build a past round explicitly via round_id query.
-        dto = build_cockpit_for_round_id_sync(
-            "evt-hist", rnd.pk, Viewer.anonymous(), None
-        )
+        dto = build_cockpit_for_round_id_sync("evt-hist", rnd.pk, Viewer.anonymous(), None)
         self.assertEqual(dto.mode, "history")
 
     def test_attention_count_reflects_unscheduled_pairings(self):
@@ -122,9 +120,7 @@ class InterventionTests(TestCase):
         self.user = _make_organizer()
         self.viewer = _staff_viewer(self.user)
         self.rnd = _make_live_round("evt-int")
-        self.pairings = list(
-            LonePlayerPairing.objects.filter(round=self.rnd).order_by("pk")
-        )
+        self.pairings = list(LonePlayerPairing.objects.filter(round=self.rnd).order_by("pk"))
 
     def _refresh_version(self, pairing) -> int:
         from heltour.api.round_management.cockpit.service import _pairing_version
@@ -135,9 +131,7 @@ class InterventionTests(TestCase):
         target = self.pairings[0]
         v = self._refresh_version(target)
 
-        out = force_result_sync(
-            target.pk, "1/2-1/2", v, "agreed draw", self.viewer, self.user
-        )
+        out = force_result_sync(target.pk, "1/2-1/2", v, "agreed draw", self.viewer, self.user)
         self.assertEqual(out.id, target.pk)
         self.assertEqual(out.result, "1/2-1/2")
 
@@ -169,9 +163,7 @@ class InterventionTests(TestCase):
         v = self._refresh_version(target)
         new_when = timezone.now() + timedelta(hours=6)
 
-        out = reschedule_sync(
-            target.pk, new_when, v, "captain asked", self.viewer, self.user
-        )
+        out = reschedule_sync(target.pk, new_when, v, "captain asked", self.viewer, self.user)
         self.assertEqual(out.id, target.pk)
         target.refresh_from_db()
         self.assertEqual(target.scheduled_time, new_when)

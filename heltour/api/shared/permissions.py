@@ -81,13 +81,9 @@ class FieldPermission(Protocol):
 
     type_name: str
 
-    def visible_fields(
-        self, ctx: PermissionContext, instance: object
-    ) -> set[str] | None: ...
+    def visible_fields(self, ctx: PermissionContext, instance: object) -> set[str] | None: ...
 
-    def editable_fields(
-        self, ctx: PermissionContext, instance: object
-    ) -> set[str] | None: ...
+    def editable_fields(self, ctx: PermissionContext, instance: object) -> set[str] | None: ...
 
 
 class EndpointGuard(Protocol):

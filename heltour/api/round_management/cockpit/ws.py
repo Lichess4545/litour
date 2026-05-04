@@ -116,9 +116,7 @@ def _attention_count_for_round(round_id: int) -> int:
     return count
 
 
-def _enrich_envelope_sync(
-    message: dict[str, Any], round_id: int
-) -> dict[str, Any] | None:
+def _enrich_envelope_sync(message: dict[str, Any], round_id: int) -> dict[str, Any] | None:
     """Convert a base ``match.update`` envelope into a cockpit envelope.
 
     Returns the new envelope or ``None`` if enrichment fails (envelope is
@@ -254,9 +252,7 @@ async def cockpit_ws(ws: WebSocket, event_slug: str) -> None:
                     round_id,
                     user_id,
                 )
-                await ws.send_json(
-                    WSCockpitClose(reason="permission_revoked").model_dump()
-                )
+                await ws.send_json(WSCockpitClose(reason="permission_revoked").model_dump())
                 await ws.close(code=status.WS_1008_POLICY_VIOLATION)
                 return
 

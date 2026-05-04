@@ -66,3 +66,13 @@ plugins = ["mypy_django_plugin.main"]
 
 [tool.django-stubs]
 django_settings_module = "heltour.settings"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+# `heltour/api/main.py` runs `django.setup()` before any heltour/fastapi
+# imports — those imports trigger Django ORM resolution that needs the
+# app registry initialized first. The "imports at top of file" rule
+# can't be honored here.
+"heltour/api/main.py" = ["E402"]

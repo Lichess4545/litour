@@ -197,9 +197,7 @@ def build_cockpit_for_round_id_sync(
         raise HTTPException(status_code=404, detail="event not found")
 
     try:
-        rnd = Round.objects.select_related("season__league").get(
-            pk=round_id, season=season
-        )
+        rnd = Round.objects.select_related("season__league").get(pk=round_id, season=season)
     except Round.DoesNotExist:
         raise HTTPException(status_code=404, detail="round not found")
 
@@ -207,9 +205,7 @@ def build_cockpit_for_round_id_sync(
     return _build_cockpit_for_round(rnd, viewer, user, "history")
 
 
-def _build_cockpit_for_round(
-    rnd, viewer: Viewer, user, mode: CockpitMode
-) -> CockpitDTO:
+def _build_cockpit_for_round(rnd, viewer: Viewer, user, mode: CockpitMode) -> CockpitDTO:
     from heltour.tournament.models import (
         LonePlayerPairing,
         TeamPlayerPairing,
@@ -223,9 +219,9 @@ def _build_cockpit_for_round(
 
     is_team = rnd.season.boards is not None
     if is_team:
-        pairings = TeamPlayerPairing.objects.filter(
-            team_pairing__round_id=rnd.pk
-        ).select_related("white", "black", "team_pairing__round")
+        pairings = TeamPlayerPairing.objects.filter(team_pairing__round_id=rnd.pk).select_related(
+            "white", "black", "team_pairing__round"
+        )
     else:
         pairings = LonePlayerPairing.objects.filter(round_id=rnd.pk).select_related(
             "white", "black", "round"
@@ -309,9 +305,7 @@ def _summarise(pairing) -> dict[str, Any]:
     return {
         "result": pairing.result,
         "game_link": pairing.game_link,
-        "scheduled_time": (
-            pairing.scheduled_time.isoformat() if pairing.scheduled_time else None
-        ),
+        "scheduled_time": (pairing.scheduled_time.isoformat() if pairing.scheduled_time else None),
         "white_id": pairing.white_id,
         "black_id": pairing.black_id,
     }
@@ -353,15 +347,9 @@ def _build_match_dto_from_concrete(concrete, league) -> MatchDTO:
 
 def _enriched_response(concrete, league) -> CockpitMatchDTO:
     """Return the post-write CockpitMatchDTO so the client can replace state."""
-    rnd = (
-        concrete.team_pairing.round
-        if hasattr(concrete, "team_pairing")
-        else concrete.round
-    )
+    rnd = concrete.team_pairing.round if hasattr(concrete, "team_pairing") else concrete.round
     match_dto = _build_match_dto_from_concrete(concrete, league)
-    return _enrich_match(
-        match_dto, concrete, now=timezone.now(), round_deadline=rnd.end_date
-    )
+    return _enrich_match(match_dto, concrete, now=timezone.now(), round_deadline=rnd.end_date)
 
 
 def _authorise_intervention(user, league) -> None:
@@ -403,9 +391,7 @@ def mark_forfeit_sync(
     user,
 ) -> CockpitMatchDTO:
     if forfeit_side not in _FORFEIT_CODES:
-        raise HTTPException(
-            status_code=422, detail=f"invalid forfeit_side: {forfeit_side!r}"
-        )
+        raise HTTPException(status_code=422, detail=f"invalid forfeit_side: {forfeit_side!r}")
     concrete, league = _resolve_concrete_pairing(pairing_id)
     _authorise_intervention(user, league)
     _check_version(concrete, expected_version)
@@ -440,9 +426,7 @@ def reschedule_sync(
 # ---------- Audit query --------------------------------------------------------
 
 
-def audit_for_pairing_sync(
-    pairing_id: int, viewer: Viewer, user
-) -> list[CockpitAuditEntryDTO]:
+def audit_for_pairing_sync(pairing_id: int, viewer: Viewer, user) -> list[CockpitAuditEntryDTO]:
     """L3 drawer audit-trail data."""
     concrete, league = _resolve_concrete_pairing(pairing_id)
     if not can_change_pairing_sync(user, league):

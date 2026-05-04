@@ -162,9 +162,7 @@ class ListEventsTests(TestCase):
         make_season(league_tag="lf-a", is_active=True, season_tag="a")
         s_published = make_season(league_tag="lf-r", is_active=True, season_tag="r")
         publish_round(s_published, 1)
-        make_season(
-            league_tag="lf-c", is_active=True, is_completed=True, season_tag="c"
-        )
+        make_season(league_tag="lf-c", is_active=True, is_completed=True, season_tag="c")
 
         page = list_events(_ANON)
         slugs = {e.slug for e in page.events}
@@ -195,9 +193,7 @@ class ListEventsTests(TestCase):
         make_season(league_tag="sort-u", season_tag="u", is_active=True)
         s_active = make_season(league_tag="sort-a", is_active=True, season_tag="a")
         publish_round(s_active, 1)
-        make_season(
-            league_tag="sort-c", is_active=True, is_completed=True, season_tag="c"
-        )
+        make_season(league_tag="sort-c", is_active=True, is_completed=True, season_tag="c")
 
         page = list_events(_ANON, status=["active", "upcoming", "completed"])
         groups = [e.status_group for e in page.events]

@@ -44,9 +44,7 @@ def _resolve_viewer_sync(session_key: str | None) -> tuple[Viewer, object | None
     if not session_key:
         return Viewer.anonymous(), None
     try:
-        session = Session.objects.get(
-            session_key=session_key, expire_date__gt=timezone.now()
-        )
+        session = Session.objects.get(session_key=session_key, expire_date__gt=timezone.now())
     except Session.DoesNotExist:
         return Viewer.anonymous(), None
     data = session.get_decoded()

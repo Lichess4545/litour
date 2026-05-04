@@ -166,9 +166,7 @@ def format_line(season) -> str:
 
     league = season.league
     competitor = "Team" if league.competitor_type == "team" else "Individual"
-    pairing = _PAIRING_SHORT_LABELS.get(
-        league.pairing_type, league.pairing_type or "Swiss"
-    )
+    pairing = _PAIRING_SHORT_LABELS.get(league.pairing_type, league.pairing_type or "Swiss")
     rounds = f"{season.rounds} rounds"
     return f"{competitor} {pairing} · {rounds}"
 
@@ -404,11 +402,7 @@ def _build_pairings_payload(season, viewer: Viewer) -> tuple[dict | None, bool]:
 
     from heltour.tournament.models import Round
 
-    rnd = (
-        Round.objects.filter(season=season, publish_pairings=True)
-        .order_by("-number")
-        .first()
-    )
+    rnd = Round.objects.filter(season=season, publish_pairings=True).order_by("-number").first()
     if rnd is None:
         return None, False
 

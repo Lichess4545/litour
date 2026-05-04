@@ -55,9 +55,7 @@ async def get_cockpit(
 ) -> CockpitDTO:
     viewer, user = viewer_and_user
     if round_id is not None:
-        return await in_thread(
-            build_cockpit_for_round_id_sync, event_slug, round_id, viewer, user
-        )
+        return await in_thread(build_cockpit_for_round_id_sync, event_slug, round_id, viewer, user)
     return await in_thread(build_cockpit_for_event_sync, event_slug, viewer, user)
 
 

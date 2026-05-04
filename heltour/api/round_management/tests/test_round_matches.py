@@ -201,12 +201,8 @@ class NoNPlusOneTests(TestCase):
             team_count=6,
         )
 
-        small_count = self._count_queries(
-            lambda: round_matches_by_id_sync(small.pk, _ANON, None)
-        )
-        large_count = self._count_queries(
-            lambda: round_matches_by_id_sync(large.pk, _ANON, None)
-        )
+        small_count = self._count_queries(lambda: round_matches_by_id_sync(small.pk, _ANON, None))
+        large_count = self._count_queries(lambda: round_matches_by_id_sync(large.pk, _ANON, None))
 
         small_dto = round_matches_by_id_sync(small.pk, _ANON, None)
         large_dto = round_matches_by_id_sync(large.pk, _ANON, None)
@@ -234,12 +230,8 @@ class NoNPlusOneTests(TestCase):
             pairing_count=20,
         )
 
-        small_count = self._count_queries(
-            lambda: round_matches_by_id_sync(small.pk, _ANON, None)
-        )
-        large_count = self._count_queries(
-            lambda: round_matches_by_id_sync(large.pk, _ANON, None)
-        )
+        small_count = self._count_queries(lambda: round_matches_by_id_sync(small.pk, _ANON, None))
+        large_count = self._count_queries(lambda: round_matches_by_id_sync(large.pk, _ANON, None))
 
         large_dto = round_matches_by_id_sync(large.pk, _ANON, None)
         self.assertEqual(len(large_dto.matches), 20)
