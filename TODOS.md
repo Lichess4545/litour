@@ -3,6 +3,73 @@
 Deferred work captured during planning. Each entry includes context
 sufficient for someone picking it up months later.
 
+## Cockpit / background jobs
+
+### Authenticated schemathesis run
+
+**What:** Make `inv preflight` run schemathesis with a session cookie
+attached so happy-path responses get validated against the OpenAPI
+schema, not just the 401 paths.
+
+**Why:** Today the cockpit POST + `/v1/jobs` endpoints all return 401
+under preflight (no cookie). The negative path is checked but the
+actual 200 / 422 response shapes never are. Authenticated runs would
+catch a regression where, for example, `BackgroundJobDTO.created_at`
+suddenly returns a non-ISO string.
+
+**How (sketch):** A Django management command (e.g.
+`manage.py issue_schemathesis_session`) that ensures a `schemathesis`
+superuser exists, creates a fresh `Session` row, prints the
+`sessionid` cookie value. The invoke task captures it and passes
+`--header 'Cookie: sessionid=...'` to schemathesis. Failure mode:
+preflight needs a seeded dev DB — already true for most workflows
+but adds a step on a fresh checkout.
+
+**Trigger:** Anytime, low-effort but adds DB dependency to preflight.
+
+**Depends on / blocked by:** Nothing.
+
+### Background-job progress reporting per kind
+
+**What:** The cockpit jobs report `progress` only on enter / exit
+for most kinds. Add `ctx.progress(pct, msg)` calls inside the
+long-running ones (generate_pairings, backfill_fide_data,
+validate_tokens) so the panel shows real activity instead of a
+single jump.
+
+**Trigger:** When a user reports the bar feels static during a long
+job, or when adding scheduled tasks (Phase 2D).
+
+**Depends on / blocked by:** Nothing.
+
+### Background-job log capture
+
+**What:** Capture the last ~50 log lines per job (intercept the
+existing `logger.info` / `logger.error` calls inside the job body)
+and store as a column on `BackgroundJob`. Surface in the per-job
+detail dialog.
+
+**How (sketch):** Per-job `logging.Handler` subclass installed inside
+the `@background_job` wrapper, attached to the appropriate logger
+namespace, dropped on exit. Buffer in memory, write the last N
+lines to a new `BackgroundJob.log_excerpt` column at completion +
+on each `ctx.progress()` flush.
+
+**Trigger:** Phase 2C+; deferred from 2A by user request.
+
+**Depends on / blocked by:** Phase 2A (landed).
+
+### Background-job cancellation
+
+**What:** Allow an organizer to cancel a queued/running job from the
+panel. Translates to `celery.app.control.revoke(task_id)` plus a
+status update.
+
+**Trigger:** When a real cancellation incident hits, or proactively
+before scheduled-task wrapping (Phase 2D).
+
+**Depends on / blocked by:** Phase 2A (landed).
+
 ## Discovery domain (branch: lakin/basic-new-nav and follow-ups)
 
 ### Initial-join race on /ws/discovery/home
