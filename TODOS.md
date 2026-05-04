@@ -5,30 +5,6 @@ sufficient for someone picking it up months later.
 
 ## Cockpit / background jobs
 
-### Authenticated schemathesis run
-
-**What:** Make `inv preflight` run schemathesis with a session cookie
-attached so happy-path responses get validated against the OpenAPI
-schema, not just the 401 paths.
-
-**Why:** Today the cockpit POST + `/v1/jobs` endpoints all return 401
-under preflight (no cookie). The negative path is checked but the
-actual 200 / 422 response shapes never are. Authenticated runs would
-catch a regression where, for example, `BackgroundJobDTO.created_at`
-suddenly returns a non-ISO string.
-
-**How (sketch):** A Django management command (e.g.
-`manage.py issue_schemathesis_session`) that ensures a `schemathesis`
-superuser exists, creates a fresh `Session` row, prints the
-`sessionid` cookie value. The invoke task captures it and passes
-`--header 'Cookie: sessionid=...'` to schemathesis. Failure mode:
-preflight needs a seeded dev DB — already true for most workflows
-but adds a step on a fresh checkout.
-
-**Trigger:** Anytime, low-effort but adds DB dependency to preflight.
-
-**Depends on / blocked by:** Nothing.
-
 ### Background-job progress reporting per kind
 
 **What:** The cockpit jobs report `progress` only on enter / exit

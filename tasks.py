@@ -566,10 +566,44 @@ def preflight(c, base_url="http://localhost:8001"):
     frontend_dir = project_relative("frontend")
     api_client_dir = project_relative("frontend/api-client")
     ui_dir = project_relative("frontend/ui")
+    manage_py = project_relative("manage.py")
+
+    # Mint a sessionid up-front so the authenticated schemathesis pass below
+    # can attach a Cookie header. We do this outside the steps loop so a
+    # missing dev DB fails loudly instead of being attributed to schemathesis.
+    auth_session_key = ""
+    print("\n=== mint schemathesis sessionid ===")
+    mint = c.run(
+        f"python {manage_py} issue_schemathesis_session",
+        warn=True,
+        hide=True,
+    )
+    if mint.ok:
+        auth_session_key = mint.stdout.strip().splitlines()[-1].strip()
+        print(f"  sessionid={auth_session_key[:8]}…")
+    else:
+        print("  (failed — authenticated schemathesis pass will be skipped)")
+        print(mint.stderr)
 
     steps: list[tuple[str, str, str | None]] = [
         ("export openapi.json", f"python {project_relative('scripts/export_openapi.py')} > openapi.json", None),
-        ("schemathesis", f"schemathesis run --experimental=openapi-3.1 --base-url={base_url} openapi.json", None),
+        ("schemathesis (anon)", f"schemathesis run --experimental=openapi-3.1 --base-url={base_url} openapi.json", None),
+    ]
+
+    # Authenticated schemathesis pass — restricted to GETs so we exercise
+    # 200 / 422 response shapes (especially BackgroundJobDTO) without
+    # firing destructive POST side-effects against the dev DB. Skipped
+    # silently if minting failed — the anon pass above still runs.
+    if auth_session_key:
+        steps.append((
+            "schemathesis (auth, GET-only)",
+            f"schemathesis run --experimental=openapi-3.1 --base-url={base_url} "
+            f"--include-method GET --header 'Cookie: sessionid={auth_session_key}' "
+            f"openapi.json",
+            None,
+        ))
+
+    steps.extend([
         ("frontend install", "bun install --frozen-lockfile", frontend_dir),
         ("regenerate ts client", "bun run generate", api_client_dir),
         # Auto-format BEFORE typecheck/lint so a stray formatting blip
@@ -589,7 +623,7 @@ def preflight(c, base_url="http://localhost:8001"):
         ("generated.ts drift check", "git diff --exit-code frontend/api-client/src/generated.ts", None),
         # Django tests last — slowest step, so fast-failing checks surface first.
         ("django tests", f"python {project_relative('manage.py')} test --settings=heltour.test_settings", None),
-    ]
+    ])
 
     results: list[tuple[str, bool]] = []
     for name, cmd, cwd in steps:

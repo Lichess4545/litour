@@ -69,7 +69,11 @@ def _validate_organizer_tags(tags: list[str] | None) -> list[str] | None:
 
 
 LimitQuery = Annotated[int, Query(ge=1, le=100)]
-OffsetQuery = Annotated[int, Query(ge=0)]
+# Cap offset at a realistic ceiling — without an upper bound, schemathesis
+# (and unfriendly clients) can push it past Postgres BIGINT and trip a 500
+# from the OFFSET clause. A billion is many orders of magnitude above any
+# real paging need; rejecting with 422 keeps the surface predictable.
+OffsetQuery = Annotated[int, Query(ge=0, le=1_000_000_000)]
 
 
 @router.get(
