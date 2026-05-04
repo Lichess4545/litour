@@ -42,7 +42,7 @@ VALID_RESULTS: frozenset[str] = frozenset(
 
 
 def _event_rounds(season) -> list[EventRoundDTO]:
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     rounds = Round.objects.filter(season=season).order_by("number")
     return [
@@ -80,7 +80,7 @@ def _build_round_matches(
     ``event``; ``TeamPairing`` as Team Match; ``TeamPlayerPairing`` /
     ``LonePlayerPairing`` as Match.
     """
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         LonePlayerPairing,
         TeamPairing,
         TeamPlayerPairing,
@@ -148,7 +148,7 @@ def _build_round_matches(
 
 
 def round_matches_by_id_sync(round_id: int, viewer: Viewer, user) -> RoundMatchesDTO:
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     try:
         rnd = Round.objects.select_related("season__league").get(pk=round_id)
@@ -164,7 +164,7 @@ def round_matches_by_slug_sync(
     viewer: Viewer,
     user,
 ) -> RoundMatchesDTO:
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     try:
         rnd = Round.objects.select_related("season__league").get(
@@ -178,7 +178,7 @@ def round_matches_by_slug_sync(
 
 
 def set_match_result_sync(match_id: int, result: str, viewer: Viewer, user) -> MatchDTO:
-    from heltour.tournament.models import LonePlayerPairing, TeamPlayerPairing
+    from heltour.api.shared.models import LonePlayerPairing, TeamPlayerPairing
 
     if result not in VALID_RESULTS:
         raise HTTPException(status_code=422, detail=f"invalid result: {result!r}")

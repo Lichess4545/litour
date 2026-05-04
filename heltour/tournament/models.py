@@ -5000,3 +5000,73 @@ class BackgroundJob(_BaseModel):
     @property
     def is_terminal(self) -> bool:
         return self.status in {"ok", "warning", "failed", "cancelled"}
+
+
+class JobLagSample(models.Model):
+    """One round-trip of the queue-health canary.
+
+    A Celery Beat tick fires ``canary_lag_dispatch`` every few seconds;
+    that task records ``requested_at`` and chains a second task whose
+    ``started_at`` / ``completed_at`` we capture here. The lag we care
+    about is ``started_at - requested_at`` — how long a fresh task sits
+    in the broker before a worker grabs it.
+
+    Raw rows are deleted by the hourly rollup once aggregated into a
+    ``JobLagBucket(granularity="hour")`` row. The cockpit footer's
+    "last hour" snapshot reads exclusively from this raw table.
+    """
+
+    requested_at = models.DateTimeField(db_index=True)
+    started_at = models.DateTimeField()
+    completed_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-requested_at"]
+        indexes = [models.Index(fields=["-requested_at"])]
+
+    @property
+    def queue_lag_seconds(self) -> float:
+        return (self.started_at - self.requested_at).total_seconds()
+
+    @property
+    def work_seconds(self) -> float:
+        return (self.completed_at - self.started_at).total_seconds()
+
+
+class JobLagBucket(models.Model):
+    """Pre-aggregated queue-lag bucket — a tier in the rollup pyramid.
+
+    The canary writes raw 5-second samples into ``JobLagSample``; a
+    chain of Beat-driven rollup tasks aggregates raw → hour → day →
+    week / month → year, so historical depth is unbounded without the
+    table growing without bound. p95 at non-hour tiers is approximate
+    (max-of-constituent-p95) — exact percentile reconstruction would
+    require keeping the underlying samples.
+    """
+
+    HOUR = "hour"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+    GRANULARITY_CHOICES = [
+        (HOUR, "Hour"),
+        (DAY, "Day"),
+        (WEEK, "Week"),
+        (MONTH, "Month"),
+        (YEAR, "Year"),
+    ]
+
+    granularity = models.CharField(max_length=8, choices=GRANULARITY_CHOICES)
+    bucket_start = models.DateTimeField()
+    sample_count = models.IntegerField()
+    queue_lag_mean = models.FloatField()
+    queue_lag_min = models.FloatField()
+    queue_lag_max = models.FloatField()
+    queue_lag_p95 = models.FloatField()
+    queue_lag_stddev = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("granularity", "bucket_start")]
+        ordering = ["-bucket_start"]
+        indexes = [models.Index(fields=["granularity", "-bucket_start"])]

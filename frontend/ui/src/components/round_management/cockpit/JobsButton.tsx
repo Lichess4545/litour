@@ -30,19 +30,22 @@ export function JobsButton({
 
   useEffect(() => {
     let cancelled = false;
-    void listJobsForSeason(apiBaseUrl, eventSlug, { limit: 50 }).then((raw) => {
-      if (cancelled) return;
-      const parsed = (raw as unknown[])
-        .map((r) => {
-          try {
-            return backgroundJobDto.parse(r);
-          } catch {
-            return null;
-          }
-        })
-        .filter((j): j is BackgroundJobDTO => j !== null);
-      setJobs(parsed);
-    });
+    const refetch = () => {
+      void listJobsForSeason(apiBaseUrl, eventSlug, { limit: 50 }).then((raw) => {
+        if (cancelled) return;
+        const parsed = (raw as unknown[])
+          .map((r) => {
+            try {
+              return backgroundJobDto.parse(r);
+            } catch {
+              return null;
+            }
+          })
+          .filter((j): j is BackgroundJobDTO => j !== null);
+        setJobs(parsed);
+      });
+    };
+    refetch();
     const stream = connectJobsSeasonStream(
       apiBaseUrl,
       eventSlug,
@@ -56,6 +59,10 @@ export function JobsButton({
         });
       },
       (err) => console.error("jobs ws error", err),
+      // Resync after every (re)connect — Redis pub/sub doesn't replay,
+      // so envelopes published during a blip would otherwise leave the
+      // badge stuck on a phantom running job.
+      refetch,
     );
     return () => {
       cancelled = true;
@@ -73,6 +80,7 @@ export function JobsButton({
         onClick={() => setOpen(true)}
         className={cn(
           buttonVariants({ variant: "outline", size: "sm" }),
+          "h-11 sm:h-8",
           failed > 0 && "border-destructive/50 text-destructive",
         )}
       >

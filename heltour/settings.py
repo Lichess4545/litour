@@ -304,6 +304,41 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=4, minute=0),
         "args": (),
     },
+    # Queue-health canary: stamps a row into JobLagSample every 5s so
+    # the cockpit can surface broker round-trip latency.
+    "canary-lag-dispatch": {
+        "task": "heltour.tournament.tasks.canary_lag_dispatch",
+        "schedule": timedelta(seconds=5),
+        "args": (),
+    },
+    # Rollup pyramid: raw samples → hour → day → week / month → year.
+    # Each tier reads from the immediately-finer one so historical depth
+    # grows logarithmically while the table footprint stays bounded.
+    "rollup-lag-hourly": {
+        "task": "heltour.tournament.tasks.rollup_lag_hourly",
+        "schedule": crontab(minute=2),
+        "args": (),
+    },
+    "rollup-lag-daily": {
+        "task": "heltour.tournament.tasks.rollup_lag_daily",
+        "schedule": crontab(hour=0, minute=15),
+        "args": (),
+    },
+    "rollup-lag-weekly": {
+        "task": "heltour.tournament.tasks.rollup_lag_weekly",
+        "schedule": crontab(day_of_week=1, hour=0, minute=20),
+        "args": (),
+    },
+    "rollup-lag-monthly": {
+        "task": "heltour.tournament.tasks.rollup_lag_monthly",
+        "schedule": crontab(day_of_month=1, hour=0, minute=25),
+        "args": (),
+    },
+    "rollup-lag-yearly": {
+        "task": "heltour.tournament.tasks.rollup_lag_yearly",
+        "schedule": crontab(month_of_year=1, day_of_month=1, hour=0, minute=30),
+        "args": (),
+    },
 }
 CELERY_TIMEZONE = "UTC"
 

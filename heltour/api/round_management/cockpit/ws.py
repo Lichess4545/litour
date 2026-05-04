@@ -73,7 +73,7 @@ def _attention_count_for_round(round_id: int) -> int:
     """
     from django.utils import timezone
 
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         LonePlayerPairing,
         Round,
         TeamPlayerPairing,
@@ -132,7 +132,7 @@ def _enrich_envelope_sync(message: dict[str, Any], round_id: int) -> dict[str, A
 
     from django.utils import timezone
 
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         LonePlayerPairing,
         TeamPlayerPairing,
     )
@@ -192,9 +192,8 @@ async def cockpit_ws(ws: WebSocket, event_slug: str) -> None:
         return
 
     # User object needed for guardian-backed permission check.
-    from django.contrib.auth import get_user_model
+    from heltour.api.shared.models import User
 
-    User = get_user_model()
     try:
         user = await in_thread(User.objects.get, pk=viewer.user_id)
     except User.DoesNotExist:

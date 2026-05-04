@@ -43,7 +43,7 @@ export function CockpitHeader({
           </h1>
           <StatusLine dto={dto} totalRounds={totalRounds} />
         </div>
-        <div className="flex items-start gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {dto.management?.can_view_dashboard ? (
             <JobsButton apiBaseUrl={apiBaseUrl} eventSlug={eventSlug} />
           ) : null}

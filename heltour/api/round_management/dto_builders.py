@@ -30,7 +30,7 @@ def captains_for_round(round_obj) -> set[tuple[int, int]]:
     `team_player_pairing_to_match` invocation to answer the per-board
     captain question without further DB hits.
     """
-    from heltour.tournament.models import TeamMember
+    from heltour.api.shared.models import TeamMember
 
     return set(
         TeamMember.objects.filter(
@@ -45,7 +45,7 @@ def captains_for_team_pairing(team_pairing) -> set[tuple[int, int]]:
     two teams — used on signal-time updates where we don't need to scan
     the whole season.
     """
-    from heltour.tournament.models import TeamMember
+    from heltour.api.shared.models import TeamMember
 
     team_ids = [team_pairing.white_team_id]
     if team_pairing.black_team_id is not None:

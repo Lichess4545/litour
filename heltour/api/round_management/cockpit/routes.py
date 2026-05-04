@@ -198,7 +198,7 @@ def _enqueue(
 
     Centralises 401/403/404 handling so each route stays a one-liner.
     """
-    from heltour.tournament.models import Season
+    from heltour.api.shared.models import Season
 
     if user is None or not getattr(user, "is_authenticated", False):
         raise HTTPException(status_code=401, detail="not authenticated")

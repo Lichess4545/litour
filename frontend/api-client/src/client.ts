@@ -13,7 +13,14 @@ import {
   wsHomeMessage,
 } from "./discovery-messages";
 import type { paths } from "./generated";
-import { type WSJobEvent, wsJobEvent } from "./jobs-messages";
+import {
+  type JobLagHistoryDTO,
+  type WSJobEvent,
+  type WSJobLag,
+  jobLagHistoryDto,
+  wsJobEvent,
+  wsJobLag,
+} from "./jobs-messages";
 import { type WSMessage, wsMessage } from "./ws-messages";
 
 export interface ClientInit {
@@ -119,12 +126,17 @@ export interface JobsStream {
  * Subscribe to background-job events for a season slug. The server
  * filters events by scope; the client receives created/started/progress/completed
  * envelopes carrying the full job snapshot so state replacement is trivial.
+ *
+ * Pass `onOpen` to be notified on every (re)connect — Redis pub/sub
+ * doesn't replay missed envelopes, so consumers should re-snapshot
+ * server state on reconnect to recover from network blips.
  */
 export function connectJobsSeasonStream(
   baseUrl: string,
   seasonSlug: string,
   onMessage: (msg: WSJobEvent) => void,
   onError?: (err: unknown) => void,
+  onOpen?: () => void,
 ): JobsStream {
   return openValidatedStream(
     baseUrl,
@@ -132,6 +144,7 @@ export function connectJobsSeasonStream(
     wsJobEvent,
     onMessage,
     onError,
+    onOpen,
   );
 }
 
@@ -139,8 +152,30 @@ export function connectJobsAllStream(
   baseUrl: string,
   onMessage: (msg: WSJobEvent) => void,
   onError?: (err: unknown) => void,
+  onOpen?: () => void,
 ): JobsStream {
-  return openValidatedStream(baseUrl, "/ws/jobs/all", wsJobEvent, onMessage, onError);
+  return openValidatedStream(
+    baseUrl,
+    "/ws/jobs/all",
+    wsJobEvent,
+    onMessage,
+    onError,
+    onOpen,
+  );
+}
+
+/**
+ * Always-on queue-health stream. Receives a `queue_lag` envelope every
+ * time the Beat canary records a sample (~5s cadence). Auth-gated to
+ * any signed-in viewer; permission scope is operator-wide ops health,
+ * not per-league.
+ */
+export function connectJobsLagStream(
+  baseUrl: string,
+  onMessage: (msg: WSJobLag) => void,
+  onError?: (err: unknown) => void,
+): JobsStream {
+  return openValidatedStream(baseUrl, "/ws/jobs/lag", wsJobLag, onMessage, onError);
 }
 
 function openValidatedStream<T>(
@@ -149,6 +184,7 @@ function openValidatedStream<T>(
   schema: { parse(data: unknown): T },
   onMessage: (msg: T) => void,
   onError?: (err: unknown) => void,
+  onOpen?: () => void,
 ): DiscoveryStream {
   const ws = new ReconnectingWebSocket(toWsUrl(baseUrl, path), [], {
     minReconnectionDelay: 1000,
@@ -167,6 +203,9 @@ function openValidatedStream<T>(
 
   if (onError) {
     ws.addEventListener("error", onError);
+  }
+  if (onOpen) {
+    ws.addEventListener("open", () => onOpen());
   }
 
   return {
@@ -206,6 +245,25 @@ export type CockpitActionName =
   | "finalize-tournament"
   | "generate-next-match-set"
   | "create-missing-matches";
+
+// Fetch the rolled-up lag history (oldest → newest). Returns null on
+// 401/network errors so the popover can render its waiting state.
+export async function fetchJobLagHistory(
+  baseUrl: string,
+  granularity: "hour" | "day" | "week" | "month" | "year" = "hour",
+  limit: number = 24,
+): Promise<JobLagHistoryDTO | null> {
+  const url = `${baseUrl.replace(/\/$/, "")}/v1/jobs/lag/history?granularity=${granularity}&limit=${limit}`;
+  try {
+    const response = await fetch(url, { credentials: "include" });
+    if (!response.ok) return null;
+    const json = await response.json();
+    const parsed = jobLagHistoryDto.safeParse(json);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 // Fetch the initial list of active + recent jobs for a season scope.
 // The API returns the most recent ``limit`` jobs; the cockpit pre-renders

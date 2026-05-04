@@ -59,7 +59,7 @@ def status_group(season) -> StatusGroup:
 def _has_published_round(season) -> bool:
     if hasattr(season, "_has_pub_round"):
         return bool(season._has_pub_round)
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     return Round.objects.filter(season=season, publish_pairings=True).exists()
 
@@ -74,7 +74,7 @@ def _last_round_ended(season) -> bool:
         if cached is None:
             return False
         return cached < timezone.now()  # type: ignore[operator]
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     last_end = (
         Round.objects.filter(season=season)
@@ -91,7 +91,7 @@ def _latest_published_round_number(season) -> int | None:
     if hasattr(season, "_latest_pub_round_number"):
         cached = season._latest_pub_round_number
         return cached if cached is None else int(cached)
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     return (
         Round.objects.filter(season=season, publish_pairings=True)
@@ -114,7 +114,7 @@ def resolve_slug(slug: str) -> object | None:
     Returns None on miss so callers can map to 404 / 403 as needed.
     """
 
-    from heltour.tournament.models import Season
+    from heltour.api.shared.models import Season
 
     return Season.objects.select_related("league").filter(slug=slug).first()
 
@@ -193,7 +193,7 @@ def slot_status(season) -> str:
         current = latest if latest is not None else 1
         return f"Round {current} of {season.rounds}"
 
-    from heltour.tournament.models import SeasonPlayer
+    from heltour.api.shared.models import SeasonPlayer
 
     count = SeasonPlayer.objects.filter(season=season, is_active=True).count()
     return f"{count} players registered"
@@ -400,7 +400,7 @@ def _build_pairings_payload(season, viewer: Viewer) -> tuple[dict | None, bool]:
     """Returns (payload, error). payload is None for genuine empty state
     (no round published) AND for errors; the error flag distinguishes."""
 
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     rnd = Round.objects.filter(season=season, publish_pairings=True).order_by("-number").first()
     if rnd is None:

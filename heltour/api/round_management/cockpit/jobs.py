@@ -58,7 +58,7 @@ def _job_row(ctx: JobContext):
     helper) and the triggered_by user (to satisfy permission checks
     inside that helper). Routes set both fields at enqueue time.
     """
-    from heltour.tournament.models import BackgroundJob
+    from heltour.api.shared.models import BackgroundJob
 
     return BackgroundJob.objects.select_related("season__league", "triggered_by").get(pk=ctx.job_id)
 

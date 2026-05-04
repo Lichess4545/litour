@@ -1,14 +1,26 @@
-import type { CockpitManagementDTO } from "@litour/api-client";
+import type { CockpitManagementDTO, WSJobLag } from "@litour/api-client";
 
 import { cn } from "@/lib/utils";
 
+import { JobLagPill } from "./JobLagPill";
+
 // Always-visible health line at the bottom of the cockpit. Surfaces
 // the same operational signals the Django dashboard renders inline with
-// the action list (Lichess token, Celery uptime, last-validated tokens).
-export function CockpitStatusStrip({ management }: { management: CockpitManagementDTO }) {
+// the action list (Lichess token, queue-lag canary, last-validated
+// tokens). `lagSnapshot` arrives over the lag WebSocket so the
+// chip updates without polling; `lagHistory` is the rolling buffer
+// of recent `queue_lag_latest` values for the popover sparkline.
+export function CockpitStatusStrip({
+  management,
+  lagSnapshot,
+  apiBaseUrl,
+}: {
+  management: CockpitManagementDTO;
+  lagSnapshot: WSJobLag | null;
+  apiBaseUrl: string;
+}) {
   const m = management;
   const tokenOk = m.lichess_token?.valid ?? null;
-  const celeryUp = !m.celery_down;
   return (
     <footer
       className="border-border text-muted-foreground mt-12 flex flex-wrap items-center gap-x-6 gap-y-2 border-t pt-3 text-xs"
@@ -21,11 +33,7 @@ export function CockpitStatusStrip({ management }: { management: CockpitManageme
         }
         tone={tokenOk === null ? "neutral" : tokenOk ? "ok" : "destructive"}
       />
-      <Chip
-        label="Celery"
-        valueLabel={celeryUp ? "up" : "down"}
-        tone={celeryUp ? "ok" : "destructive"}
-      />
+      <JobLagPill snapshot={lagSnapshot} apiBaseUrl={apiBaseUrl} variant="chip" />
       {m.token_validation ? (
         <Chip
           label="Tokens"

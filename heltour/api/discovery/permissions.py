@@ -102,7 +102,7 @@ def visible_queryset(viewer: Viewer) -> QuerySet:
         Subquery,
     )
 
-    from heltour.tournament.models import Round, Season
+    from heltour.api.shared.models import Round, Season
 
     rounds_for_season = Round.objects.filter(season=OuterRef("pk"))
 

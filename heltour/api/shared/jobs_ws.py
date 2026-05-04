@@ -30,7 +30,7 @@ router = APIRouter()
 
 def _resolve_season_scope(slug: str, user) -> tuple[Any | None, str]:
     """Return (season, channel) for a season-scoped WS subscription."""
-    from heltour.tournament.models import Season
+    from heltour.api.shared.models import Season
 
     try:
         season = Season.objects.select_related("league").get(slug=slug)
@@ -44,7 +44,7 @@ def _resolve_season_scope(slug: str, user) -> tuple[Any | None, str]:
 
 
 def _resolve_league_scope(tag: str, user) -> tuple[Any | None, str]:
-    from heltour.tournament.models import League
+    from heltour.api.shared.models import League
 
     try:
         league = League.objects.get(tag=tag)
@@ -69,9 +69,8 @@ def _resolve_global_scope(user) -> str:
 async def _resolve_user(viewer: Viewer):
     if viewer.user_id is None:
         return None
-    from django.contrib.auth import get_user_model
+    from heltour.api.shared.models import User
 
-    User = get_user_model()
     try:
         return await in_thread(User.objects.get, pk=viewer.user_id)
     except User.DoesNotExist:
@@ -89,6 +88,22 @@ async def _run_subscription(ws: WebSocket, channel: str) -> None:
     except Exception:
         logger.exception("jobs ws error channel=%s sent=%s", channel, sent)
         raise
+
+
+@router.websocket("/ws/jobs/lag")
+async def jobs_lag_ws(ws: WebSocket) -> None:
+    """Always-on queue-health stream — pushes the rolling lag snapshot
+    every time the canary records a sample. Auth gate is "any signed-in
+    viewer" so the cockpit footer can surface ops health regardless of
+    league/season scope."""
+    from heltour.api.shared.jobs_lag import LAG_CHANNEL
+
+    await ws.accept()
+    viewer = await _viewer_from_ws(ws)
+    if not viewer.is_authenticated:
+        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    await _run_subscription(ws, LAG_CHANNEL)
 
 
 @router.websocket("/ws/jobs/all")

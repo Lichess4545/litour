@@ -5,6 +5,9 @@ import { useState } from "react";
 
 import type { components } from "@litour/api-client";
 
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
 type RoundSummary = components["schemas"]["EventRoundDTO"];
 
 interface Props {
@@ -14,10 +17,8 @@ interface Props {
 }
 
 // DR11: current round bold + last 3 dimmed + "Show all rounds" disclosure.
-// DR4: the active round-selector hairline is one of the three lichess-blue
-// chrome elements (live mode only — the parent header drops the accent in
-// history mode).
-// Mobile: full-width tap target, larger summary, panel anchored to right.
+// Trigger styled as an outline button so it lines up with the sibling
+// JobsButton in the cockpit header instead of clashing visually.
 export function CockpitRoundSelector({ rounds, currentRoundId, eventSlug }: Props) {
   const [expanded, setExpanded] = useState(false);
   const sorted = [...rounds].sort((a, b) => b.round_number - a.round_number);
@@ -26,39 +27,41 @@ export function CockpitRoundSelector({ rounds, currentRoundId, eventSlug }: Prop
   const currentRoundNumber = sorted.find((r) => r.round_id === currentRoundId)?.round_number ?? "?";
 
   return (
-    <div className="border-border w-full sm:w-auto sm:inline-flex sm:flex-col sm:items-end sm:border-b sm:pb-1">
-      <details
-        className="relative w-full text-sm"
-        onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}
+    <details
+      className="relative"
+      onToggle={(e) => setExpanded((e.target as HTMLDetailsElement).open)}
+    >
+      <summary
+        className={cn(
+          buttonVariants({ variant: "outline", size: "sm" }),
+          "h-11 cursor-pointer select-none justify-between gap-3 sm:h-8 sm:gap-2",
+          "list-none [&::-webkit-details-marker]:hidden",
+        )}
       >
-        <summary className="border-border bg-background flex h-11 w-full cursor-pointer list-none items-center justify-between gap-2 rounded-md border px-3 select-none sm:h-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:hover:bg-transparent">
-          <span className="tabular-nums font-medium">Round {currentRoundNumber}</span>
-          <span className="text-muted-foreground text-xs">{expanded ? "▴" : "▾"}</span>
-        </summary>
-        <ul className="bg-card border-border absolute right-0 z-10 mt-2 w-full min-w-48 max-w-xs rounded-md border p-1 text-sm sm:right-0 sm:w-48 sm:text-right">
-          {recent.map((r) => (
-            <li key={r.round_id}>
-              <RoundLink
-                round={r}
-                eventSlug={eventSlug}
-                isCurrent={r.round_id === currentRoundId}
-              />
-            </li>
-          ))}
-          {rest.length > 0 && expanded
-            ? rest.map((r) => (
-                <li key={r.round_id}>
-                  <RoundLink
-                    round={r}
-                    eventSlug={eventSlug}
-                    isCurrent={r.round_id === currentRoundId}
-                  />
-                </li>
-              ))
-            : null}
-        </ul>
-      </details>
-    </div>
+        <span className="tabular-nums font-medium">Round {currentRoundNumber}</span>
+        <span className="text-muted-foreground text-xs" aria-hidden>
+          {expanded ? "▴" : "▾"}
+        </span>
+      </summary>
+      <ul className="bg-card border-border absolute right-0 z-10 mt-2 w-full min-w-48 max-w-xs rounded-md border p-1 text-sm sm:w-48">
+        {recent.map((r) => (
+          <li key={r.round_id}>
+            <RoundLink round={r} eventSlug={eventSlug} isCurrent={r.round_id === currentRoundId} />
+          </li>
+        ))}
+        {rest.length > 0 && expanded
+          ? rest.map((r) => (
+              <li key={r.round_id}>
+                <RoundLink
+                  round={r}
+                  eventSlug={eventSlug}
+                  isCurrent={r.round_id === currentRoundId}
+                />
+              </li>
+            ))
+          : null}
+      </ul>
+    </details>
   );
 }
 

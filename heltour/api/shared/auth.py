@@ -15,12 +15,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.contrib.sessions.models import Session
 from django.utils import timezone
 from fastapi import Request
 
 from heltour.api.deps import in_thread
+from heltour.api.shared.models import Session, User
 
 
 @dataclass(frozen=True)
@@ -51,7 +50,6 @@ def _resolve_viewer_sync(session_key: str | None) -> tuple[Viewer, object | None
     user_id = data.get("_auth_user_id")
     if not user_id:
         return Viewer.anonymous(), None
-    User = get_user_model()
     try:
         user = User.objects.get(pk=user_id)
     except User.DoesNotExist:

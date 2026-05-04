@@ -1745,3 +1745,258 @@ def backfill_fide_data_for_season(season_id: int) -> None:
         f"{fide_id_updates} fide_ids, {gender_updates} genders copied; "
         f"{refreshed} FIDE profiles fetched ({fetch_failures} failures)"
     )
+
+
+# ---------- Queue-health canary -----------------------------------------------
+#
+# Two-step: Beat fires `canary_lag_dispatch` → it stamps "requested_at"
+# and chains `canary_lag_record`, whose own queue lag we measure as
+# (started_at - requested_at). One row per round-trip into JobLagSample.
+# Raw samples are pruned by `rollup_lag_hourly` once they've been
+# folded into an hourly bucket, so the table stays bounded.
+
+
+@app.task()
+def canary_lag_dispatch():
+    """Beat-driven probe — records the dispatch instant and chains the
+    recorder so we can time the broker round-trip end-to-end."""
+    requested = timezone.now()
+    canary_lag_record.delay(requested.isoformat())
+
+
+@app.task()
+def canary_lag_record(requested_at_iso: str):
+    """Worker-side leg of the canary. Captures start/end, writes one
+    ``JobLagSample`` row, then publishes the rolling snapshot to the
+    queue-lag pubsub channel so live consumers (cockpit WS) fan it
+    out without polling."""
+    import json
+
+    import redis as _redis
+    from django.conf import settings
+
+    from heltour.api.shared.jobs_lag import LAG_CHANNEL, compute_lag_snapshot
+    from heltour.tournament.models import JobLagSample
+
+    started = timezone.now()
+    requested = datetime.fromisoformat(requested_at_iso)
+    JobLagSample.objects.create(
+        requested_at=requested,
+        started_at=started,
+        completed_at=timezone.now(),
+    )
+
+    snapshot = compute_lag_snapshot()
+    try:
+        client = _redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        client.publish(LAG_CHANNEL, json.dumps({"type": "queue_lag", **snapshot}))
+    except Exception:
+        logger.exception("canary lag publish failed")
+
+
+# ---------- Lag rollup pyramid -------------------------------------------------
+#
+# Beat fires `rollup_lag_hourly` once an hour; that task aggregates raw
+# samples for the just-finished hour into a single `JobLagBucket(hour)`
+# row and deletes the underlying samples. The day/week/month/year
+# rollups read from the immediately-finer tier on the same cadence —
+# so historical depth grows logarithmically while the table footprint
+# stays bounded.
+#
+# p95 at non-hour tiers is approximate (max-of-constituent-p95). Exact
+# percentile reconstruction would require keeping the underlying samples
+# we're explicitly deleting; the operator-facing question is "did
+# tail-latency get worse" and max-of-p95 captures that.
+
+
+def _percentile_sorted(values: list[float], pct: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return values[0]
+    rank = pct * (len(values) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(values) - 1)
+    frac = rank - lo
+    return values[lo] + (values[hi] - values[lo]) * frac
+
+
+def _rollup_from_samples(bucket_start, bucket_end):
+    """Return (count, mean, min, max, p95, stddev) from raw samples in [start, end)."""
+    import math
+
+    from heltour.tournament.models import JobLagSample
+
+    rows = list(
+        JobLagSample.objects.filter(
+            requested_at__gte=bucket_start, requested_at__lt=bucket_end
+        ).values_list("requested_at", "started_at")
+    )
+    if not rows:
+        return None
+    lags = [(s - r).total_seconds() for r, s in rows]
+    mean = sum(lags) / len(lags)
+    if len(lags) >= 2:
+        variance = sum((x - mean) ** 2 for x in lags) / (len(lags) - 1)
+        stddev = math.sqrt(variance)
+    else:
+        stddev = None
+    sorted_lags = sorted(lags)
+    return (
+        len(lags),
+        mean,
+        sorted_lags[0],
+        sorted_lags[-1],
+        _percentile_sorted(sorted_lags, 0.95),
+        stddev,
+    )
+
+
+def _rollup_from_buckets(child_granularity, bucket_start, bucket_end):
+    """Return (count, mean, min, max, p95, stddev) by combining finer buckets in
+    [start, end). p95 is approximated as max-of-child-p95s; stddev is left None
+    above the hour tier (pooled stddev would need per-bucket variance, which we
+    don't store)."""
+    from heltour.tournament.models import JobLagBucket
+
+    rows = list(
+        JobLagBucket.objects.filter(
+            granularity=child_granularity,
+            bucket_start__gte=bucket_start,
+            bucket_start__lt=bucket_end,
+        ).values_list(
+            "sample_count",
+            "queue_lag_mean",
+            "queue_lag_min",
+            "queue_lag_max",
+            "queue_lag_p95",
+        )
+    )
+    if not rows:
+        return None
+    total = sum(r[0] for r in rows)
+    if total == 0:
+        return None
+    mean = sum(r[0] * r[1] for r in rows) / total
+    return (
+        total,
+        mean,
+        min(r[2] for r in rows),
+        max(r[3] for r in rows),
+        max(r[4] for r in rows),
+        None,
+    )
+
+
+def _upsert_bucket(granularity, bucket_start, agg):
+    from heltour.tournament.models import JobLagBucket
+
+    count, mean, lo, hi, p95, stddev = agg
+    JobLagBucket.objects.update_or_create(
+        granularity=granularity,
+        bucket_start=bucket_start,
+        defaults={
+            "sample_count": count,
+            "queue_lag_mean": mean,
+            "queue_lag_min": lo,
+            "queue_lag_max": hi,
+            "queue_lag_p95": p95,
+            "queue_lag_stddev": stddev,
+        },
+    )
+
+
+@app.task()
+def rollup_lag_hourly():
+    """Aggregate raw samples from the just-finished hour into a single
+    ``JobLagBucket(hour)``, then delete those samples."""
+    from heltour.tournament.models import JobLagSample
+
+    now = timezone.now()
+    bucket_end = now.replace(minute=0, second=0, microsecond=0)
+    bucket_start = bucket_end - timedelta(hours=1)
+    agg = _rollup_from_samples(bucket_start, bucket_end)
+    if agg is not None:
+        _upsert_bucket("hour", bucket_start, agg)
+    # Trim raw samples once they've been folded in. Keep the most
+    # recent 30 minutes raw so the cockpit footer's "last hour"
+    # snapshot still has live data while the rollup is running.
+    JobLagSample.objects.filter(requested_at__lt=bucket_end - timedelta(minutes=30)).delete()
+
+
+@app.task()
+def rollup_lag_daily():
+    """Aggregate the previous day's hourly buckets into one ``day`` bucket."""
+    from heltour.tournament.models import JobLagBucket
+
+    now = timezone.now()
+    bucket_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    bucket_start = bucket_end - timedelta(days=1)
+    agg = _rollup_from_buckets("hour", bucket_start, bucket_end)
+    if agg is not None:
+        _upsert_bucket("day", bucket_start, agg)
+    # Hourly buckets older than 48h are now redundant.
+    JobLagBucket.objects.filter(
+        granularity="hour", bucket_start__lt=bucket_end - timedelta(hours=48)
+    ).delete()
+
+
+@app.task()
+def rollup_lag_weekly():
+    """Aggregate the previous ISO week's daily buckets into one ``week`` bucket."""
+    now = timezone.now()
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # ISO week starts Monday. Find the Monday of the *previous* completed week.
+    days_since_monday = today_midnight.weekday()
+    this_monday = today_midnight - timedelta(days=days_since_monday)
+    bucket_end = this_monday
+    bucket_start = bucket_end - timedelta(weeks=1)
+    agg = _rollup_from_buckets("day", bucket_start, bucket_end)
+    if agg is not None:
+        _upsert_bucket("week", bucket_start, agg)
+
+
+@app.task()
+def rollup_lag_monthly():
+    """Aggregate the previous calendar month's daily buckets into one ``month`` bucket.
+
+    Months don't divide evenly into weeks, so we roll up directly from
+    daily buckets (not weekly) to avoid double-counting overlap."""
+    from heltour.tournament.models import JobLagBucket
+
+    now = timezone.now()
+    first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_end = first_of_this_month
+    # Step back one day, then snap to the 1st of that month.
+    last_month_anchor = last_month_end - timedelta(days=1)
+    last_month_start = last_month_anchor.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    agg = _rollup_from_buckets("day", last_month_start, last_month_end)
+    if agg is not None:
+        _upsert_bucket("month", last_month_start, agg)
+    # Daily buckets older than 60 days are subsumed by week+month tiers.
+    JobLagBucket.objects.filter(
+        granularity="day", bucket_start__lt=first_of_this_month - timedelta(days=60)
+    ).delete()
+    # Weekly buckets older than 90 days are subsumed by month tier.
+    JobLagBucket.objects.filter(
+        granularity="week", bucket_start__lt=first_of_this_month - timedelta(days=90)
+    ).delete()
+
+
+@app.task()
+def rollup_lag_yearly():
+    """Aggregate the previous calendar year's monthly buckets into one ``year`` bucket."""
+    from heltour.tournament.models import JobLagBucket
+
+    now = timezone.now()
+    this_year_start = now.replace(
+        month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    last_year_start = this_year_start.replace(year=this_year_start.year - 1)
+    agg = _rollup_from_buckets("month", last_year_start, this_year_start)
+    if agg is not None:
+        _upsert_bucket("year", last_year_start, agg)
+    # Monthly buckets older than 730 days are subsumed by year tier.
+    JobLagBucket.objects.filter(
+        granularity="month", bucket_start__lt=this_year_start - timedelta(days=730)
+    ).delete()

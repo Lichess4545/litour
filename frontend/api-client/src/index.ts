@@ -6,7 +6,9 @@ export {
   connectCockpitStream,
   connectJobsSeasonStream,
   connectJobsAllStream,
+  connectJobsLagStream,
   callCockpitAction,
+  fetchJobLagHistory,
   listJobsForSeason,
 } from "./client";
 export type {
@@ -16,8 +18,21 @@ export type {
   JobsStream,
   CockpitActionName,
 } from "./client";
-export { backgroundJobDto, wsJobEvent } from "./jobs-messages";
-export type { BackgroundJobDTO, JobStatus, JobSource, WSJobEvent } from "./jobs-messages";
+export {
+  backgroundJobDto,
+  jobLagHistoryDto,
+  wsJobEvent,
+  wsJobLag,
+} from "./jobs-messages";
+export type {
+  BackgroundJobDTO,
+  JobLagHistoryDTO,
+  JobLagHistoryPoint,
+  JobStatus,
+  JobSource,
+  WSJobEvent,
+  WSJobLag,
+} from "./jobs-messages";
 export type {
   WSMessage,
   WSMatchUpdate,
@@ -81,6 +96,7 @@ export type {
   CtaKind,
   WSCockpitMatchUpdate,
   WSCockpitClose,
+  WSCockpitQueueLag,
   WSCockpitMessage,
 } from "./cockpit-messages";
 export type { paths, components } from "./generated";

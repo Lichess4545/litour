@@ -4,7 +4,9 @@ import {
   type CockpitDTO,
   type CockpitMatchDTO,
   type WSCockpitMessage,
+  type WSJobLag,
   connectCockpitStream,
+  connectJobsLagStream,
 } from "@litour/api-client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +24,7 @@ import {
 
 interface Props {
   initial: CockpitDTO;
+  initialLag: WSJobLag | null;
   apiBaseUrl: string;
   eventSlug: string;
 }
@@ -34,7 +37,7 @@ export function CockpitLive(props: Props) {
   );
 }
 
-function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
+function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props) {
   const router = useRouter();
   const [dto, setDto] = useState<CockpitDTO>(initial);
   // L3 drawer: which pairing is open. null = closed.
@@ -44,10 +47,17 @@ function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
   // Stale-banner: which pairing the open drawer was anchored on, for the
   // version-mismatch banner per design doc Real-time strategy section.
   const [staleBannerForPairing, setStaleBannerForPairing] = useState<number | null>(null);
+  // Latest queue-lag snapshot from the canary. Hydrated server-side so
+  // the footer chip renders real numbers on first paint; the WS stream
+  // patches it every ~5s thereafter.
+  const [lagSnapshot, setLagSnapshot] = useState<WSJobLag | null>(initialLag);
 
   useEffect(() => {
-    if (initial.mode !== "live") {
-      // pre_round / history / empty don't need a WS — the page is static.
+    // CLAUDE.md rule 6: every page is real-time. Open the cockpit WS in
+    // every mode that has a resolvable round (live / pre_round / history);
+    // `empty` has nothing for the WS to subscribe to and the server will
+    // close 1008 — the client tolerates that gracefully.
+    if (initial.mode === "empty") {
       return;
     }
 
@@ -86,6 +96,18 @@ function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
     return () => stream.close();
   }, [apiBaseUrl, eventSlug, initial.mode, router, openPairingId, dto.matches]);
 
+  // Queue-health canary stream — opens on every mode (incl. pre_round /
+  // history / empty) so the footer chip is live regardless of round
+  // state. Independent of the cockpit WS lifecycle on purpose.
+  useEffect(() => {
+    const stream = connectJobsLagStream(
+      apiBaseUrl,
+      (msg) => setLagSnapshot(msg),
+      (err) => console.error("lag stream error", err),
+    );
+    return () => stream.close();
+  }, [apiBaseUrl]);
+
   const openPairing = openPairingId
     ? (dto.matches.find((m) => m.id === openPairingId) ?? null)
     : null;
@@ -104,7 +126,13 @@ function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
           </div>
         ) : null}
         <ModeBanner mode={dto.mode} eventSlug={eventSlug} />
-        {dto.management ? <CockpitStatusStrip management={dto.management} /> : null}
+        {dto.management ? (
+        <CockpitStatusStrip
+          management={dto.management}
+          lagSnapshot={lagSnapshot}
+          apiBaseUrl={apiBaseUrl}
+        />
+      ) : null}
       </main>
     );
   }
@@ -166,7 +194,13 @@ function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
           onOpenDrawer={(id) => setOpenPairingId(id)}
         />
       </section>
-      {dto.management ? <CockpitStatusStrip management={dto.management} /> : null}
+      {dto.management ? (
+        <CockpitStatusStrip
+          management={dto.management}
+          lagSnapshot={lagSnapshot}
+          apiBaseUrl={apiBaseUrl}
+        />
+      ) : null}
       {openPairing ? (
         <PairingDetailDrawer
           match={openPairing}

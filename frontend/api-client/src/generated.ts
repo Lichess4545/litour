@@ -72,6 +72,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/lag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Lag
+         * @description Aggregate ``JobLagSample`` rows from the last hour into a queue-health DTO.
+         */
+        get: operations["get_job_lag_v1_jobs_lag_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/lag/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Lag History
+         * @description Return the most recent N rolled-up lag buckets at the given granularity.
+         */
+        get: operations["get_job_lag_history_v1_jobs_lag_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -1141,6 +1181,61 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /**
+         * JobLagDTO
+         * @description Snapshot of recent broker round-trip lag.
+         *
+         *     All times in seconds. ``samples`` is the count behind the
+         *     aggregates so the UI can render "—" instead of a misleading value
+         *     when the canary hasn't run enough yet.
+         */
+        JobLagDTO: {
+            /** Last Observed At */
+            last_observed_at: string | null;
+            /** Queue Lag Avg */
+            queue_lag_avg: number | null;
+            /** Queue Lag Latest */
+            queue_lag_latest: number | null;
+            /** Queue Lag Max */
+            queue_lag_max: number | null;
+            /** Queue Lag P95 */
+            queue_lag_p95: number | null;
+            /** Queue Lag Stddev */
+            queue_lag_stddev: number | null;
+            /** Samples */
+            samples: number;
+        };
+        /**
+         * JobLagHistoryDTO
+         * @description Recent rolled-up lag buckets for the popover sparkline.
+         *
+         *     Ordered oldest → newest so the client can render straight off the
+         *     array without reversing. Gaps in the timeline (hours where the
+         *     rollup didn't run / the canary was down) are NOT filled — the
+         *     array just contains whatever buckets exist.
+         */
+        JobLagHistoryDTO: {
+            /**
+             * Granularity
+             * @enum {string}
+             */
+            granularity: "hour" | "day" | "week" | "month" | "year";
+            /** Points */
+            points: components["schemas"]["JobLagHistoryPointDTO"][];
+        };
+        /** JobLagHistoryPointDTO */
+        JobLagHistoryPointDTO: {
+            /** Bucket Start */
+            bucket_start: string;
+            /** Queue Lag Max */
+            queue_lag_max: number;
+            /** Queue Lag Mean */
+            queue_lag_mean: number;
+            /** Queue Lag P95 */
+            queue_lag_p95: number;
+            /** Sample Count */
+            sample_count: number;
+        };
         /** CockpitMarkForfeitRequest */
         MarkForfeitRequest: {
             /** Expected Version */
@@ -1486,6 +1581,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundJobDTO"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_lag_v1_jobs_lag_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobLagDTO"];
+                };
+            };
+        };
+    };
+    get_job_lag_history_v1_jobs_lag_history_get: {
+        parameters: {
+            query?: {
+                granularity?: "hour" | "day" | "week" | "month" | "year";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobLagHistoryDTO"];
                 };
             };
             /** @description Validation Error */

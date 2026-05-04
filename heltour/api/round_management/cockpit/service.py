@@ -17,7 +17,7 @@ All three write a ``CockpitAuditEntry`` row on success.
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from django.db import transaction
@@ -179,7 +179,7 @@ def build_cockpit_for_event_sync(event_slug: str, viewer: Viewer, user) -> Cockp
     for pre_round / empty modes.
     """
 
-    from heltour.tournament.models import Season
+    from heltour.api.shared.models import Season
 
     try:
         season = Season.objects.select_related("league").get(slug=event_slug)
@@ -198,7 +198,7 @@ def build_cockpit_for_round_id_sync(
 ) -> CockpitDTO:
     """Build a read-only history-mode cockpit DTO for a specific past round."""
 
-    from heltour.tournament.models import Round, Season
+    from heltour.api.shared.models import Round, Season
 
     try:
         season = Season.objects.select_related("league").get(slug=event_slug)
@@ -215,7 +215,7 @@ def build_cockpit_for_round_id_sync(
 
 
 def _build_cockpit_for_round(rnd, viewer: Viewer, user, mode: CockpitMode) -> CockpitDTO:
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         LonePlayerPairing,
         TeamPlayerPairing,
     )
@@ -280,7 +280,7 @@ def _resolve_concrete_pairing(match_id: int):
     Returns ``(concrete, league)`` for the concrete subclass so signal
     publishers receive the right sender. Raises 404 on miss.
     """
-    from heltour.tournament.models import LonePlayerPairing, TeamPlayerPairing
+    from heltour.api.shared.models import LonePlayerPairing, TeamPlayerPairing
 
     try:
         concrete = TeamPlayerPairing.objects.select_related(
@@ -329,7 +329,7 @@ def _write_audit(
     after: dict[str, Any],
     reason: str,
 ) -> None:
-    from heltour.tournament.models import CockpitAuditEntry
+    from heltour.api.shared.models import CockpitAuditEntry
 
     CockpitAuditEntry.objects.create(
         intervention_type=intervention_type,
@@ -347,7 +347,7 @@ def _build_match_dto_from_concrete(concrete, league) -> MatchDTO:
         lone_player_pairing_to_match,
         team_player_pairing_to_match,
     )
-    from heltour.tournament.models import TeamPlayerPairing
+    from heltour.api.shared.models import TeamPlayerPairing
 
     if isinstance(concrete, TeamPlayerPairing):
         captains = captains_for_team_pairing(concrete.team_pairing)
@@ -442,7 +442,7 @@ def audit_for_pairing_sync(pairing_id: int, viewer: Viewer, user) -> list[Cockpi
     if not can_change_pairing_sync(user, league):
         raise HTTPException(status_code=403, detail="forbidden")
 
-    from heltour.tournament.models import CockpitAuditEntry
+    from heltour.api.shared.models import CockpitAuditEntry
 
     rows = (
         CockpitAuditEntry.objects.filter(pairing_id=pairing_id)
@@ -622,6 +622,30 @@ def _token_validation_dto(season_pk: int) -> CockpitTokenValidationDTO | None:
     )
 
 
+# Beat fires the canary every 5s; allow ~12 missed cycles before
+# claiming Celery is down so a brief broker hiccup doesn't false-alarm
+# the cockpit. Legacy ``uptime.celery.is_down`` (cache-key + 15-minute
+# ping) still backs the Django-side admin views.
+_CELERY_CANARY_DEAD_AFTER = timedelta(seconds=60)
+
+
+def _celery_down_from_canary(JobLagSample) -> bool:
+    """Return True if no canary row arrived recently.
+
+    Defensive against the table not existing yet (pre-migration) or
+    any other DB hiccup — a side metric should never take down the
+    cockpit page. ``False`` (= "assume Celery is up") is the right
+    default when we can't tell.
+    """
+    try:
+        latest = JobLagSample.objects.order_by("-requested_at").only("requested_at").first()
+    except Exception:
+        return False
+    if latest is None:
+        return False
+    return timezone.now() - latest.requested_at > _CELERY_CANARY_DEAD_AFTER
+
+
 def _alternate_search_count(season) -> int | None:
     from heltour.tournament import alternates_manager
 
@@ -642,7 +666,7 @@ def _knockout_advancement_dto(season) -> CockpitKnockoutAdvancementDTO | None:
     info, tied-pair detection) stays in the Django view; we re-derive a
     coarser version here from the bracket + round data.
     """
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         KnockoutBracket,
         Round,
         TeamPairing,
@@ -742,7 +766,7 @@ def _primary_action(
     template. Returns None when no action is available (e.g. read-only
     viewer, completed season with nothing to review).
     """
-    from heltour.tournament.models import Round, TeamPairing, LonePlayerPairing
+    from heltour.api.shared.models import Round, TeamPairing, LonePlayerPairing
 
     if not can_generate:
         return None
@@ -846,13 +870,13 @@ def _build_management_sync(
     if not _can_view_dashboard_sync(user, league):
         return None
 
-    from heltour.tournament import uptime
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
+        Alternate,
+        JobLagSample,
         ModRequest,
         Registration,
         SeasonPlayer,
         TeamMember,
-        Alternate,
     )
 
     is_team = league.competitor_type == "team"
@@ -912,7 +936,7 @@ def _build_management_sync(
         pending_modreq_count=pending_modreq_count,
         unassigned_player_count=unassigned,
         alternate_search_count=_alternate_search_count(season) if is_team else None,
-        celery_down=bool(uptime.celery.is_down),
+        celery_down=_celery_down_from_canary(JobLagSample),
         lichess_token=_token_status_dto(),
         token_validation=_token_validation_dto(season.pk),
         primary_action=primary,

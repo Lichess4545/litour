@@ -56,7 +56,7 @@ def _list_jobs_sync(
     active_only: bool,
     limit: int,
 ) -> list[dict[str, Any]]:
-    from heltour.tournament.models import BackgroundJob, League, Season
+    from heltour.api.shared.models import BackgroundJob, League, Season
 
     if user is None or not getattr(user, "is_authenticated", False):
         raise HTTPException(status_code=401, detail="not authenticated")
@@ -91,14 +91,14 @@ def _list_jobs_sync(
 
 
 def _get_job_sync(user, job_id: int) -> dict[str, Any]:
-    from heltour.tournament.models import BackgroundJob
+    from heltour.api.shared.models import BackgroundJob
 
     if user is None or not getattr(user, "is_authenticated", False):
         raise HTTPException(status_code=401, detail="not authenticated")
     try:
-        job = BackgroundJob.objects.select_related("season__league", "league", "triggered_by").get(
-            pk=job_id
-        )
+        job = BackgroundJob.objects.select_related(
+            "season__league", "league", "triggered_by"
+        ).get(pk=job_id)
     except BackgroundJob.DoesNotExist as exc:
         raise HTTPException(status_code=404, detail="job not found") from exc
 
@@ -123,6 +123,113 @@ async def list_jobs(
 ) -> list[dict[str, Any]]:
     _, user = viewer_and_user
     return await in_thread(_list_jobs_sync, user, season_slug, league_tag, active_only, limit)
+
+
+# ---------- Queue-health canary --------------------------------------------------
+#
+# Declared before the ``/jobs/{job_id}`` route so FastAPI matches the
+# fixed path first; otherwise ``/jobs/lag`` would be parsed as
+# ``job_id="lag"`` and rejected with a 422 from the int validator.
+
+
+class JobLagDTO(BaseModel):
+    """Snapshot of recent broker round-trip lag.
+
+    All times in seconds. ``samples`` is the count behind the
+    aggregates so the UI can render "—" instead of a misleading value
+    when the canary hasn't run enough yet.
+    """
+
+    model_config = ConfigDict(title="JobLagDTO")
+
+    samples: int
+    queue_lag_latest: float | None
+    queue_lag_avg: float | None
+    queue_lag_stddev: float | None
+    queue_lag_p95: float | None
+    queue_lag_max: float | None
+    last_observed_at: str | None
+
+
+@router.get("/jobs/lag", response_model=JobLagDTO)
+async def get_job_lag(
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> dict[str, Any]:
+    """Aggregate ``JobLagSample`` rows from the last hour into a queue-health DTO."""
+    from heltour.api.shared.jobs_lag import compute_lag_snapshot
+
+    _, user = viewer_and_user
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise HTTPException(status_code=401, detail="not authenticated")
+    return await in_thread(compute_lag_snapshot)
+
+
+class JobLagHistoryPointDTO(BaseModel):
+    model_config = ConfigDict(title="JobLagHistoryPointDTO")
+
+    bucket_start: str
+    queue_lag_mean: float
+    queue_lag_p95: float
+    queue_lag_max: float
+    sample_count: int
+
+
+class JobLagHistoryDTO(BaseModel):
+    """Recent rolled-up lag buckets for the popover sparkline.
+
+    Ordered oldest → newest so the client can render straight off the
+    array without reversing. Gaps in the timeline (hours where the
+    rollup didn't run / the canary was down) are NOT filled — the
+    array just contains whatever buckets exist.
+    """
+
+    model_config = ConfigDict(title="JobLagHistoryDTO")
+
+    granularity: Literal["hour", "day", "week", "month", "year"]
+    points: list[JobLagHistoryPointDTO]
+
+
+def _job_lag_history_sync(granularity: str, limit: int) -> dict[str, Any]:
+    from heltour.api.shared.models import JobLagBucket
+
+    rows = list(
+        JobLagBucket.objects.filter(granularity=granularity)
+        .order_by("-bucket_start")
+        .values(
+            "bucket_start",
+            "queue_lag_mean",
+            "queue_lag_p95",
+            "queue_lag_max",
+            "sample_count",
+        )[:limit]
+    )
+    rows.reverse()
+    return {
+        "granularity": granularity,
+        "points": [
+            {
+                "bucket_start": r["bucket_start"].isoformat(),
+                "queue_lag_mean": r["queue_lag_mean"],
+                "queue_lag_p95": r["queue_lag_p95"],
+                "queue_lag_max": r["queue_lag_max"],
+                "sample_count": r["sample_count"],
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/jobs/lag/history", response_model=JobLagHistoryDTO)
+async def get_job_lag_history(
+    granularity: Literal["hour", "day", "week", "month", "year"] = Query(default="hour"),
+    limit: int = Query(default=24, ge=1, le=365),
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> dict[str, Any]:
+    """Return the most recent N rolled-up lag buckets at the given granularity."""
+    _, user = viewer_and_user
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise HTTPException(status_code=401, detail="not authenticated")
+    return await in_thread(_job_lag_history_sync, granularity, limit)
 
 
 @router.get("/jobs/{job_id}", response_model=BackgroundJobDTO)

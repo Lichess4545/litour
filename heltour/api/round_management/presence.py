@@ -17,7 +17,7 @@ from heltour.api.round_management.schemas import (
 
 
 def build_presence_for_round(round_obj) -> dict[int, MatchPresenceDTO]:
-    from heltour.tournament.models import (
+    from heltour.api.shared.models import (
         LonePlayerPairing,
         PlayerPairing,
         PlayerPresenceEvent,

@@ -19,7 +19,7 @@ from heltour.api.shared.auth import Viewer
 
 
 def _get_season(event_slug: str):
-    from heltour.tournament.models import Season
+    from heltour.api.shared.models import Season
 
     try:
         return Season.objects.select_related("league").get(slug=event_slug)
@@ -123,7 +123,7 @@ def _round_or_404(season, round_id: int | None, *, must_be_unpublished: bool = F
     (publish_pairings=False), False → next round to close
     (publish_pairings=True, is_completed=False).
     """
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     if round_id is not None:
         try:
@@ -219,7 +219,7 @@ def start_round_sync(
     """
     season = _get_season(event_slug)
     _require_perm(user, season.league, "tournament.generate_pairings")
-    from heltour.tournament.models import LonePlayerPairing, TeamPairing
+    from heltour.api.shared.models import LonePlayerPairing, TeamPairing
     from heltour.tournament.workflows import UpdateBoardOrderWorkflow
     from django.db import transaction
     import reversion
@@ -288,7 +288,7 @@ def close_season_sync(event_slug: str, _viewer: Viewer, user) -> CockpitActionRe
 
 
 def _last_completed_round(season):
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     return Round.objects.filter(season=season, is_completed=True).order_by("-number").first()
 
@@ -336,7 +336,7 @@ def _create_multi_match_set(season, current_round) -> tuple[int, str]:
     expected number of matches per team-pair and creates the next match
     in the sequence.
     """
-    from heltour.tournament.models import KnockoutBracket, TeamPairing
+    from heltour.api.shared.models import KnockoutBracket, TeamPairing
 
     bracket = KnockoutBracket.objects.get(season=season)
     matches_per_stage = bracket.matches_per_stage
@@ -384,7 +384,7 @@ def generate_next_match_set_sync(event_slug: str, _viewer: Viewer, user) -> Cock
     _require_perm(user, season.league, "tournament.generate_pairings")
     if not season.league.pairing_type.startswith("knockout"):
         return _err("Not a knockout", "This action only applies to knockout tournaments.")
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     current = (
         Round.objects.filter(season=season, teampairing__isnull=False)

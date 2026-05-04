@@ -32,7 +32,39 @@ export const wsJobEvent = z.object({
   job: backgroundJobDto,
 });
 
+// Lag-only WS message — pushed by `/ws/jobs/lag` every time the canary
+// records a sample. Same shape as the REST `/v1/jobs/lag` snapshot
+// plus a `type` discriminator.
+export const wsJobLag = z.object({
+  type: z.literal("queue_lag"),
+  samples: z.number().int(),
+  queue_lag_latest: z.number().nullable(),
+  queue_lag_avg: z.number().nullable(),
+  queue_lag_stddev: z.number().nullable(),
+  queue_lag_p95: z.number().nullable(),
+  queue_lag_max: z.number().nullable(),
+  last_observed_at: z.string().nullable(),
+});
+
+// Hourly (or coarser) rolled-up lag buckets for the popover sparkline.
+// Mirrors `JobLagHistoryDTO` in `heltour/api/shared/jobs_routes.py`.
+export const jobLagHistoryPoint = z.object({
+  bucket_start: z.string(),
+  queue_lag_mean: z.number(),
+  queue_lag_p95: z.number(),
+  queue_lag_max: z.number(),
+  sample_count: z.number().int(),
+});
+
+export const jobLagHistoryDto = z.object({
+  granularity: z.enum(["hour", "day", "week", "month", "year"]),
+  points: z.array(jobLagHistoryPoint),
+});
+
 export type JobStatus = z.infer<typeof jobStatus>;
 export type JobSource = z.infer<typeof jobSource>;
 export type BackgroundJobDTO = z.infer<typeof backgroundJobDto>;
 export type WSJobEvent = z.infer<typeof wsJobEvent>;
+export type WSJobLag = z.infer<typeof wsJobLag>;
+export type JobLagHistoryPoint = z.infer<typeof jobLagHistoryPoint>;
+export type JobLagHistoryDTO = z.infer<typeof jobLagHistoryDto>;

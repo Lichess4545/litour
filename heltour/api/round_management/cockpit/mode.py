@@ -22,7 +22,7 @@ PRE_ROUND_HORIZON = timedelta(days=7)
 
 
 def resolve_current_round(season) -> tuple[object | None, CockpitMode]:
-    from heltour.tournament.models import Round
+    from heltour.api.shared.models import Round
 
     now = timezone.now()
     rounds = Round.objects.filter(season=season)

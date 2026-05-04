@@ -12,7 +12,7 @@ def current_round_sync(league_tag: str) -> CurrentRoundDTO:
     completed (so once round N's pairings are published the page jumps
     forward, even if N-1 is still marked complete).
     """
-    from heltour.tournament.models import League, Round
+    from heltour.api.shared.models import League, Round
 
     try:
         league = League.objects.get(tag=league_tag)

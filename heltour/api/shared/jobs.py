@@ -132,7 +132,7 @@ class JobContext:
         self.job_id = job_id
 
     def progress(self, percent: int | None, message: str = "") -> None:
-        from heltour.tournament.models import BackgroundJob
+        from heltour.api.shared.models import BackgroundJob
 
         clamped: int | None = None
         if percent is not None:
@@ -141,14 +141,25 @@ class JobContext:
             progress=clamped,
             progress_message=message[:255],
         )
-        # Re-read to publish a complete snapshot.
         try:
-            job = BackgroundJob.objects.select_related("season", "league", "triggered_by").get(
-                pk=self.job_id
-            )
+            job = _reload_job(self.job_id)
             _publish(_channels_for(job), _envelope(job, "job.progress"))
         except BackgroundJob.DoesNotExist:  # pragma: no cover
             pass
+
+
+def _reload_job(job_id: int):
+    """Re-read a BackgroundJob row, bypassing cacheops.
+
+    Every publish-time read goes through here. The job row mutates
+    several times per task (queued → running → progress* → ok/failed)
+    and cacheops's invalidation of ``select_related`` variants isn't
+    reliably synchronous; without bypassing the cache we observed
+    envelopes whose ``status`` regressed as stale snapshots leaked.
+    """
+    from heltour.api.shared.models import BackgroundJob
+
+    return BackgroundJob.objects.select_related("season", "league", "triggered_by").get(pk=job_id)
 
 
 # ---------- Registry + decorator -----------------------------------------------
@@ -210,7 +221,7 @@ class RegisteredJob:
         Returns the BackgroundJob instance. Caller may .pk it back to
         the client so they can subscribe to that job's updates.
         """
-        from heltour.tournament.models import BackgroundJob
+        from heltour.api.shared.models import BackgroundJob
 
         ctx = dict(input or {})
         ctx.update(
@@ -285,12 +296,10 @@ def background_job(
         # restarted by Celery without us serialising the full input again.
         @app.task(name=f"jobs.{kind}", bind=True)
         def _task(self, job_id: int):  # noqa: ARG001 — `self` required by bind=True
-            from heltour.tournament.models import BackgroundJob
+            from heltour.api.shared.models import BackgroundJob
 
             try:
-                job = BackgroundJob.objects.select_related("season", "league", "triggered_by").get(
-                    pk=job_id
-                )
+                job = _reload_job(job_id)
             except BackgroundJob.DoesNotExist:
                 logger.error("background job %s missing", job_id)
                 return
@@ -299,7 +308,7 @@ def background_job(
                 status="running",
                 started_at=timezone.now(),
             )
-            job.refresh_from_db()
+            job = _reload_job(job_id)
             _publish(_channels_for(job), _envelope(job, "job.started"))
 
             ctx = JobContext(job_id=job_id)
@@ -325,7 +334,7 @@ def background_job(
                     error_message=f"{exc.__class__.__name__}: {exc}\n\n{tb}"[:8000],
                 )
 
-            job.refresh_from_db()
+            job = _reload_job(job_id)
             _publish(_channels_for(job), _envelope(job, "job.completed"))
 
         registered = RegisteredJob(

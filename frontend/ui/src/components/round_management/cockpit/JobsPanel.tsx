@@ -46,19 +46,22 @@ export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void listJobsForSeason(apiBaseUrl, eventSlug, { limit: 50 }).then((raw) => {
-      if (cancelled) return;
-      const parsed = (raw as unknown[])
-        .map((r) => {
-          try {
-            return backgroundJobDto.parse(r);
-          } catch {
-            return null;
-          }
-        })
-        .filter((j): j is BackgroundJobDTO => j !== null);
-      setJobs(parsed);
-    });
+    const refetch = () => {
+      void listJobsForSeason(apiBaseUrl, eventSlug, { limit: 50 }).then((raw) => {
+        if (cancelled) return;
+        const parsed = (raw as unknown[])
+          .map((r) => {
+            try {
+              return backgroundJobDto.parse(r);
+            } catch {
+              return null;
+            }
+          })
+          .filter((j): j is BackgroundJobDTO => j !== null);
+        setJobs(parsed);
+      });
+    };
+    refetch();
     const stream = connectJobsSeasonStream(
       apiBaseUrl,
       eventSlug,
@@ -66,6 +69,10 @@ export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
         setJobs((prev) => mergeJob(prev, msg.job));
       },
       (err) => console.error("jobs ws error", err),
+      // Resync on every (re)connect — pub/sub envelopes published during
+      // a network blip aren't replayed, so without this the active list
+      // can stay stuck on a job that already finished server-side.
+      refetch,
     );
     return () => {
       cancelled = true;

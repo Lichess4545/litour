@@ -1,4 +1,4 @@
-import { cockpitDto } from "@litour/api-client";
+import { cockpitDto, wsJobLag } from "@litour/api-client";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
@@ -42,7 +42,21 @@ async function loadCockpit(rawSlug: string, rawRoundId: string | string[] | unde
     }
     return { kind: "not_found" as const };
   }
-  return { kind: "ok" as const, dto: cockpitDto.parse(data) };
+
+  // Hydrate the queue-lag canary on the server so the footer chip
+  // renders with real numbers on first paint instead of "—" until the
+  // first WS envelope arrives. Failure here is non-fatal — the chip
+  // falls back to its waiting state.
+  const lagRes = await client.GET("/v1/jobs/lag");
+  const initialLag =
+    lagRes.data != null
+      ? (() => {
+          const parsed = wsJobLag.safeParse({ type: "queue_lag", ...lagRes.data });
+          return parsed.success ? parsed.data : null;
+        })()
+      : null;
+
+  return { kind: "ok" as const, dto: cockpitDto.parse(data), initialLag };
 }
 
 export async function generateMetadata({
@@ -74,5 +88,12 @@ export default async function CockpitPage({
   if (result.kind === "not_found") {
     notFound();
   }
-  return <CockpitLive initial={result.dto} apiBaseUrl={publicApiBaseUrl()} eventSlug={raw.slug} />;
+  return (
+    <CockpitLive
+      initial={result.dto}
+      initialLag={result.initialLag}
+      apiBaseUrl={publicApiBaseUrl()}
+      eventSlug={raw.slug}
+    />
+  );
 }

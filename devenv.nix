@@ -134,12 +134,23 @@ in
     apiworker.exec = "invoke runapiworker";
     runapi.exec = "invoke runapi";
     celery.exec = "invoke celery";
+    # Celery Beat — fires `CELERY_BEAT_SCHEDULE` entries (queue-health canary,
+    # token validation, FIDE rating refresh, etc). Without this, no scheduled
+    # task dispatches in dev. Uses the DatabaseScheduler configured via
+    # `CELERY_BEAT_SCHEDULER` in settings.py.
+    celerybeat.exec = "celery -A heltour beat -l info";
     watch-games.exec = "invoke watch-games";
 
     # Next.js dev server for frontend/ui (HMR built in). The UI consumes
     # `@litour/api-client` from source via `transpilePackages` in
     # next.config.ts — no separate build step needed in dev.
-    ui.exec = "cd frontend/ui && bun run dev";
+    #
+    # Pre-flight `bun install` so a dep bump elsewhere (e.g. Claude editing
+    # package.json) just needs a `ui` process restart, not a manual install.
+    # `bun install` is a no-op when already in sync.
+    ui.exec = ''
+      cd frontend && bun install && cd ui && bun run dev
+    '';
 
     # Rebuild the api-client IIFE bundle into Django statics on every TS change
     # so the legacy Django pairings page picks up edits without a manual step.
@@ -183,13 +194,27 @@ in
       gem install sass
     fi
 
-    # First-time install of frontend workspace deps so `devenv up` can start the
-    # ui + watch processes immediately. The api-client `dist/` is built on
-    # demand by the `ui` process itself (see `processes.ui` above), so a fresh
-    # `devenv up` works without re-entering the shell.
-    if [ -d frontend ] && [ ! -d frontend/node_modules ]; then
-      echo "Installing frontend deps with bun..."
-      (cd frontend && bun install)
+    # Keep frontend deps in sync with package.json / bun.lock without forcing
+    # the user to remember `bun install` after a pull or dep bump. Cheap when
+    # already in sync (bun's "no changes" path is fast); auto-runs when any
+    # workspace package.json or the lockfile is newer than node_modules.
+    if [ -d frontend ]; then
+      needs_install=0
+      if [ ! -d frontend/node_modules ]; then
+        needs_install=1
+      else
+        for f in frontend/bun.lock frontend/package.json frontend/*/package.json; do
+          [ -e "$f" ] || continue
+          if [ "$f" -nt frontend/node_modules ]; then
+            needs_install=1
+            break
+          fi
+        done
+      fi
+      if [ "$needs_install" = "1" ]; then
+        echo "Syncing frontend deps with bun..."
+        (cd frontend && bun install) && touch frontend/node_modules
+      fi
     fi
 
     # Next.js auto-loads .env files from its own cwd, not the repo root. Symlink
@@ -222,7 +247,7 @@ in
     echo ""
     echo "Common commands:"
     echo "  devenv up         # Start postgres, redis, mailpit, django, apiworker,"
-    echo "                    # runapi, celery, watch-games, ui, api-client-iife-watch, caddy"
+    echo "                    # runapi, celery, celerybeat, watch-games, ui, api-client-iife-watch, caddy"
     echo "  invoke migrate    # Run database migrations"
     echo "  invoke test       # Run tests"
     echo ""
