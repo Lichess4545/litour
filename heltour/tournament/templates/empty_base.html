@@ -14,6 +14,13 @@
         <link rel="shortcut icon"
               type="image/png"
               href=" {% block iconpath %}{% static 'tournament/img/favicon.png' %}{% endblock %}" />
+        <link rel="icon"
+              sizes="32x32"
+              type="image/png"
+              href="{% block iconpath_32 %}{% static 'tournament/img/palamedes-favicon.png' %}{% endblock %}" />
+        <link rel="apple-touch-icon"
+              sizes="180x180"
+              href="{% block iconpath_apple %}{% static 'tournament/img/palamedes-apple-touch-icon.png' %}{% endblock %}" />
         {% block common_css %}
             <link href="{% static "lib/css/bootstrap.min.css" %}" rel="stylesheet">
             <link href="{% sass_src "tournament/css/main.scss" %}" rel="stylesheet">

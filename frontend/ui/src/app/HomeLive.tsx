@@ -6,10 +6,12 @@ import {
   type WSHomeMessage,
   connectDiscoveryHomeStream,
 } from "@litour/api-client";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState, EventGrid, OrganizerFilter } from "@/components/discovery";
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
+import palamedesMark from "../../public/palamedes-mark.png";
 
 interface Props {
   initial: EventCardsPageDTO;
@@ -62,7 +64,17 @@ export function HomeLive({ initial, apiBaseUrl }: Props) {
     <main className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
       <header className="mb-8 flex items-end justify-between gap-6">
         <div>
-          <p className="font-display text-muted-foreground text-base italic">Palamedes</p>
+          <div className="flex items-center gap-2">
+            <Image
+              src={palamedesMark}
+              alt=""
+              width={24}
+              height={24}
+              className="dark:invert"
+              priority
+            />
+            <p className="font-display text-muted-foreground text-base italic">Palamedes</p>
+          </div>
           <h1 className="font-display mt-1 text-4xl tracking-tight md:text-5xl">What's playing</h1>
         </div>
         <ConnectionBadge state={connection} />

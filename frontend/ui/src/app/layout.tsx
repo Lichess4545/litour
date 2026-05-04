@@ -6,8 +6,8 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Litour",
-  description: "Litour tournament UI",
+  title: "Palamedes",
+  description: "Online chess tournament management",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
