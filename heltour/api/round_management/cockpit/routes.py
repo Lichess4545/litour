@@ -13,13 +13,32 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from heltour.api.deps import in_thread
+from heltour.api.round_management.cockpit.actions import (
+    advance_tournament_sync,
+    backfill_fide_data_sync,
+    clear_caches_sync,
+    close_round_sync,
+    close_season_sync,
+    create_missing_matches_sync,
+    finalize_tournament_sync,
+    generate_next_match_set_sync,
+    generate_pairings_sync,
+    start_round_sync,
+    update_fide_ratings_sync,
+    validate_tokens_sync,
+)
 from heltour.api.round_management.cockpit.schemas import (
+    CloseRoundRequest,
+    CloseSeasonRequest,
+    CockpitActionResultDTO,
     CockpitAuditEntryDTO,
     CockpitDTO,
     CockpitMatchDTO,
     ForceResultRequest,
+    GeneratePairingsRequest,
     MarkForfeitRequest,
     RescheduleRequest,
+    StartRoundRequest,
 )
 from heltour.api.round_management.cockpit.service import (
     audit_for_pairing_sync,
@@ -136,3 +155,192 @@ async def post_reschedule(
         viewer,
         user,
     )
+
+
+# ---------- One-shot tournament management actions -----------------------------
+#
+# Each action takes the event slug, performs a single side-effect (signal
+# dispatch, workflow run, or direct DB update), and returns a unified
+# ``CockpitActionResultDTO`` envelope. The frontend toasts the result and
+# refreshes the cockpit snapshot when ``refresh=True``.
+
+
+_ACTION_BASE = "/round_management/cockpit/events/{event_slug}/actions"
+
+
+@router.post(
+    f"{_ACTION_BASE}/clear-caches",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_clear_caches(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(clear_caches_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/validate-tokens",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_validate_tokens(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(validate_tokens_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/update-fide-ratings",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_update_fide_ratings(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(update_fide_ratings_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/backfill-fide-data",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_backfill_fide_data(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(backfill_fide_data_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/generate-pairings",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_generate_pairings(
+    event_slug: SlugPath,
+    body: GeneratePairingsRequest,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(
+        generate_pairings_sync,
+        event_slug,
+        body.round_id,
+        body.overwrite,
+        body.auto_assign_forfeits,
+        body.publish_immediately,
+        viewer,
+        user,
+    )
+
+
+@router.post(
+    f"{_ACTION_BASE}/start-round",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_start_round(
+    event_slug: SlugPath,
+    body: StartRoundRequest,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(
+        start_round_sync,
+        event_slug,
+        body.round_id,
+        body.update_board_order,
+        viewer,
+        user,
+    )
+
+
+@router.post(
+    f"{_ACTION_BASE}/close-round",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_close_round(
+    event_slug: SlugPath,
+    body: CloseRoundRequest,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(close_round_sync, event_slug, body.round_id, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/close-season",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_close_season(
+    event_slug: SlugPath,
+    body: CloseSeasonRequest,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    if not body.confirm:
+        return CockpitActionResultDTO(status="error", title="Not confirmed", refresh=False)
+    return await in_thread(close_season_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/advance-tournament",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_advance_tournament(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(advance_tournament_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/finalize-tournament",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_finalize_tournament(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(finalize_tournament_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/generate-next-match-set",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_generate_next_match_set(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(generate_next_match_set_sync, event_slug, viewer, user)
+
+
+@router.post(
+    f"{_ACTION_BASE}/create-missing-matches",
+    response_model=CockpitActionResultDTO,
+    responses=_RESPONSES,
+)
+async def post_create_missing_matches(
+    event_slug: SlugPath,
+    viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
+) -> CockpitActionResultDTO:
+    viewer, user = viewer_and_user
+    return await in_thread(create_missing_matches_sync, event_slug, viewer, user)

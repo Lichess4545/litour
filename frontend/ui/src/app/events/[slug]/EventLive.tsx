@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { MatchesLive } from "@/app/[leagueTag]/[eventTag]/round/[roundNumber]/matches/MatchesLive";
 import { EventTabs, StatusPill } from "@/components/discovery";
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
 
@@ -92,9 +94,10 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
             {header.can_manage ? (
               <Link
                 href={`/events/${encodeURIComponent(slug)}/manage/`}
-                className="text-status-active text-sm hover:underline underline-offset-4"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
               >
-                Manage cockpit →
+                Manage cockpit
+                <span aria-hidden>→</span>
               </Link>
             ) : null}
             <ConnectionBadge state={connection} />

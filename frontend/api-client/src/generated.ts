@@ -106,6 +106,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/advance-tournament": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Advance Tournament */
+        post: operations["post_advance_tournament_v1_round_management_cockpit_events__event_slug__actions_advance_tournament_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/backfill-fide-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Backfill Fide Data */
+        post: operations["post_backfill_fide_data_v1_round_management_cockpit_events__event_slug__actions_backfill_fide_data_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/clear-caches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Clear Caches */
+        post: operations["post_clear_caches_v1_round_management_cockpit_events__event_slug__actions_clear_caches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/close-round": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Close Round */
+        post: operations["post_close_round_v1_round_management_cockpit_events__event_slug__actions_close_round_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/close-season": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Close Season */
+        post: operations["post_close_season_v1_round_management_cockpit_events__event_slug__actions_close_season_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/create-missing-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Missing Matches */
+        post: operations["post_create_missing_matches_v1_round_management_cockpit_events__event_slug__actions_create_missing_matches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/finalize-tournament": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Finalize Tournament */
+        post: operations["post_finalize_tournament_v1_round_management_cockpit_events__event_slug__actions_finalize_tournament_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/generate-next-match-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Generate Next Match Set */
+        post: operations["post_generate_next_match_set_v1_round_management_cockpit_events__event_slug__actions_generate_next_match_set_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/generate-pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Generate Pairings */
+        post: operations["post_generate_pairings_v1_round_management_cockpit_events__event_slug__actions_generate_pairings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/start-round": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Start Round */
+        post: operations["post_start_round_v1_round_management_cockpit_events__event_slug__actions_start_round_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/update-fide-ratings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Update Fide Ratings */
+        post: operations["post_update_fide_ratings_v1_round_management_cockpit_events__event_slug__actions_update_fide_ratings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/events/{event_slug}/actions/validate-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Validate Tokens */
+        post: operations["post_validate_tokens_v1_round_management_cockpit_events__event_slug__actions_validate_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/round_management/cockpit/{pairing_id}/audit": {
         parameters: {
             query?: never;
@@ -222,6 +426,47 @@ export interface components {
             /** Reasons */
             reasons: ("no_schedule_near_deadline" | "scheduled_but_not_started" | "past_deadline_no_result")[];
         };
+        /** CockpitCloseRoundRequest */
+        CloseRoundRequest: {
+            /** Round Id */
+            round_id?: number | null;
+        };
+        /** CockpitCloseSeasonRequest */
+        CloseSeasonRequest: {
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: true;
+        };
+        /**
+         * CockpitActionResultDTO
+         * @description Generic result envelope for cockpit one-shot actions.
+         *
+         *     Each route returns one of these so the UI can render a toast and
+         *     decide whether to refetch the snapshot. ``status="warning"`` means
+         *     the action partially succeeded (e.g. some tokens refreshed, some
+         *     failed) and the UI should still refresh.
+         */
+        CockpitActionResultDTO: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Refresh
+             * @default true
+             */
+            refresh: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "warning" | "error";
+            /** Title */
+            title: string;
+        };
         /** CockpitAuditEntryDTO */
         CockpitAuditEntryDTO: {
             /** Actor Username */
@@ -261,6 +506,7 @@ export interface components {
             last_event_id: number;
             /** League Tag */
             league_tag: string;
+            management?: components["schemas"]["CockpitManagementDTO"] | null;
             /** Matches */
             matches: components["schemas"]["CockpitMatchDTO"][];
             /**
@@ -286,6 +532,69 @@ export interface components {
             /** Team Matches */
             team_matches: components["schemas"]["TeamMatchDTO"][];
             viewer: components["schemas"]["CockpitViewerDTO"];
+        };
+        /** CockpitKnockoutAdvancementDTO */
+        CockpitKnockoutAdvancementDTO: {
+            /** Can Advance */
+            can_advance: boolean;
+            /** Can Generate Next Match Set */
+            can_generate_next_match_set: boolean;
+            /** Is Final Round */
+            is_final_round: boolean;
+            multi_match?: components["schemas"]["CockpitMultiMatchInfoDTO"] | null;
+            /** Reason */
+            reason?: string | null;
+            /** Round To Advance Number */
+            round_to_advance_number?: number | null;
+            /** Tied Matches */
+            tied_matches?: components["schemas"]["CockpitTiedMatchDTO"][];
+        };
+        /**
+         * CockpitManagementDTO
+         * @description Tournament-management surface bundle.
+         *
+         *     Carries everything the cockpit needs to render its toolbar, primary
+         *     CTA, and footer status strip. Mirrors the data computed by
+         *     `tournament/views.py::LeagueDashboardView._common_context`. Only
+         *     populated when the viewer has `tournament.view_dashboard` on the
+         *     league — non-organizers receive `None`.
+         */
+        CockpitManagementDTO: {
+            /** Alternate Search Count */
+            alternate_search_count: number | null;
+            /** Can Admin Users */
+            can_admin_users: boolean;
+            /** Can Change Season */
+            can_change_season: boolean;
+            /** Can Generate Pairings */
+            can_generate_pairings: boolean;
+            /** Can View Dashboard */
+            can_view_dashboard: boolean;
+            /** Celery Down */
+            celery_down: boolean;
+            /** Is Knockout Tournament */
+            is_knockout_tournament: boolean;
+            /** Is Team League */
+            is_team_league: boolean;
+            knockout: components["schemas"]["CockpitKnockoutAdvancementDTO"] | null;
+            lichess_token: components["schemas"]["CockpitTokenStatusDTO"] | null;
+            /** Pending Modreq Count */
+            pending_modreq_count: number;
+            /** Pending Reg Count */
+            pending_reg_count: number;
+            primary_action: components["schemas"]["CockpitPrimaryActionDTO"] | null;
+            /** Registration Open */
+            registration_open: boolean;
+            /** Require Fide Id */
+            require_fide_id: boolean;
+            /** Season Completed */
+            season_completed: boolean;
+            /** Show Fide Names */
+            show_fide_names: boolean;
+            token_validation: components["schemas"]["CockpitTokenValidationDTO"] | null;
+            /** Unassigned Player Count */
+            unassigned_player_count: number;
+            urls: components["schemas"]["CockpitUrlsDTO"];
         };
         /** CockpitMatchDTO */
         CockpitMatchDTO: {
@@ -324,6 +633,150 @@ export interface components {
             white_rating: number | null;
             /** White Username */
             white_username: string | null;
+        };
+        /** CockpitMultiMatchInfoDTO */
+        CockpitMultiMatchInfoDTO: {
+            /** Completed Team Pairs */
+            completed_team_pairs: number;
+            /** Expected Team Pairs */
+            expected_team_pairs: number;
+            /** Is Complete */
+            is_complete: boolean;
+            /** Matches Per Stage */
+            matches_per_stage: number;
+            /** Reason */
+            reason?: string | null;
+            /** Status Message */
+            status_message: string;
+            /** Total Matches Actual */
+            total_matches_actual: number;
+            /** Total Matches Completed */
+            total_matches_completed: number;
+            /** Total Matches Expected */
+            total_matches_expected: number;
+        };
+        /**
+         * CockpitPrimaryActionDTO
+         * @description The state-aware primary CTA shown in the header.
+         *
+         *     `kind` is the action; `label` is the user-facing button text;
+         *     `href` is the destination Django admin/league URL; `confirm` is an
+         *     optional confirmation message; `secondary_*` is for the
+         *     Pre-Round-Report-then-Start-Round paired-action layout.
+         */
+        CockpitPrimaryActionDTO: {
+            /** Confirm */
+            confirm?: string | null;
+            /** Href */
+            href: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "generate_pairings" | "pre_round_report" | "start_round" | "close_round" | "close_season" | "review_nominations" | "advance_tournament" | "finalize_tournament" | "generate_next_match_set" | "create_missing_matches";
+            /** Label */
+            label: string;
+            /** Secondary Href */
+            secondary_href?: string | null;
+            /** Secondary Kind */
+            secondary_kind?: ("generate_pairings" | "pre_round_report" | "start_round" | "close_round" | "close_season" | "review_nominations" | "advance_tournament" | "finalize_tournament" | "generate_next_match_set" | "create_missing_matches") | null;
+            /** Secondary Label */
+            secondary_label?: string | null;
+        };
+        /** CockpitTiedMatchDTO */
+        CockpitTiedMatchDTO: {
+            /** Admin Url */
+            admin_url: string;
+            /** Competitor Black */
+            competitor_black: string;
+            /** Competitor White */
+            competitor_white: string;
+            /** Pairing Id */
+            pairing_id: number;
+            /** Score */
+            score: number;
+        };
+        /**
+         * CockpitTokenStatusDTO
+         * @description Lichess system API token status — mirrors `lichessapi.check_system_api_token`.
+         */
+        CockpitTokenStatusDTO: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** User Id */
+            user_id?: string | null;
+            /** Valid */
+            valid: boolean;
+        };
+        /**
+         * CockpitTokenValidationDTO
+         * @description Last-validated-tokens result — mirrors cache key `token_validation_<season>`.
+         */
+        CockpitTokenValidationDTO: {
+            /** Failed Count */
+            failed_count: number;
+            /** Refreshed Count */
+            refreshed_count: number;
+            /** Success */
+            success: boolean;
+            /** Timestamp */
+            timestamp: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * CockpitUrlsDTO
+         * @description Pre-baked Django admin / league URLs.
+         *
+         *     Server-side construction means the client never builds these URLs
+         *     and changes to URL patterns flow through one place. Only URLs we
+         *     actually surface live here.
+         */
+        CockpitUrlsDTO: {
+            /** Alternates */
+            alternates: string | null;
+            /** Broadcast Players */
+            broadcast_players: string | null;
+            /** Export Trf16 */
+            export_trf16: string;
+            /** Game Ids */
+            game_ids: string;
+            /** Generate Pairings */
+            generate_pairings: string | null;
+            /** Knockout Bracket */
+            knockout_bracket: string | null;
+            /** League Dashboard */
+            league_dashboard: string;
+            /** Manage Players */
+            manage_players: string;
+            /** Mod Requests */
+            mod_requests: string;
+            /** Pre Round Report */
+            pre_round_report: string | null;
+            /** Registrations */
+            registrations: string;
+            /** Review Nominations */
+            review_nominations: string;
+            /** Round Transition */
+            round_transition: string | null;
+            /** Season Admin */
+            season_admin: string;
+            /** Season Create */
+            season_create: string;
+            /** Team Composition */
+            team_composition: string | null;
+            /** Team Spam */
+            team_spam: string | null;
+            /** Tournament Admin */
+            tournament_admin: string;
+            /** User Admin */
+            user_admin: string;
         };
         /**
          * CockpitViewerDTO
@@ -565,6 +1018,26 @@ export interface components {
              */
             result: "1-0" | "0-1" | "1/2-1/2";
         };
+        /** CockpitGeneratePairingsRequest */
+        GeneratePairingsRequest: {
+            /**
+             * Auto Assign Forfeits
+             * @default false
+             */
+            auto_assign_forfeits: boolean;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+            /**
+             * Publish Immediately
+             * @default false
+             */
+            publish_immediately: boolean;
+            /** Round Id */
+            round_id?: number | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -732,6 +1205,16 @@ export interface components {
         SetMatchResultRequest: {
             /** Result */
             result: string;
+        };
+        /** CockpitStartRoundRequest */
+        StartRoundRequest: {
+            /** Round Id */
+            round_id?: number | null;
+            /**
+             * Update Board Order
+             * @default false
+             */
+            update_board_order: boolean;
         };
         /**
          * TeamMatchDTO
@@ -1013,6 +1496,706 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid result code */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_advance_tournament_v1_round_management_cockpit_events__event_slug__actions_advance_tournament_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_backfill_fide_data_v1_round_management_cockpit_events__event_slug__actions_backfill_fide_data_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_clear_caches_v1_round_management_cockpit_events__event_slug__actions_clear_caches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_close_round_v1_round_management_cockpit_events__event_slug__actions_close_round_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseRoundRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_close_season_v1_round_management_cockpit_events__event_slug__actions_close_season_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseSeasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_create_missing_matches_v1_round_management_cockpit_events__event_slug__actions_create_missing_matches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_finalize_tournament_v1_round_management_cockpit_events__event_slug__actions_finalize_tournament_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_generate_next_match_set_v1_round_management_cockpit_events__event_slug__actions_generate_next_match_set_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_generate_pairings_v1_round_management_cockpit_events__event_slug__actions_generate_pairings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratePairingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_start_round_v1_round_management_cockpit_events__event_slug__actions_start_round_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRoundRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_update_fide_ratings_v1_round_management_cockpit_events__event_slug__actions_update_fide_ratings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_validate_tokens_v1_round_management_cockpit_events__event_slug__actions_validate_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitActionResultDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;

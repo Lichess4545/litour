@@ -4,8 +4,14 @@ export {
   connectDiscoveryHomeStream,
   connectDiscoveryEventStream,
   connectCockpitStream,
+  callCockpitAction,
 } from "./client";
-export type { MatchStream, DiscoveryStream, CockpitStream } from "./client";
+export type {
+  MatchStream,
+  DiscoveryStream,
+  CockpitStream,
+  CockpitActionName,
+} from "./client";
 export type {
   WSMessage,
   WSMatchUpdate,
@@ -37,6 +43,13 @@ export {
   cockpitMatchDto,
   cockpitViewerDto,
   cockpitAuditEntryDto,
+  cockpitManagementDto,
+  cockpitPrimaryActionDto,
+  cockpitUrlsDto,
+  cockpitTokenStatusDto,
+  cockpitTokenValidationDto,
+  cockpitKnockoutAdvancementDto,
+  cockpitActionResultDto,
   attentionDto,
   wsCockpitMessage,
 } from "./cockpit-messages";
@@ -49,6 +62,17 @@ export type {
   CockpitViewerDTO,
   CockpitAuditEntryDTO,
   CockpitDTO,
+  CockpitManagementDTO,
+  CockpitPrimaryActionDTO,
+  CockpitUrlsDTO,
+  CockpitTokenStatusDTO,
+  CockpitTokenValidationDTO,
+  CockpitMultiMatchInfoDTO,
+  CockpitTiedMatchDTO,
+  CockpitKnockoutAdvancementDTO,
+  CockpitActionStatus,
+  CockpitActionResultDTO,
+  CtaKind,
   WSCockpitMatchUpdate,
   WSCockpitClose,
   WSCockpitMessage,

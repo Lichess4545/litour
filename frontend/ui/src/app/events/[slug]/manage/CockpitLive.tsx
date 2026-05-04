@@ -12,9 +12,12 @@ import { useEffect, useState } from "react";
 import {
   AttentionList,
   CockpitHeader,
+  CockpitStatusStrip,
+  CockpitToolbar,
   InFlightList,
   ModeBanner,
   PairingDetailDrawer,
+  ToasterProvider,
 } from "@/components/round_management/cockpit";
 
 interface Props {
@@ -23,7 +26,15 @@ interface Props {
   eventSlug: string;
 }
 
-export function CockpitLive({ initial, apiBaseUrl, eventSlug }: Props) {
+export function CockpitLive(props: Props) {
+  return (
+    <ToasterProvider>
+      <CockpitLiveInner {...props} />
+    </ToasterProvider>
+  );
+}
+
+function CockpitLiveInner({ initial, apiBaseUrl, eventSlug }: Props) {
   const router = useRouter();
   const [dto, setDto] = useState<CockpitDTO>(initial);
   // L3 drawer: which pairing is open. null = closed.
@@ -81,9 +92,19 @@ export function CockpitLive({ initial, apiBaseUrl, eventSlug }: Props) {
 
   if (dto.mode !== "live" && dto.mode !== "history") {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-12">
-        <CockpitHeader dto={dto} eventSlug={eventSlug} />
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        <CockpitHeader dto={dto} eventSlug={eventSlug} apiBaseUrl={apiBaseUrl} />
+        {dto.management ? (
+          <div className="mt-8">
+            <CockpitToolbar
+              management={dto.management}
+              apiBaseUrl={apiBaseUrl}
+              eventSlug={eventSlug}
+            />
+          </div>
+        ) : null}
         <ModeBanner mode={dto.mode} eventSlug={eventSlug} />
+        {dto.management ? <CockpitStatusStrip management={dto.management} /> : null}
       </main>
     );
   }
@@ -102,9 +123,18 @@ export function CockpitLive({ initial, apiBaseUrl, eventSlug }: Props) {
   const isHistory = dto.mode === "history";
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <CockpitHeader dto={dto} eventSlug={eventSlug} />
-      <section className="mt-10 space-y-12">
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+      <CockpitHeader dto={dto} eventSlug={eventSlug} apiBaseUrl={apiBaseUrl} />
+      {dto.management ? (
+        <div className="mt-6 sm:mt-8">
+          <CockpitToolbar
+            management={dto.management}
+            apiBaseUrl={apiBaseUrl}
+            eventSlug={eventSlug}
+          />
+        </div>
+      ) : null}
+      <section className="mt-8 space-y-10 sm:mt-10 sm:space-y-12">
         <AttentionList
           matches={needsYou}
           viewer={dto.viewer}
@@ -136,6 +166,7 @@ export function CockpitLive({ initial, apiBaseUrl, eventSlug }: Props) {
           onOpenDrawer={(id) => setOpenPairingId(id)}
         />
       </section>
+      {dto.management ? <CockpitStatusStrip management={dto.management} /> : null}
       {openPairing ? (
         <PairingDetailDrawer
           match={openPairing}

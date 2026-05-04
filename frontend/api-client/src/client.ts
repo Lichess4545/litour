@@ -1,6 +1,11 @@
 import createOpenApiClient from "openapi-fetch";
 import { WebSocket as ReconnectingWebSocket } from "partysocket";
-import { type WSCockpitMessage, wsCockpitMessage } from "./cockpit-messages";
+import {
+  type CockpitActionResultDTO,
+  type WSCockpitMessage,
+  cockpitActionResultDto,
+  wsCockpitMessage,
+} from "./cockpit-messages";
 import {
   type WSEventMessage,
   type WSHomeMessage,
@@ -147,4 +152,56 @@ function toWsUrl(baseUrl: string, path: string): string {
   }
   const wsOrigin = window.location.origin.replace(/^http/i, "ws");
   return `${wsOrigin}${baseUrl}${path}`;
+}
+
+// Cockpit one-shot action client. The cockpit POST routes accept a thin
+// JSON body and return ``CockpitActionResultDTO``; this helper parses
+// that envelope so callers receive a typed result. Each route is a
+// fixed string here rather than going through ``createOpenApiClient``
+// because the action surface evolves faster than the regenerated
+// OpenAPI types.
+export type CockpitActionName =
+  | "clear-caches"
+  | "validate-tokens"
+  | "update-fide-ratings"
+  | "backfill-fide-data"
+  | "generate-pairings"
+  | "start-round"
+  | "close-round"
+  | "close-season"
+  | "advance-tournament"
+  | "finalize-tournament"
+  | "generate-next-match-set"
+  | "create-missing-matches";
+
+export async function callCockpitAction(
+  baseUrl: string,
+  eventSlug: string,
+  action: CockpitActionName,
+  body: Record<string, unknown> = {},
+): Promise<CockpitActionResultDTO> {
+  const url = `${baseUrl.replace(/\/$/, "")}/v1/round_management/cockpit/events/${encodeURIComponent(
+    eventSlug,
+  )}/actions/${action}`;
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    return {
+      status: "error",
+      title:
+        response.status === 401
+          ? "Not signed in"
+          : response.status === 403
+            ? "Permission denied"
+            : `Action failed (${response.status})`,
+      detail: await response.text().catch(() => ""),
+      refresh: false,
+    };
+  }
+  const json = await response.json();
+  return cockpitActionResultDto.parse(json);
 }

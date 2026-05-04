@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type { CockpitDTO } from "@litour/api-client";
 
+import { CockpitPrimaryAction } from "./CockpitPrimaryAction";
 import { CockpitRoundSelector } from "./CockpitRoundSelector";
 
 // DR2: live → blue dot + "Now playing — Round N of M"; history → muted
@@ -11,11 +12,15 @@ import { CockpitRoundSelector } from "./CockpitRoundSelector";
 export function CockpitHeader({
   dto,
   eventSlug,
+  apiBaseUrl,
 }: {
   dto: CockpitDTO;
   eventSlug: string;
+  apiBaseUrl: string;
 }) {
   const totalRounds = dto.rounds.length;
+  // DR2: history mode hides the primary CTA — past rounds are read-only.
+  const showPrimaryCta = dto.mode !== "history" && dto.management?.primary_action != null;
 
   return (
     <header className="flex flex-col gap-6">
@@ -27,12 +32,14 @@ export function CockpitHeader({
           ← Back to event
         </Link>
       </div>
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="space-y-2">
           <p className="text-muted-foreground text-xs uppercase tracking-wide">
             Tournament Cockpit
           </p>
-          <h1 className="font-display text-4xl tracking-tight md:text-5xl">{dto.event_name}</h1>
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl md:text-5xl">
+            {dto.event_name}
+          </h1>
           <StatusLine dto={dto} totalRounds={totalRounds} />
         </div>
         {dto.rounds.length > 0 ? (
@@ -43,6 +50,16 @@ export function CockpitHeader({
           />
         ) : null}
       </div>
+      {showPrimaryCta && dto.management?.primary_action ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <CockpitPrimaryAction
+            action={dto.management.primary_action}
+            dto={dto}
+            apiBaseUrl={apiBaseUrl}
+            eventSlug={eventSlug}
+          />
+        </div>
+      ) : null}
       {dto.mode === "live" ? (
         <div
           aria-live="polite"

@@ -87,6 +87,132 @@ const teamMatchDto = z.object({
   is_bye: z.boolean(),
 });
 
+// Management surface — mirrors `CockpitManagementDTO` in
+// `heltour/api/round_management/cockpit/schemas.py`.
+export const cockpitTokenStatusDto = z.object({
+  valid: z.boolean(),
+  user_id: z.string().nullable(),
+  expires_at: z.string().datetime({ offset: true }).nullable(),
+  scopes: z.array(z.string()),
+  error: z.string().nullable(),
+  checked_at: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const cockpitTokenValidationDto = z.object({
+  timestamp: z.string(),
+  success: z.boolean(),
+  total: z.number().int(),
+  refreshed_count: z.number().int(),
+  failed_count: z.number().int(),
+});
+
+export const cockpitMultiMatchInfoDto = z.object({
+  is_complete: z.boolean(),
+  matches_per_stage: z.number().int(),
+  expected_team_pairs: z.number().int(),
+  completed_team_pairs: z.number().int(),
+  total_matches_expected: z.number().int(),
+  total_matches_actual: z.number().int(),
+  total_matches_completed: z.number().int(),
+  status_message: z.string(),
+  reason: z.string().nullable(),
+});
+
+export const cockpitTiedMatchDto = z.object({
+  pairing_id: z.number().int(),
+  competitor_white: z.string(),
+  competitor_black: z.string(),
+  score: z.number(),
+  admin_url: z.string(),
+});
+
+export const cockpitKnockoutAdvancementDto = z.object({
+  can_advance: z.boolean(),
+  is_final_round: z.boolean(),
+  can_generate_next_match_set: z.boolean(),
+  round_to_advance_number: z.number().int().nullable(),
+  reason: z.string().nullable(),
+  multi_match: cockpitMultiMatchInfoDto.nullable(),
+  tied_matches: z.array(cockpitTiedMatchDto),
+});
+
+export const ctaKind = z.enum([
+  "generate_pairings",
+  "pre_round_report",
+  "start_round",
+  "close_round",
+  "close_season",
+  "review_nominations",
+  "advance_tournament",
+  "finalize_tournament",
+  "generate_next_match_set",
+  "create_missing_matches",
+]);
+
+export const cockpitPrimaryActionDto = z.object({
+  kind: ctaKind,
+  label: z.string(),
+  href: z.string(),
+  confirm: z.string().nullable(),
+  secondary_kind: ctaKind.nullable(),
+  secondary_label: z.string().nullable(),
+  secondary_href: z.string().nullable(),
+});
+
+export const cockpitUrlsDto = z.object({
+  league_dashboard: z.string(),
+  season_admin: z.string(),
+  season_create: z.string(),
+  registrations: z.string(),
+  mod_requests: z.string(),
+  manage_players: z.string(),
+  alternates: z.string().nullable(),
+  team_composition: z.string().nullable(),
+  team_spam: z.string().nullable(),
+  game_ids: z.string(),
+  broadcast_players: z.string().nullable(),
+  export_trf16: z.string(),
+  knockout_bracket: z.string().nullable(),
+  review_nominations: z.string(),
+  pre_round_report: z.string().nullable(),
+  round_transition: z.string().nullable(),
+  generate_pairings: z.string().nullable(),
+  tournament_admin: z.string(),
+  user_admin: z.string(),
+});
+
+export const cockpitManagementDto = z.object({
+  can_view_dashboard: z.boolean(),
+  can_admin_users: z.boolean(),
+  can_generate_pairings: z.boolean(),
+  can_change_season: z.boolean(),
+  is_team_league: z.boolean(),
+  is_knockout_tournament: z.boolean(),
+  require_fide_id: z.boolean(),
+  show_fide_names: z.boolean(),
+  registration_open: z.boolean(),
+  season_completed: z.boolean(),
+  pending_reg_count: z.number().int(),
+  pending_modreq_count: z.number().int(),
+  unassigned_player_count: z.number().int(),
+  alternate_search_count: z.number().int().nullable(),
+  celery_down: z.boolean(),
+  lichess_token: cockpitTokenStatusDto.nullable(),
+  token_validation: cockpitTokenValidationDto.nullable(),
+  primary_action: cockpitPrimaryActionDto.nullable(),
+  knockout: cockpitKnockoutAdvancementDto.nullable(),
+  urls: cockpitUrlsDto,
+});
+
+// Action result envelope — see CockpitActionResultDTO in schemas.py.
+export const cockpitActionStatus = z.enum(["ok", "warning", "error"]);
+export const cockpitActionResultDto = z.object({
+  status: cockpitActionStatus,
+  title: z.string(),
+  detail: z.string(),
+  refresh: z.boolean(),
+});
+
 export const cockpitDto = z.object({
   round_id: z.number().int(),
   round_number: z.number().int(),
@@ -105,6 +231,7 @@ export const cockpitDto = z.object({
   needs_you_count: z.number().int(),
   last_event_id: z.number().int(),
   round_deadline: z.string().datetime({ offset: true }).nullable(),
+  management: cockpitManagementDto.nullable().optional(),
 });
 
 export const wsCockpitMatchUpdate = z.object({
@@ -132,7 +259,18 @@ export type AttentionDTO = z.infer<typeof attentionDto>;
 export type CockpitMatchDTO = z.infer<typeof cockpitMatchDto>;
 export type CockpitViewerDTO = z.infer<typeof cockpitViewerDto>;
 export type CockpitAuditEntryDTO = z.infer<typeof cockpitAuditEntryDto>;
+export type CockpitTokenStatusDTO = z.infer<typeof cockpitTokenStatusDto>;
+export type CockpitTokenValidationDTO = z.infer<typeof cockpitTokenValidationDto>;
+export type CockpitMultiMatchInfoDTO = z.infer<typeof cockpitMultiMatchInfoDto>;
+export type CockpitTiedMatchDTO = z.infer<typeof cockpitTiedMatchDto>;
+export type CockpitKnockoutAdvancementDTO = z.infer<typeof cockpitKnockoutAdvancementDto>;
+export type CtaKind = z.infer<typeof ctaKind>;
+export type CockpitPrimaryActionDTO = z.infer<typeof cockpitPrimaryActionDto>;
+export type CockpitUrlsDTO = z.infer<typeof cockpitUrlsDto>;
+export type CockpitManagementDTO = z.infer<typeof cockpitManagementDto>;
 export type CockpitDTO = z.infer<typeof cockpitDto>;
+export type CockpitActionStatus = z.infer<typeof cockpitActionStatus>;
+export type CockpitActionResultDTO = z.infer<typeof cockpitActionResultDto>;
 export type WSCockpitMatchUpdate = z.infer<typeof wsCockpitMatchUpdate>;
 export type WSCockpitClose = z.infer<typeof wsCockpitClose>;
 export type WSCockpitMessage = z.infer<typeof wsCockpitMessage>;
