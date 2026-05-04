@@ -13,19 +13,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from heltour.api.deps import in_thread
-from heltour.api.round_management.cockpit.actions import (
-    advance_tournament_sync,
-    backfill_fide_data_sync,
-    close_round_sync,
-    close_season_sync,
-    create_missing_matches_sync,
-    finalize_tournament_sync,
-    generate_next_match_set_sync,
-    generate_pairings_sync,
-    start_round_sync,
-    update_fide_ratings_sync,
-    validate_tokens_sync,
-)
 from heltour.api.round_management.cockpit.schemas import (
     CloseRoundRequest,
     CloseSeasonRequest,
@@ -188,6 +175,29 @@ async def post_clear_caches(
 
 def _enqueue_clear_caches(event_slug: str, user) -> CockpitActionResultDTO:
     from heltour.api.round_management.cockpit.jobs import clear_caches_job
+
+    return _enqueue(
+        clear_caches_job,
+        event_slug,
+        user,
+        permission="tournament.view_dashboard",
+        success_title="Cache clear started",
+    )
+
+
+def _enqueue(
+    job_def,
+    event_slug: str,
+    user,
+    *,
+    permission: str,
+    success_title: str,
+    input: dict[str, Any] | None = None,
+) -> CockpitActionResultDTO:
+    """Resolve scope + permission, then enqueue the @background_job task.
+
+    Centralises 401/403/404 handling so each route stays a one-liner.
+    """
     from heltour.tournament.models import Season
 
     if user is None or not getattr(user, "is_authenticated", False):
@@ -196,18 +206,19 @@ def _enqueue_clear_caches(event_slug: str, user) -> CockpitActionResultDTO:
         season = Season.objects.select_related("league").get(slug=event_slug)
     except Season.DoesNotExist as exc:
         raise HTTPException(status_code=404, detail="event not found") from exc
-    if not user.has_perm("tournament.view_dashboard", season.league):
+    if not user.has_perm(permission, season.league):
         raise HTTPException(status_code=403, detail="forbidden")
 
-    job = clear_caches_job.enqueue(
+    job = job_def.enqueue(
         user=user,
         source="manual",
         season=season,
         league=season.league,
+        input=input or {},
     )
     return CockpitActionResultDTO(
         status="ok",
-        title="Cache clear started",
+        title=success_title,
         detail="Running in the background.",
         refresh=False,
         job_id=job.pk,
@@ -223,8 +234,20 @@ async def post_validate_tokens(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(validate_tokens_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_validate_tokens, event_slug, user)
+
+
+def _enqueue_validate_tokens(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import validate_tokens_job
+
+    return _enqueue(
+        validate_tokens_job,
+        event_slug,
+        user,
+        permission="tournament.view_dashboard",
+        success_title="Token validation started",
+    )
 
 
 @router.post(
@@ -236,8 +259,20 @@ async def post_update_fide_ratings(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(update_fide_ratings_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_update_fide_ratings, event_slug, user)
+
+
+def _enqueue_update_fide_ratings(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import update_fide_ratings_job
+
+    return _enqueue(
+        update_fide_ratings_job,
+        event_slug,
+        user,
+        permission="tournament.view_dashboard",
+        success_title="FIDE rating refresh started",
+    )
 
 
 @router.post(
@@ -249,8 +284,20 @@ async def post_backfill_fide_data(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(backfill_fide_data_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_backfill_fide_data, event_slug, user)
+
+
+def _enqueue_backfill_fide_data(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import backfill_fide_data_job
+
+    return _enqueue(
+        backfill_fide_data_job,
+        event_slug,
+        user,
+        permission="tournament.view_dashboard",
+        success_title="FIDE backfill started",
+    )
 
 
 @router.post(
@@ -263,16 +310,27 @@ async def post_generate_pairings(
     body: GeneratePairingsRequest,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(
-        generate_pairings_sync,
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_generate_pairings, event_slug, user, body)
+
+
+def _enqueue_generate_pairings(
+    event_slug: str, user, body: GeneratePairingsRequest
+) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import generate_pairings_job
+
+    return _enqueue(
+        generate_pairings_job,
         event_slug,
-        body.round_id,
-        body.overwrite,
-        body.auto_assign_forfeits,
-        body.publish_immediately,
-        viewer,
         user,
+        permission="tournament.generate_pairings",
+        success_title="Generating pairings",
+        input={
+            "round_id": body.round_id,
+            "overwrite": body.overwrite,
+            "auto_assign_forfeits": body.auto_assign_forfeits,
+            "publish_immediately": body.publish_immediately,
+        },
     )
 
 
@@ -286,14 +344,23 @@ async def post_start_round(
     body: StartRoundRequest,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(
-        start_round_sync,
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_start_round, event_slug, user, body)
+
+
+def _enqueue_start_round(event_slug: str, user, body: StartRoundRequest) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import start_round_job
+
+    return _enqueue(
+        start_round_job,
         event_slug,
-        body.round_id,
-        body.update_board_order,
-        viewer,
         user,
+        permission="tournament.generate_pairings",
+        success_title="Starting round",
+        input={
+            "round_id": body.round_id,
+            "update_board_order": body.update_board_order,
+        },
     )
 
 
@@ -307,8 +374,21 @@ async def post_close_round(
     body: CloseRoundRequest,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(close_round_sync, event_slug, body.round_id, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_close_round, event_slug, user, body)
+
+
+def _enqueue_close_round(event_slug: str, user, body: CloseRoundRequest) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import close_round_job
+
+    return _enqueue(
+        close_round_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Closing round",
+        input={"round_id": body.round_id},
+    )
 
 
 @router.post(
@@ -321,10 +401,22 @@ async def post_close_season(
     body: CloseSeasonRequest,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
+    _, user = viewer_and_user
     if not body.confirm:
         return CockpitActionResultDTO(status="error", title="Not confirmed", refresh=False)
-    return await in_thread(close_season_sync, event_slug, viewer, user)
+    return await in_thread(_enqueue_close_season, event_slug, user)
+
+
+def _enqueue_close_season(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import close_season_job
+
+    return _enqueue(
+        close_season_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Closing season",
+    )
 
 
 @router.post(
@@ -336,8 +428,20 @@ async def post_advance_tournament(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(advance_tournament_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_advance_tournament, event_slug, user)
+
+
+def _enqueue_advance_tournament(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import advance_tournament_job
+
+    return _enqueue(
+        advance_tournament_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Advancing tournament",
+    )
 
 
 @router.post(
@@ -349,8 +453,20 @@ async def post_finalize_tournament(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(finalize_tournament_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_finalize_tournament, event_slug, user)
+
+
+def _enqueue_finalize_tournament(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import finalize_tournament_job
+
+    return _enqueue(
+        finalize_tournament_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Finalizing tournament",
+    )
 
 
 @router.post(
@@ -362,8 +478,20 @@ async def post_generate_next_match_set(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(generate_next_match_set_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_generate_next_match_set, event_slug, user)
+
+
+def _enqueue_generate_next_match_set(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import generate_next_match_set_job
+
+    return _enqueue(
+        generate_next_match_set_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Generating next match set",
+    )
 
 
 @router.post(
@@ -375,5 +503,17 @@ async def post_create_missing_matches(
     event_slug: SlugPath,
     viewer_and_user: tuple[Viewer, object | None] = Depends(get_viewer_and_user),
 ) -> CockpitActionResultDTO:
-    viewer, user = viewer_and_user
-    return await in_thread(create_missing_matches_sync, event_slug, viewer, user)
+    _, user = viewer_and_user
+    return await in_thread(_enqueue_create_missing_matches, event_slug, user)
+
+
+def _enqueue_create_missing_matches(event_slug: str, user) -> CockpitActionResultDTO:
+    from heltour.api.round_management.cockpit.jobs import create_missing_matches_job
+
+    return _enqueue(
+        create_missing_matches_job,
+        event_slug,
+        user,
+        permission="tournament.generate_pairings",
+        success_title="Creating missing matches",
+    )
