@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 # ---------- Type-level predicate ---------------------------------------------
 
+
 @dataclass(frozen=True)
 class SeasonDiscoveryReadType:
     """Type-level: can the viewer read Seasons through the discovery surface?
@@ -55,6 +56,7 @@ class SeasonDiscoveryReadType:
 
 
 # ---------- Instance-level predicate -----------------------------------------
+
 
 @dataclass(frozen=True)
 class SeasonDiscoveryReadInstance:
@@ -82,6 +84,7 @@ class SeasonDiscoveryReadInstance:
 
 
 # ---------- Queryset filter (the home / WS-list shape) -----------------------
+
 
 def visible_queryset(viewer: Viewer) -> QuerySet:
     """Base queryset for the discovery list surfaces (home REST + WS).
@@ -126,6 +129,7 @@ def visible_queryset(viewer: Viewer) -> QuerySet:
 
 
 # ---------- WS handshake helper ----------------------------------------------
+
 
 def can_subscribe_event_slug(viewer: Viewer, season: "Season") -> bool:
     """Per-event WS handshake decision.

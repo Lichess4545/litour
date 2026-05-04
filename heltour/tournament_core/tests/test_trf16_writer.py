@@ -123,7 +123,9 @@ class TestTRF16WriterRoundTrip(unittest.TestCase):
         self.assertEqual(p2.results[0], (1, "b", "0"))
 
     def test_round_trip_teams(self):
-        header = _make_header(num_players=4, num_rated_players=4, num_teams=2, num_rounds=1)
+        header = _make_header(
+            num_players=4, num_rated_players=4, num_teams=2, num_rounds=1
+        )
         players = {
             1: _make_player(1, "Alice", 2000, [(3, "w", "1")], points=1.0, rank=1),
             2: _make_player(2, "Bob", 1900, [(4, "b", "0")], points=0.0, rank=4),
@@ -224,7 +226,13 @@ class TestTRF16WriterEdgeCases(unittest.TestCase):
         header = _make_header(num_players=1, num_rated_players=1, num_rounds=1)
         players = {
             1: _make_player(
-                1, "Alice", 2000, [(None, "-", "-")], points=0.0, rank=1, birth_year=1990
+                1,
+                "Alice",
+                2000,
+                [(None, "-", "-")],
+                points=0.0,
+                rank=1,
+                birth_year=1990,
             ),
         }
 
@@ -260,7 +268,9 @@ class TestTRF16WriterEdgeCases(unittest.TestCase):
         self.assertEqual(parsed[1].name, "Alice")
 
     def test_lone_tournament_no_teams(self):
-        header = _make_header(num_players=2, num_rated_players=2, num_teams=0, num_rounds=1)
+        header = _make_header(
+            num_players=2, num_rated_players=2, num_teams=0, num_rounds=1
+        )
         players = {
             1: _make_player(1, "Alice", 2000, [(2, "w", "1")], points=1.0, rank=1),
             2: _make_player(2, "Bob", 1800, [(1, "b", "0")], points=0.0, rank=2),
@@ -372,11 +382,17 @@ class TestTRF16WriterFromExistingSample(unittest.TestCase):
             orig = orig_players[start_num]
             new = new_players[start_num]
             self.assertEqual(new.name, orig.name, f"Player {start_num} name mismatch")
-            self.assertEqual(new.rating, orig.rating, f"Player {start_num} rating mismatch")
             self.assertEqual(
-                new.federation, orig.federation, f"Player {start_num} federation mismatch"
+                new.rating, orig.rating, f"Player {start_num} rating mismatch"
             )
-            self.assertEqual(new.points, orig.points, f"Player {start_num} points mismatch")
+            self.assertEqual(
+                new.federation,
+                orig.federation,
+                f"Player {start_num} federation mismatch",
+            )
+            self.assertEqual(
+                new.points, orig.points, f"Player {start_num} points mismatch"
+            )
             self.assertEqual(new.rank, orig.rank, f"Player {start_num} rank mismatch")
             self.assertEqual(
                 len(new.results),

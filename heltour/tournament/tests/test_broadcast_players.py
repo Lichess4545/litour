@@ -105,9 +105,7 @@ class BroadcastPlayersOutputTestCase(TestCase):
         self.assertIn("charlie / 11111 /  / 1900 / Brown, Charlie", content)
 
     def test_players_without_fide_id_skipped(self):
-        player_no_fide = Player.objects.create(
-            lichess_username="nofide", fide_id=""
-        )
+        player_no_fide = Player.objects.create(lichess_username="nofide", fide_id="")
         SeasonPlayer.objects.create(
             season=self.season, player=player_no_fide, is_active=True
         )
@@ -123,9 +121,9 @@ class BroadcastPlayersOutputTestCase(TestCase):
             "99999",
             {"name": "Inactive, Player", "standard": 1500},
         )
-        SeasonPlayer.objects.filter(
-            player__lichess_username="inactive_player"
-        ).update(is_active=False)
+        SeasonPlayer.objects.filter(player__lichess_username="inactive_player").update(
+            is_active=False
+        )
 
         self.client.login(username="admin", password="test")
         response = self.client.get(season_url("fide", "broadcast_players"))
@@ -134,8 +132,9 @@ class BroadcastPlayersOutputTestCase(TestCase):
     def test_missing_title_shows_empty(self):
         self.client.login(username="admin", password="test")
         response = self.client.get(season_url("fide", "broadcast_players"))
-        self.assertIn("charlie / 11111 /  / 1900 / Brown, Charlie",
-                      response.content.decode())
+        self.assertIn(
+            "charlie / 11111 /  / 1900 / Brown, Charlie", response.content.decode()
+        )
 
     def test_empty_season_shows_no_lines(self):
         league = League.objects.create(
@@ -151,11 +150,11 @@ class BroadcastPlayersOutputTestCase(TestCase):
 
         self.client.login(username="admin", password="test")
         response = self.client.get(
-            f"/emptyfide/season/emptyseason/dashboard/broadcast-players/"
+            "/emptyfide/season/emptyseason/dashboard/broadcast-players/"
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(
-            '<textarea readonly',
+            "<textarea readonly",
             response.content.decode(),
         )
 

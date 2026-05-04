@@ -122,7 +122,7 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(f"  - {len(team_configs)} teams")
                 self.stdout.write(f"  - {rounds} rounds planned")
-                self.stdout.write(f"  - 4 boards per team")
+                self.stdout.write("  - 4 boards per team")
 
                 # Show team composition
                 self.stdout.write("\nTeam composition:")
@@ -298,4 +298,3 @@ class TestPlayerGenerator:
             players.append((player_name, rating))
 
         return players
-

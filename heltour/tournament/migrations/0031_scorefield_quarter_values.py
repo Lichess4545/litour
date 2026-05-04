@@ -71,7 +71,6 @@ def revert_scores_from_quarter_values(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tournament", "0030_alter_league_team_tiebreak_1_and_more"),
     ]

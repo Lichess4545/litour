@@ -4,20 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0019_optionally_ask_for_email'),
+        ("tournament", "0019_optionally_ask_for_email"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='show_provisional_warning',
-            field=models.BooleanField(default=True, help_text='If true, show warning about provisional ratings during registration. Default is true.'),
+            model_name="league",
+            name="show_provisional_warning",
+            field=models.BooleanField(
+                default=True,
+                help_text="If true, show warning about provisional ratings during registration. Default is true.",
+            ),
         ),
         migrations.AlterField(
-            model_name='registration',
-            name='email',
+            model_name="registration",
+            name="email",
             field=models.EmailField(blank=True, max_length=255),
         ),
     ]

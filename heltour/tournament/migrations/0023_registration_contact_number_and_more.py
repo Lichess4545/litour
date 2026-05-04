@@ -5,76 +5,94 @@ import phonenumber_field.modelfields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0022_alter_registration_status'),
+        ("tournament", "0022_alter_registration_status"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='registration',
-            name='contact_number',
-            field=phonenumber_field.modelfields.PhoneNumberField(blank=True, max_length=128, region=None, verbose_name='Contact number'),
+            model_name="registration",
+            name="contact_number",
+            field=phonenumber_field.modelfields.PhoneNumberField(
+                blank=True, max_length=128, region=None, verbose_name="Contact number"
+            ),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='corporate_email',
-            field=models.EmailField(blank=True, max_length=254, verbose_name='Corporate email address'),
+            model_name="registration",
+            name="corporate_email",
+            field=models.EmailField(
+                blank=True, max_length=254, verbose_name="Corporate email address"
+            ),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='date_of_birth',
-            field=models.DateField(blank=True, null=True, verbose_name='Date of birth'),
+            model_name="registration",
+            name="date_of_birth",
+            field=models.DateField(blank=True, null=True, verbose_name="Date of birth"),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='fide_id',
-            field=models.CharField(blank=True, max_length=20, verbose_name='FIDE ID'),
+            model_name="registration",
+            name="fide_id",
+            field=models.CharField(blank=True, max_length=20, verbose_name="FIDE ID"),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='gender',
-            field=models.CharField(blank=True, max_length=50, verbose_name='Gender'),
+            model_name="registration",
+            name="gender",
+            field=models.CharField(blank=True, max_length=50, verbose_name="Gender"),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='nationality',
+            model_name="registration",
+            name="nationality",
             field=models.CharField(blank=True, max_length=100),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='personal_email',
-            field=models.EmailField(blank=True, max_length=254, verbose_name='Personal email address'),
+            model_name="registration",
+            name="personal_email",
+            field=models.EmailField(
+                blank=True, max_length=254, verbose_name="Personal email address"
+            ),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='real_name',
-            field=models.CharField(blank=True, max_length=255, verbose_name='Name/Surname'),
+            model_name="registration",
+            name="real_name",
+            field=models.CharField(
+                blank=True, max_length=255, verbose_name="Name/Surname"
+            ),
         ),
         migrations.AddField(
-            model_name='team',
-            name='company_address',
-            field=models.TextField(blank=True, verbose_name='Company office address'),
+            model_name="team",
+            name="company_address",
+            field=models.TextField(blank=True, verbose_name="Company office address"),
         ),
         migrations.AddField(
-            model_name='team',
-            name='company_name',
-            field=models.CharField(default='(Unknown)', max_length=255, verbose_name='Company name'),
+            model_name="team",
+            name="company_name",
+            field=models.CharField(
+                default="(Unknown)", max_length=255, verbose_name="Company name"
+            ),
             preserve_default=False,
         ),
         migrations.AddField(
-            model_name='team',
-            name='number_of_players',
-            field=models.PositiveIntegerField(blank=True, null=True, verbose_name='Number of players'),
+            model_name="team",
+            name="number_of_players",
+            field=models.PositiveIntegerField(
+                blank=True, null=True, verbose_name="Number of players"
+            ),
         ),
         migrations.AddField(
-            model_name='team',
-            name='team_contact_email',
-            field=models.EmailField(blank=True, max_length=254, verbose_name='Team contact email'),
+            model_name="team",
+            name="team_contact_email",
+            field=models.EmailField(
+                blank=True, max_length=254, verbose_name="Team contact email"
+            ),
         ),
         migrations.AddField(
-            model_name='team',
-            name='team_contact_number',
-            field=phonenumber_field.modelfields.PhoneNumberField(blank=True, max_length=128, region=None, verbose_name='Team contact number'),
+            model_name="team",
+            name="team_contact_number",
+            field=phonenumber_field.modelfields.PhoneNumberField(
+                blank=True,
+                max_length=128,
+                region=None,
+                verbose_name="Team contact number",
+            ),
         ),
     ]

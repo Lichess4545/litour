@@ -4,25 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0046_registration_validation_issues_and_more'),
+        ("tournament", "0046_registration_validation_issues_and_more"),
     ]
 
     operations = [
         migrations.RenameField(
-            model_name='season',
-            old_name='validate_predefined_list',
-            new_name='validate_predefined_list_contains_username_fide_id_together',
+            model_name="season",
+            old_name="validate_predefined_list",
+            new_name="validate_predefined_list_contains_username_fide_id_together",
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_predefined_list_contains_username',
+            model_name="season",
+            name="validate_predefined_list_contains_username",
             field=models.BooleanField(default=False),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_predefined_list_contains_fide_id',
+            model_name="season",
+            name="validate_predefined_list_contains_fide_id",
             field=models.BooleanField(default=False),
         ),
     ]

@@ -103,7 +103,10 @@ def make_lone_round(
         rating_type="classical",
     )
     season = Season.objects.create(
-        league=league, name=f"Season {season_tag}", tag=season_tag, rounds=1,
+        league=league,
+        name=f"Season {season_tag}",
+        tag=season_tag,
+        rounds=1,
     )
     rnd = Round.objects.get(season=season, number=1)
     rnd.publish_pairings = publish

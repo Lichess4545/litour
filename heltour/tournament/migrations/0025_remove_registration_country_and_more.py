@@ -5,19 +5,21 @@ import django_countries.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0024_remove_team_number_of_players_registration_country_and_more'),
+        (
+            "tournament",
+            "0024_remove_team_number_of_players_registration_country_and_more",
+        ),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='registration',
-            name='country',
+            model_name="registration",
+            name="country",
         ),
         migrations.AlterField(
-            model_name='registration',
-            name='nationality',
+            model_name="registration",
+            name="nationality",
             field=django_countries.fields.CountryField(blank=True, max_length=2),
         ),
     ]

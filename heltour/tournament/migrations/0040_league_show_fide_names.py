@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0039_player_fide_id_player_fide_profile_and_more'),
+        ("tournament", "0039_player_fide_id_player_fide_profile_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='show_fide_names',
-            field=models.BooleanField(default=False, help_text='If true, display FIDE names with lichess usernames in parentheses.'),
+            model_name="league",
+            name="show_fide_names",
+            field=models.BooleanField(
+                default=False,
+                help_text="If true, display FIDE names with lichess usernames in parentheses.",
+            ),
         ),
     ]

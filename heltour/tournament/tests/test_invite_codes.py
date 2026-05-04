@@ -1,8 +1,6 @@
 from datetime import timedelta
-from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.test.client import RequestFactory
 from django.utils import timezone
@@ -12,7 +10,6 @@ from heltour.tournament.models import (
     InviteCode,
     League,
     Player,
-    Registration,
     RegistrationMode,
     Round,
     Season,
@@ -20,7 +17,6 @@ from heltour.tournament.models import (
     Team,
     TeamMember,
 )
-from heltour.tournament.workflows import ApproveRegistrationWorkflow
 from heltour.tournament.tests.testutils import Shush, get_valid_registration_form_data
 
 
@@ -144,7 +140,7 @@ class InviteCodeTestCase(TestCase):
         # Verify registration was auto-approved
         registration.refresh_from_db()
         self.assertEqual(registration.status, "approved")
-        
+
         # Verify SeasonPlayer was created and is active
         sp = SeasonPlayer.objects.get(player=player, season=self.season)
         self.assertTrue(sp.is_active)
@@ -152,12 +148,10 @@ class InviteCodeTestCase(TestCase):
 
         # In new flow, team is NOT created automatically
         team = Team.objects.filter(
-            season=self.season,
-            teammember__player=player,
-            teammember__is_captain=True
+            season=self.season, teammember__player=player, teammember__is_captain=True
         ).first()
         self.assertIsNone(team)  # No team should exist yet
-        
+
         # Verify no team member exists yet
         self.assertFalse(TeamMember.objects.filter(player=player).exists())
 
@@ -234,7 +228,7 @@ class InviteCodeTestCase(TestCase):
         # Verify registration was auto-approved
         registration.refresh_from_db()
         self.assertEqual(registration.status, "approved")
-        
+
         # Verify SeasonPlayer was created and is active
         sp = SeasonPlayer.objects.get(player=new_player, season=self.season)
         self.assertTrue(sp.is_active)

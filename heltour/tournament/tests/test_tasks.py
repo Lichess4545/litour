@@ -6,17 +6,14 @@ from django.utils import timezone
 
 from heltour.tournament.lichessapi import ApiClientError
 from heltour.tournament.models import (
-    Alternate,
     Broadcast,
     BroadcastRound,
     League,
-    LeagueChannel,
     LonePlayerPairing,
     LonePlayerScore,
     OauthToken,
     Player,
     PlayerBye,
-    PlayerPairing,
     Round,
     Season,
     SeasonPlayer,
@@ -813,9 +810,7 @@ class TestIdempotentGameLinkSave(TestCase):
             )
         self.assertIsNone(result)
         mock_bulk.assert_called_once()
-        mock_expire.assert_called_once_with(
-            league_games=ANY, bad_token="bad_tok_abc"
-        )
+        mock_expire.assert_called_once_with(league_games=ANY, bad_token="bad_tok_abc")
         self.lpp.refresh_from_db()
         self.assertEqual(self.lpp.game_link, "")
 
@@ -1150,9 +1145,9 @@ class TestFindClosestRatingLichess(TestCase):
         cls.p1.save()
         set_rating(cls.p2, 1600)
         cls.p2.save()
-        SeasonPlayer.objects.filter(
-            season=cls.season, player=cls.p1
-        ).update(seed_rating=1500)
+        SeasonPlayer.objects.filter(season=cls.season, player=cls.p1).update(
+            seed_rating=1500
+        )
 
     def test_returns_seed_rating_when_no_pairings(self):
         """Should return seed_rating when no pairings exist for Lichess league."""
@@ -1168,9 +1163,9 @@ class TestFindClosestRatingLichess(TestCase):
         """For non-FIDE leagues, should NOT short-circuit at the FIDE check."""
         # Verify that with no seed_rating and no pairings, it falls through
         # to player.rating_for(league) via the normal path, not the FIDE early return
-        SeasonPlayer.objects.filter(
-            season=self.season, player=self.p2
-        ).update(seed_rating=None)
+        SeasonPlayer.objects.filter(season=self.season, player=self.p2).update(
+            seed_rating=None
+        )
         result = _find_closest_rating(self.p2, self.r1.end_date, self.season)
         # Should return the Lichess classical rating (1600), not a FIDE rating
         self.assertEqual(result, 1600)
@@ -1215,19 +1210,16 @@ class TestPopulateHistoricalRatingsFideTeam(TestCase):
         cls.tm1 = TeamMember.objects.create(
             team=team1, player=cls.alice, board_number=1
         )
-        cls.tm2 = TeamMember.objects.create(
-            team=team1, player=cls.bob, board_number=2
-        )
+        cls.tm2 = TeamMember.objects.create(team=team1, player=cls.bob, board_number=2)
         cls.tm3 = TeamMember.objects.create(
             team=team2, player=cls.charlie, board_number=1
         )
-        cls.tm4 = TeamMember.objects.create(
-            team=team2, player=cls.dave, board_number=2
-        )
+        cls.tm4 = TeamMember.objects.create(team=team2, player=cls.dave, board_number=2)
 
         for p in [cls.alice, cls.bob, cls.charlie, cls.dave]:
             sp = SeasonPlayer.objects.create(
-                season=cls.season, player=p,
+                season=cls.season,
+                player=p,
                 seed_rating=p.rating_for(cls.league),
             )
 

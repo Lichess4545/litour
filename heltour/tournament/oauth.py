@@ -50,9 +50,9 @@ def redirect_for_authorization(request, league_tag, secret_token):
         + "?response_type=code"
         + f"&client_id={settings.LICHESS_OAUTH_CLIENTID}"
         + f"&redirect_uri={_get_redirect_uri(request)}"
-        + f'&scope={" ".join(_SCOPES)}'
+        + f"&scope={' '.join(_SCOPES)}"
         + "&code_challenge_method=S256"
-        + f'&code_challenge={_code_challenge(request.session["oauth_code_verifier"])}'
+        + f"&code_challenge={_code_challenge(request.session['oauth_code_verifier'])}"
         + f"&state={_encode_state(state)}"
     )
     return redirect(auth)

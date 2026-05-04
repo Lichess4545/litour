@@ -376,9 +376,7 @@ def update_tv_state():
                 if "moves" in meta and " " in meta["moves"]:  # ' ' indicates >= 2 moves
                     game.tv_state = "has_moves"
                 meta_moves = meta.get("moves") or ""
-                game.plies_played = max(
-                    game.plies_played, len(meta_moves.split())
-                )
+                game.plies_played = max(game.plies_played, len(meta_moves.split()))
                 if meta.get("status") in [
                     "draw",
                     "stalemate",
@@ -1342,12 +1340,16 @@ def do_validate_registration(regs: QuerySet[Registration], **kwargs) -> None:
 
 
 def _fetch_fide_profiles_for_registrations(regs: QuerySet[Registration]) -> None:
-    fide_regs = regs.filter(
-        player__fide_id__gt="",
-    ).filter(
-        Q(season__league__rating_type__startswith="fide_")
-        | Q(season__league__rating_type="fide"),
-    ).select_related("player")
+    fide_regs = (
+        regs.filter(
+            player__fide_id__gt="",
+        )
+        .filter(
+            Q(season__league__rating_type__startswith="fide_")
+            | Q(season__league__rating_type="fide"),
+        )
+        .select_related("player")
+    )
     for reg in fide_regs:
         player = reg.player
         try:
@@ -1676,14 +1678,14 @@ def _derive_gender_from_fide_profile(player: Player) -> bool:
 def backfill_fide_data_for_season(season_id: int) -> None:
     """Backfill FIDE IDs and gender for everyone in this season.
 
-      Pass 1 — Registrations: copy reg.fide_id → player.fide_id and
-      reg.gender → player.gender when the Player fields are empty.
+    Pass 1 — Registrations: copy reg.fide_id → player.fide_id and
+    reg.gender → player.gender when the Player fields are empty.
 
-      Pass 2 — SeasonPlayers: for every player in the season, if they have a
-      fide_id but no fide_profile cached, fetch the FIDE profile (which also
-      populates gender via Player.update_fide_profile). If they already have a
-      cached profile but no gender, derive gender from the cached
-      profile['gender'] without re-fetching.
+    Pass 2 — SeasonPlayers: for every player in the season, if they have a
+    fide_id but no fide_profile cached, fetch the FIDE profile (which also
+    populates gender via Player.update_fide_profile). If they already have a
+    cached profile but no gender, derive gender from the cached
+    profile['gender'] without re-fetching.
     """
     season = Season.objects.select_related("league").get(pk=season_id)
     fide_id_updates = 0
@@ -1712,7 +1714,9 @@ def backfill_fide_data_for_season(season_id: int) -> None:
         SeasonPlayer.objects.filter(season=season).values_list("player_id", flat=True)
     )
     team_member_player_ids = set(
-        TeamMember.objects.filter(team__season=season).values_list("player_id", flat=True)
+        TeamMember.objects.filter(team__season=season).values_list(
+            "player_id", flat=True
+        )
     )
     all_player_ids = season_player_ids | team_member_player_ids
     season_players_qs = Player.objects.filter(pk__in=all_player_ids, fide_id__gt="")

@@ -94,9 +94,7 @@ class DbToStructureTests(TestCase):
         LonePlayerPairing.objects.create(
             round=round1, white=player1, black=player2, result="1-0", pairing_order=1
         )
-        PlayerBye.objects.create(
-            round=round1, player=player3, type="half-point-bye"
-        )
+        PlayerBye.objects.create(round=round1, player=player3, type="half-point-bye")
 
         round2 = Round.objects.create(season=season, number=2, is_completed=True)
         LonePlayerPairing.objects.create(
@@ -106,9 +104,7 @@ class DbToStructureTests(TestCase):
             result="1/2-1/2",
             pairing_order=1,
         )
-        PlayerBye.objects.create(
-            round=round2, player=player2, type="half-point-bye"
-        )
+        PlayerBye.objects.create(round=round2, player=player2, type="half-point-bye")
 
         # Convert to structure
         tournament = lone_tournament_to_structure(season)

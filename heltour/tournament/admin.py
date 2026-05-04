@@ -3158,9 +3158,7 @@ class TeamAdmin(_BaseAdmin):
         source_boards = teams.first().season.boards
         source_season_ids = {team.season_id for team in teams}
         available_seasons = (
-            Season.objects.filter(
-                league__competitor_type="team", boards=source_boards
-            )
+            Season.objects.filter(league__competitor_type="team", boards=source_boards)
             .exclude(id__in=source_season_ids)
             .order_by("-start_date")
         )
@@ -4976,7 +4974,6 @@ class KnockoutBracketAdmin(admin.ModelAdmin):
         """Create TeamPairing objects for the next match set."""
         import reversion
         from heltour.tournament.models import Team, Round as RoundModel, TeamPairing
-        from heltour.tournament_core.multi_match import get_pairing_order_for_match
 
         # Get the database round for this specific tournament
         try:

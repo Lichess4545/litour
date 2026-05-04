@@ -6,7 +6,6 @@ import django.utils.timezone
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tournament", "0052_league_team_tiebreak_5_league_team_tiebreak_6_and_more"),
     ]

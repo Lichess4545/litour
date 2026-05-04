@@ -812,7 +812,6 @@ class TRF16Converter:
         team_to_team = {}  # (white_team, black_team) -> list of games
 
         for pairing in pairings:
-
             white_player = self.players.get(pairing.white_player_id)
             black_player = self.players.get(pairing.black_player_id)
 

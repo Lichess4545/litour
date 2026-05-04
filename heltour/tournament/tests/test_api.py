@@ -1,5 +1,3 @@
-import json
-
 from django.test import TestCase, Client
 from django.utils import timezone
 
@@ -11,19 +9,31 @@ def createCommonAPIData():
     round_count = 3
     board_count = 2
 
-    league = League.objects.create(name='Team League', tag='team', competitor_type='team')
-    season = Season.objects.create(league=league, name='Team Season', tag='team',
-                                   rounds=round_count, boards=board_count)
-    league2 = League.objects.create(name='Lone League', tag='lone')
-    season2 = Season.objects.create(league=league2, name='Lone Season', tag='lone',
-                                    rounds=round_count, boards=board_count)
+    league = League.objects.create(
+        name="Team League", tag="team", competitor_type="team"
+    )
+    season = Season.objects.create(
+        league=league,
+        name="Team Season",
+        tag="team",
+        rounds=round_count,
+        boards=board_count,
+    )
+    league2 = League.objects.create(name="Lone League", tag="lone")
+    season2 = Season.objects.create(
+        league=league2,
+        name="Lone Season",
+        tag="lone",
+        rounds=round_count,
+        boards=board_count,
+    )
 
     player_num = 1
     for n in range(1, team_count + 1):
-        team = Team.objects.create(season=season, number=n, name='Team %s' % n)
+        team = Team.objects.create(season=season, number=n, name="Team %s" % n)
         TeamScore.objects.create(team=team)
         for b in range(1, board_count + 1):
-            player = Player.objects.create(lichess_username='Player%d' % player_num)
+            player = Player.objects.create(lichess_username="Player%d" % player_num)
             player_num += 1
             TeamMember.objects.create(team=team, player=player, board_number=b)
 
@@ -31,8 +41,10 @@ def createCommonAPIData():
 class _ApiTestsBase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.api_key = ApiKey.objects.create(name='test_key')
-        cls.client = Client(HTTP_AUTHORIZATION="Token {}".format(cls.api_key.secret_token))
+        cls.api_key = ApiKey.objects.create(name="test_key")
+        cls.client = Client(
+            HTTP_AUTHORIZATION="Token {}".format(cls.api_key.secret_token)
+        )
 
 
 class PlayerContactPresenceEventTests(TestCase):
@@ -47,7 +59,11 @@ class PlayerContactPresenceEventTests(TestCase):
             name="Lone League", tag="lone", competitor_type="individual"
         )
         cls.season = Season.objects.create(
-            league=cls.league, name="S1", tag="s1", rounds=1, boards=1,
+            league=cls.league,
+            name="S1",
+            tag="s1",
+            rounds=1,
+            boards=1,
             is_active=True,
         )
         cls.round_ = Round.objects.get(season=cls.season, number=1)
@@ -59,7 +75,10 @@ class PlayerContactPresenceEventTests(TestCase):
         cls.alice = Player.objects.create(lichess_username="Alice")
         cls.bob = Player.objects.create(lichess_username="Bob")
         cls.pairing = LonePlayerPairing.objects.create(
-            round=cls.round_, white=cls.alice, black=cls.bob, pairing_order=1,
+            round=cls.round_,
+            white=cls.alice,
+            black=cls.bob,
+            pairing_order=1,
         )
 
     def setUp(self):
@@ -92,15 +111,9 @@ class PlayerContactPresenceEventTests(TestCase):
         )
 
     def test_each_player_logged_independently(self):
-        self.client.post(
-            "/api/player_contact/", {"sender": "Alice", "recip": "Bob"}
-        )
-        self.client.post(
-            "/api/player_contact/", {"sender": "Bob", "recip": "Alice"}
-        )
+        self.client.post("/api/player_contact/", {"sender": "Alice", "recip": "Bob"})
+        self.client.post("/api/player_contact/", {"sender": "Bob", "recip": "Alice"})
         self.assertEqual(
-            PlayerPresenceEvent.objects.filter(
-                event_type="first_chat_message"
-            ).count(),
+            PlayerPresenceEvent.objects.filter(event_type="first_chat_message").count(),
             2,
         )

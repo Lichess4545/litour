@@ -68,8 +68,10 @@ class VisibleQuerysetTests(TestCase):
 
     def test_inactive_seasons_filtered_from_home(self):
         make_season(
-            league_tag="vq-d2", visibility="public",
-            is_active=False, is_completed=False,
+            league_tag="vq-d2",
+            visibility="public",
+            is_active=False,
+            is_completed=False,
         )
         self.assertEqual(visible_queryset(_ANON).count(), 0)
 

@@ -193,11 +193,9 @@ def set_match_result_sync(match_id: int, result: str, viewer: Viewer, user) -> M
     # would update the row but skip the concrete-sender signal that the
     # publisher is registered against.
     try:
-        concrete = (
-            TeamPlayerPairing.objects.select_related(
-                "white", "black", "team_pairing__round__season__league"
-            ).get(pk=match_id)
-        )
+        concrete = TeamPlayerPairing.objects.select_related(
+            "white", "black", "team_pairing__round__season__league"
+        ).get(pk=match_id)
         league = concrete.team_pairing.round.season.league
         is_team = True
     except TeamPlayerPairing.DoesNotExist:

@@ -229,18 +229,18 @@ class SeasonTestCase(TestCase):
             white_team=teams[0],
             black_team=teams[1],
         )
-        
+
         # Get team members
         team1_members = list(teams[0].teammember_set.order_by("board_number"))
         team2_members = list(teams[1].teammember_set.order_by("board_number"))
-        
+
         # Board 1: Team 1 wins
         TeamPlayerPairing.objects.create(
             team_pairing=pairing1,
             board_number=1,
             white=team1_members[0].player,
             black=team2_members[0].player,
-            result='1-0'
+            result="1-0",
         )
         # Board 2: Team 1 wins (team 2 gets white but loses)
         TeamPlayerPairing.objects.create(
@@ -248,11 +248,11 @@ class SeasonTestCase(TestCase):
             board_number=2,
             white=team2_members[1].player,
             black=team1_members[1].player,
-            result='0-1'
+            result="0-1",
         )
         pairing1.refresh_points()
         pairing1.save()
-        
+
         # Create second pairing: Team 3 vs Team 4 (1.5-1.5)
         pairing2 = TeamPairing.objects.create(
             round=rounds[0],
@@ -260,17 +260,17 @@ class SeasonTestCase(TestCase):
             white_team=teams[2],
             black_team=teams[3],
         )
-        
+
         team3_members = list(teams[2].teammember_set.order_by("board_number"))
         team4_members = list(teams[3].teammember_set.order_by("board_number"))
-        
+
         # Board 1: Team 3 wins
         TeamPlayerPairing.objects.create(
             team_pairing=pairing2,
             board_number=1,
             white=team3_members[0].player,
             black=team4_members[0].player,
-            result='1-0'
+            result="1-0",
         )
         # Board 2: Team 4 wins (team 4 gets white and wins)
         TeamPlayerPairing.objects.create(
@@ -278,7 +278,7 @@ class SeasonTestCase(TestCase):
             board_number=2,
             white=team4_members[1].player,
             black=team3_members[1].player,
-            result='1-0'
+            result="1-0",
         )
         pairing2.refresh_points()
         pairing2.save()
@@ -353,8 +353,8 @@ class SeasonTestCase(TestCase):
 
         matrix = score_matrix()
         # Check points
-        self.assertEqual(matrix[0][0], 1.0)   # P0
-        self.assertEqual(matrix[1][0], 0.0)    # P1
+        self.assertEqual(matrix[0][0], 1.0)  # P0
+        self.assertEqual(matrix[1][0], 0.0)  # P1
         self.assertEqual(matrix[2][0], 0.5)  # P2
         self.assertEqual(matrix[3][0], 0.5)  # P3
 
@@ -380,10 +380,10 @@ class SeasonTestCase(TestCase):
         rounds[1].save()
 
         matrix = score_matrix()
-        self.assertEqual(matrix[0][0], 2.0)   # P0 points
+        self.assertEqual(matrix[0][0], 2.0)  # P0 points
         self.assertEqual(matrix[1][0], 0.5)  # P1 points
         self.assertEqual(matrix[2][0], 0.5)  # P2 points
-        self.assertEqual(matrix[3][0], 1.0)   # P3 points
+        self.assertEqual(matrix[3][0], 1.0)  # P3 points
 
         # P0 opponents: P1(0.5 GP) + P2(0.5 GP) = 1.0 buchholz
         self.assertEqual(matrix[0][3], 1.0)  # P0 buchholz
@@ -394,7 +394,7 @@ class SeasonTestCase(TestCase):
 
         matrix = score_matrix()
         # Points stay same (no games in R3)
-        self.assertEqual(matrix[0][0], 2.0)   # P0 points
+        self.assertEqual(matrix[0][0], 2.0)  # P0 points
         self.assertEqual(matrix[1][0], 0.5)  # P1 points
 
     def test_export_players_basic(self):
@@ -535,18 +535,18 @@ class TeamScoreTestCase(TestCase):
             round=round1,
             pairing_order=0,
         )
-        
+
         # Get team members
         team1_members = list(team1.teammember_set.order_by("board_number"))
         team2_members = list(team2.teammember_set.order_by("board_number"))
-        
+
         # Board 1: Team 1 wins
         TeamPlayerPairing.objects.create(
             team_pairing=cls.pairing1,
             board_number=1,
             white=team1_members[0].player,
             black=team2_members[0].player,
-            result='1-0'
+            result="1-0",
         )
         # Board 2: Draw
         TeamPlayerPairing.objects.create(
@@ -554,7 +554,7 @@ class TeamScoreTestCase(TestCase):
             board_number=2,
             white=team2_members[1].player,
             black=team1_members[1].player,
-            result='1/2-1/2'
+            result="1/2-1/2",
         )
         cls.pairing1.refresh_points()
         cls.pairing1.save()
@@ -566,28 +566,28 @@ class TeamScoreTestCase(TestCase):
             round=round2,
             pairing_order=0,
         )
-        
+
         team3_members = list(team3.teammember_set.order_by("board_number"))
-        
+
         # Board 1: Draw
         TeamPlayerPairing.objects.create(
             team_pairing=cls.pairing2,
             board_number=1,
             white=team3_members[0].player,
             black=team1_members[0].player,
-            result='1/2-1/2'
+            result="1/2-1/2",
         )
-        # Board 2: Draw 
+        # Board 2: Draw
         TeamPlayerPairing.objects.create(
             team_pairing=cls.pairing2,
             board_number=2,
             white=team1_members[1].player,
             black=team3_members[1].player,
-            result='1/2-1/2'
+            result="1/2-1/2",
         )
         cls.pairing2.refresh_points()
         cls.pairing2.save()
-        
+
         # Now mark rounds as completed
         round1.is_completed = True
         round1.save()
@@ -614,11 +614,11 @@ class TeamScoreTestCase(TestCase):
 
     def test_teamscore_cmp(self):
         # Create teams first since TeamScore now requires a team for comparison
-        league = get_league('team')
-        season = get_season('team')
-        team1 = Team.objects.create(season=season, number=10, name='Team 10')
-        team2 = Team.objects.create(season=season, number=11, name='Team 11')
-        
+        league = get_league("team")
+        season = get_season("team")
+        team1 = Team.objects.create(season=season, number=10, name="Team 10")
+        team2 = Team.objects.create(season=season, number=11, name="Team 11")
+
         ts1 = TeamScore.objects.create(team=team1)
         ts2 = TeamScore.objects.create(team=team2)
 

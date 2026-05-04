@@ -4,40 +4,39 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0042_season_predefined_player_list_season_validation_mode'),
+        ("tournament", "0042_season_predefined_player_list_season_validation_mode"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='season',
-            name='validate_account_status',
+            model_name="season",
+            name="validate_account_status",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_agreed_to_rules',
+            model_name="season",
+            name="validate_agreed_to_rules",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_agreed_to_tos',
+            model_name="season",
+            name="validate_agreed_to_tos",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_has_rating',
+            model_name="season",
+            name="validate_has_rating",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_not_provisional',
+            model_name="season",
+            name="validate_not_provisional",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validate_predefined_list',
+            model_name="season",
+            name="validate_predefined_list",
             field=models.BooleanField(default=False),
         ),
     ]

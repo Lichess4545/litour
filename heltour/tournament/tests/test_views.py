@@ -304,7 +304,9 @@ class RegisterTestCase(TestCase):
             )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
-            Registration.objects.filter(player__lichess_username="Player1").first().email,
+            Registration.objects.filter(player__lichess_username="Player1")
+            .first()
+            .email,
             "player1@example.com",
         )
 

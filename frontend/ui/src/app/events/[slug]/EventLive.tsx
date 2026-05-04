@@ -88,7 +88,17 @@ export function EventLive({ initial, apiBaseUrl }: Props) {
           <Link href="/" className="text-muted-foreground text-sm hover:text-foreground">
             ← All events
           </Link>
-          <ConnectionBadge state={connection} />
+          <div className="flex items-center gap-4">
+            {header.can_manage ? (
+              <Link
+                href={`/events/${encodeURIComponent(slug)}/manage/`}
+                className="text-status-active text-sm hover:underline underline-offset-4"
+              >
+                Manage cockpit →
+              </Link>
+            ) : null}
+            <ConnectionBadge state={connection} />
+          </div>
         </div>
         <div className="space-y-2">
           <p className="text-muted-foreground text-xs uppercase tracking-wide">

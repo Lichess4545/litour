@@ -402,7 +402,7 @@ class TRF16Parser:
                 start_number=player_number,
             )
 
-        except (ValueError, IndexError) as e:
+        except (ValueError, IndexError):
             # Silently skip lines that can't be parsed
             return None
 

@@ -5,15 +5,18 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0026_remove_registration_real_name_and_more'),
+        ("tournament", "0026_remove_registration_real_name_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='season',
-            name='welcome_message',
-            field=ckeditor_uploader.fields.RichTextUploadingField(blank=True, help_text='Optional welcome message to display in the registration box. Supports rich text formatting.', verbose_name='Welcome Message'),
+            model_name="season",
+            name="welcome_message",
+            field=ckeditor_uploader.fields.RichTextUploadingField(
+                blank=True,
+                help_text="Optional welcome message to display in the registration box. Supports rich text formatting.",
+                verbose_name="Welcome Message",
+            ),
         ),
     ]

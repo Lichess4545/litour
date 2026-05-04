@@ -33,7 +33,9 @@ def _run_socket():
     fallback = 2
     while True:
         try:
-            if last_start is not None and last_start > timezone.now() - timedelta(seconds=10):
+            if last_start is not None and last_start > timezone.now() - timedelta(
+                seconds=10
+            ):
                 time.sleep(fallback)
                 fallback = fallback * 2
                 if fallback > 120:
@@ -42,15 +44,17 @@ def _run_socket():
                 fallback = 2
             last_start = timezone.now()
 
-            _websocket = websocket.create_connection('wss://socket.lichess.org/api/socket')
+            _websocket = websocket.create_connection(
+                "wss://socket.lichess.org/api/socket"
+            )
             with _games_lock:
                 for game_id in list(_games.keys()):
                     _start_watching(game_id)
             while True:
                 msg = json.loads(_websocket.recv())
-                if msg['t'] == 'fen':
+                if msg["t"] == "fen":
                     with _games_lock:
-                        game_id = msg['d']['id']
+                        game_id = msg["d"]["id"]
                         if game_id in _games:
                             _games[game_id] = msg
         except:
@@ -59,7 +63,7 @@ def _run_socket():
 
 def _start_watching(game_id):
     try:
-        _websocket.send(json.dumps({'t': 'startWatching', 'd': game_id}))
+        _websocket.send(json.dumps({"t": "startWatching", "d": game_id}))
     except:
         pass
 

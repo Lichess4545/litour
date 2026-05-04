@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0018_add_board_update_deadline'),
+        ("tournament", "0018_add_board_update_deadline"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='email_required',
-            field=models.BooleanField(default=False, help_text='If true, email is required during registration. Default is false (email optional).'),
+            model_name="league",
+            name="email_required",
+            field=models.BooleanField(
+                default=False,
+                help_text="If true, email is required during registration. Default is false (email optional).",
+            ),
         ),
     ]

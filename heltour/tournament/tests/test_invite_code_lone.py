@@ -9,7 +9,6 @@ from heltour.tournament.models import (
     InviteCode,
     League,
     Player,
-    Registration,
     RegistrationMode,
     Round,
     Season,
@@ -159,7 +158,8 @@ class LoneInviteCodeTestCase(TestCase):
 
         self.assertEqual(Team.objects.filter(season=self.season).count(), 0)
         self.assertEqual(
-            TeamMember.objects.filter(player=player, team__season=self.season).count(), 0
+            TeamMember.objects.filter(player=player, team__season=self.season).count(),
+            0,
         )
 
     def test_multiple_players_register_independently(self):
@@ -188,9 +188,7 @@ class LoneInviteCodeTestCase(TestCase):
             reg.refresh_from_db()
             self.assertEqual(reg.status, "approved")
 
-        self.assertEqual(
-            SeasonPlayer.objects.filter(season=self.season).count(), 3
-        )
+        self.assertEqual(SeasonPlayer.objects.filter(season=self.season).count(), 3)
         self.assertEqual(Team.objects.filter(season=self.season).count(), 0)
 
     def test_invalid_code_rejected(self):
@@ -257,9 +255,7 @@ class LoneInviteCodeTestCase(TestCase):
         self.assertNotIn("invite_code", form.fields)
 
         form_data = self._make_form_data(email="loneopenreg@example.com")
-        form = RegistrationForm(
-            data=form_data, season=self.open_season, player=player
-        )
+        form = RegistrationForm(data=form_data, season=self.open_season, player=player)
         self.assertTrue(form.is_valid(), f"Form errors: {form.errors}")
 
         with Shush():

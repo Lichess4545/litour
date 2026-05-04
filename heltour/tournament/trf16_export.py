@@ -15,7 +15,6 @@ from heltour.tournament.models import (
     Season,
     SeasonPlayer,
     Team,
-    TeamMember,
     TeamPlayerPairing,
 )
 from heltour.tournament_core.trf16 import TRF16Header, TRF16Player, TRF16Team
@@ -62,7 +61,9 @@ def _team_season_to_trf16(season: Season) -> str:
             player_start_nums[member.player_id] = current_num
             start_num_players[current_num] = _PlayerInfo(
                 player=member.player,
-                rating=member.player_rating or member.player.rating_for(season.league) or 0,
+                rating=member.player_rating
+                or member.player.rating_for(season.league)
+                or 0,
             )
             team_player_ids.append(current_num)
             current_num += 1
@@ -80,9 +81,7 @@ def _team_season_to_trf16(season: Season) -> str:
         ).select_related("white", "black", "team_pairing")
 
         for pp in pairings:
-            _record_pairing_result(
-                pp, round_idx, player_start_nums, results_by_player
-            )
+            _record_pairing_result(pp, round_idx, player_start_nums, results_by_player)
 
     # Fill unplayed rounds as byes
     _fill_byes(results_by_player)
@@ -125,9 +124,7 @@ def _lone_season_to_trf16(season: Season) -> str:
             "white", "black"
         )
         for pp in pairings:
-            _record_pairing_result(
-                pp, round_idx, player_start_nums, results_by_player
-            )
+            _record_pairing_result(pp, round_idx, player_start_nums, results_by_player)
 
         # Explicit byes
         byes = PlayerBye.objects.filter(round=rnd)

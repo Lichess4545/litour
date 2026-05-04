@@ -4,14 +4,13 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0044_port_validation_properties'),
+        ("tournament", "0044_port_validation_properties"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='season',
-            name='validation_mode',
+            model_name="season",
+            name="validation_mode",
         ),
     ]

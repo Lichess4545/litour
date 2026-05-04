@@ -39,28 +39,34 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate knockout bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         bracket = generate_knockout_bracket(season)
-        
+
         # Verify bracket creation
         self.assertEqual(bracket.bracket_size, 4)
         self.assertEqual(bracket.seeding_style, "traditional")
-        
+
         # Verify seedings were created
-        seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by('seed_number')
+        seedings = KnockoutSeeding.objects.filter(bracket=bracket).order_by(
+            "seed_number"
+        )
         self.assertEqual(seedings.count(), 4)
         self.assertEqual(seedings[0].seed_number, 1)
         self.assertEqual(seedings[3].seed_number, 4)
-        
+
         # Verify first round (semifinals)
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "semifinals")
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         # Check pairings were created
         pairings = TeamPairing.objects.filter(round=round1)
         self.assertEqual(pairings.count(), 2)  # 4 teams -> 2 semifinal matches
@@ -80,21 +86,25 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate knockout bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         bracket = generate_knockout_bracket(season)
-        
+
         # Verify bracket
         self.assertEqual(bracket.bracket_size, 4)
-        
+
         # Verify first round
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "semifinals")
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         # Check individual pairings
         pairings = LonePlayerPairing.objects.filter(round=round1)
         self.assertEqual(pairings.count(), 2)  # 4 players -> 2 matches
@@ -119,43 +129,48 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         bracket = generate_knockout_bracket(season)
-        
+
         # Verify 8-team bracket
         self.assertEqual(bracket.bracket_size, 8)
-        
+
         # First round should be quarterfinals
         round1 = Round.objects.get(season=season, number=1)
         self.assertEqual(round1.knockout_stage, "quarterfinals")
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         # Should have 4 matches
         round1_pairings = TeamPairing.objects.filter(round=round1)
         self.assertEqual(round1_pairings.count(), 4)
-        
+
         # Simulate results for first round
         self._set_team_match_results(round1_pairings)
         round1.is_completed = True
         round1.save()
-        
+
         # Advance to semifinals
         from heltour.tournament.pairinggen import advance_knockout_tournament
+
         round2 = advance_knockout_tournament(round1)
-        
+
         # Verify advancement
         self.assertIsNotNone(round2)
         self.assertEqual(round2.number, 2)
         self.assertEqual(round2.knockout_stage, "semifinals")
-        
+
         # Should have 2 matches
         round2_pairings = TeamPairing.objects.filter(round=round2)
         self.assertEqual(round2_pairings.count(), 2)
-        
+
         # Verify advancement records were created
         advancements = KnockoutAdvancement.objects.filter(bracket=bracket)
         self.assertEqual(advancements.count(), 4)  # 4 winners from quarterfinals
@@ -175,46 +190,51 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         bracket = generate_knockout_bracket(season)
-        
+
         round1 = Round.objects.get(season=season, number=1)
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         pairings = TeamPairing.objects.filter(round=round1)
-        
+
         # Create tied match requiring manual tiebreak
         tied_pairing = pairings.first()
         tied_pairing.white_points = 1.0
         tied_pairing.black_points = 1.0  # Tied!
         tied_pairing.manual_tiebreak_value = 1.0  # White team wins tiebreak
         tied_pairing.save()
-        
+
         # Set clear result for other match
         other_pairing = pairings.exclude(id=tied_pairing.id).first()
         other_pairing.white_points = 2.0
         other_pairing.black_points = 0.0
         other_pairing.save()
-        
+
         # Complete round
         round1.is_completed = True
         round1.save()
-        
+
         # Advance tournament
         from heltour.tournament.pairinggen import advance_knockout_tournament
+
         round2 = advance_knockout_tournament(round1)
-        
+
         # Verify advancement with tiebreak resolution
         self.assertIsNotNone(round2)
-        
+
         # Check that tiebreak winner advanced
         finals_pairing = TeamPairing.objects.filter(round=round2).first()
         finalists = {finals_pairing.white_team, finals_pairing.black_team}
-        
+
         # White team should have advanced (tiebreak winner)
         self.assertIn(tied_pairing.white_team, finalists)
         self.assertNotIn(tied_pairing.black_team, finalists)
@@ -225,7 +245,7 @@ class KnockoutSimulationTestCase(TransactionTestCase):
             TournamentBuilder()
             .league("Structure Test", "ST", "team")
             .knockout_format(seeding_style="traditional", games_per_match=1)
-            .season("ST", "Conversion Test", rounds=2, boards=2) 
+            .season("ST", "Conversion Test", rounds=2, boards=2)
             .team("Alpha", ("AlphaP1", 2000), ("AlphaP2", 1900))
             .team("Beta", ("BetaP1", 1950), ("BetaP2", 1850))
             .team("Gamma", ("GammaP1", 1800), ("GammaP2", 1750))
@@ -234,57 +254,62 @@ class KnockoutSimulationTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
-        # Generate knockout bracket  
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+
+        # Generate knockout bracket
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         bracket = generate_knockout_bracket(season)
-        
+
         round1 = Round.objects.get(season=season, number=1)
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         pairings = TeamPairing.objects.filter(round=round1)
-        
+
         # Add board results for all pairings
         from heltour.tournament.models import TeamPlayerPairing
+
         for i, pairing in enumerate(pairings):
             # Set manual tiebreak for first pairing only
             if i == 0:
                 pairing.manual_tiebreak_value = 0.5
                 pairing.save()
-            
+
             # Add board results for all pairings
             board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing)
             for bp in board_pairings:
                 bp.result = "1-0"
                 bp.save()
-        
+
         round1.is_completed = True
         round1.save()
-        
+
         # Convert to tournament_core structure
         tournament_structure = season_to_tournament_structure(season)
-        
+
         # Verify knockout format
         self.assertEqual(tournament_structure.format, TournamentFormat.KNOCKOUT)
-        
+
         # Verify round structure
         self.assertEqual(len(tournament_structure.rounds), 1)
         round_struct = tournament_structure.rounds[0]
         self.assertEqual(round_struct.knockout_stage, "semifinals")
-        
+
         # Verify match structure with manual tiebreak
         self.assertEqual(len(round_struct.matches), 2)
-        
+
         # Find the pairing with tiebreak
         tiebreak_pairing = next(
-            p for p in pairings 
-            if p.manual_tiebreak_value is not None
+            p for p in pairings if p.manual_tiebreak_value is not None
         )
-        
+
         match_with_tiebreak = next(
-            m for m in round_struct.matches 
+            m
+            for m in round_struct.matches
             if m.competitor1_id == tiebreak_pairing.white_team_id
         )
         self.assertEqual(match_with_tiebreak.manual_tiebreak_value, 0.5)
@@ -297,21 +322,22 @@ class KnockoutSimulationTestCase(TransactionTestCase):
             .knockout_format(seeding_style="traditional", games_per_match=2)
             .season("MGK", "Double Games", rounds=2, boards=2)
             .team("TeamX", "PlayerX1", "PlayerX2")
-            .team("TeamY", "PlayerY1", "PlayerY2") 
+            .team("TeamY", "PlayerY1", "PlayerY2")
             .team("TeamZ", "PlayerZ1", "PlayerZ2")
             .team("TeamW", "PlayerW1", "PlayerW2")
             .build()
         )
-        
+
         season = tournament.current_season
-        
+
         # Generate bracket
         from heltour.tournament.pairinggen import generate_knockout_bracket
+
         bracket = generate_knockout_bracket(season)
-        
+
         # Verify multi-game setting
         self.assertEqual(bracket.games_per_match, 2)
-        
+
         # Verify structure conversion preserves multi-game setting
         tournament_structure = season_to_tournament_structure(season)
         if tournament_structure.rounds:
@@ -321,7 +347,7 @@ class KnockoutSimulationTestCase(TransactionTestCase):
     def _set_team_match_results(self, pairings):
         """Helper to set realistic results for team pairings."""
         from heltour.tournament.models import TeamPlayerPairing
-        
+
         for i, pairing in enumerate(pairings):
             # Alternate winners to create interesting bracket progression
             if i % 2 == 0:
@@ -329,11 +355,11 @@ class KnockoutSimulationTestCase(TransactionTestCase):
                 pairing.white_points = 1.5
                 pairing.black_points = 0.5
             else:
-                # Black team wins  
+                # Black team wins
                 pairing.white_points = 0.5
                 pairing.black_points = 1.5
             pairing.save()
-            
+
             # Set board results consistently
             board_pairings = TeamPlayerPairing.objects.filter(team_pairing=pairing)
             for j, bp in enumerate(board_pairings):
@@ -362,37 +388,37 @@ class KnockoutAdminSimulationTestCase(TestCase):
         )
 
         season = tournament.current_season
-        
+
         # Create bracket without generating it (check if one already exists)
         bracket, created = KnockoutBracket.objects.get_or_create(
             season=season,
             defaults={
                 "bracket_size": 4,
                 "seeding_style": "traditional",
-                "games_per_match": 1
-            }
+                "games_per_match": 1,
+            },
         )
-        
+
         # Test admin action
         from django.contrib.admin.sites import AdminSite
         from django.contrib.auth.models import User
         from django.http import HttpRequest
         from django.contrib.messages.storage.fallback import FallbackStorage
         from heltour.tournament.admin import KnockoutBracketAdmin
-        
+
         # Create admin user and request
-        user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
+        user = User.objects.create_superuser("admin", "admin@test.com", "pass")
         request = HttpRequest()
         request.user = user
-        request.method = 'POST'
+        request.method = "POST"
         request.session = {}
         request._messages = FallbackStorage(request)
-        
+
         # Execute admin action
         admin = KnockoutBracketAdmin(KnockoutBracket, AdminSite())
         queryset = KnockoutBracket.objects.filter(id=bracket.id)
         admin.generate_knockout_bracket_action(request, queryset)
-        
+
         # Verify bracket was generated
         self.assertTrue(Round.objects.filter(season=season, number=1).exists())
         self.assertTrue(KnockoutSeeding.objects.filter(bracket=bracket).exists())
@@ -410,45 +436,49 @@ class KnockoutAdminSimulationTestCase(TestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate bracket and get pairing
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         generate_knockout_bracket(season)
-        
+
         round1 = Round.objects.get(season=season, number=1)
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         pairing = TeamPairing.objects.filter(round=round1).first()
-        
+
         # Test admin actions
         from django.contrib.admin.sites import AdminSite
         from django.contrib.auth.models import User
         from django.http import HttpRequest
         from django.contrib.messages.storage.fallback import FallbackStorage
         from heltour.tournament.admin import TeamPairingAdmin
-        
-        user = User.objects.create_superuser('admin', 'admin@test.com', 'pass')
+
+        user = User.objects.create_superuser("admin", "admin@test.com", "pass")
         request = HttpRequest()
         request.user = user
-        request.method = 'POST'
+        request.method = "POST"
         request.session = {}
         request._messages = FallbackStorage(request)
-        
+
         admin = TeamPairingAdmin(TeamPairing, AdminSite())
         queryset = TeamPairing.objects.filter(id=pairing.id)
-        
+
         # Test white wins tiebreak
         admin.set_white_wins_tiebreak(request, queryset)
         pairing.refresh_from_db()
         self.assertEqual(pairing.manual_tiebreak_value, 1.0)
-        
+
         # Test black wins tiebreak
         admin.set_black_wins_tiebreak(request, queryset)
         pairing.refresh_from_db()
         self.assertEqual(pairing.manual_tiebreak_value, -1.0)
-        
+
         # Test clear tiebreak
         admin.clear_manual_tiebreak(request, queryset)
         pairing.refresh_from_db()
@@ -473,41 +503,48 @@ class KnockoutErrorHandlingTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Generate bracket
-        from heltour.tournament.pairinggen import generate_knockout_bracket, create_knockout_pairings
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            create_knockout_pairings,
+        )
+
         generate_knockout_bracket(season)
-        
+
         round1 = Round.objects.get(season=season, number=1)
-        
+
         # Create pairings using dashboard functionality
         create_knockout_pairings(round1)
-        
+
         pairings = TeamPairing.objects.filter(round=round1)
-        
+
         # Create tied match without manual tiebreak
         tied_pairing = pairings.first()
         tied_pairing.white_points = 1.0
         tied_pairing.black_points = 1.0  # Tied!
         tied_pairing.manual_tiebreak_value = None  # No tiebreak!
         tied_pairing.save()
-        
+
         # Set result for other match
         other_pairing = pairings.exclude(id=tied_pairing.id).first()
         other_pairing.white_points = 2.0
         other_pairing.black_points = 0.0
         other_pairing.save()
-        
+
         # Complete round
         round1.is_completed = True
         round1.save()
-        
+
         # Advance tournament should fail
-        from heltour.tournament.pairinggen import advance_knockout_tournament, PairingGenerationException
-        
+        from heltour.tournament.pairinggen import (
+            advance_knockout_tournament,
+            PairingGenerationException,
+        )
+
         with self.assertRaises(PairingGenerationException) as context:
             advance_knockout_tournament(round1)
-        
+
         self.assertIn("requires manual tiebreak", str(context.exception))
 
     def test_invalid_bracket_size_error(self):
@@ -525,11 +562,14 @@ class KnockoutErrorHandlingTestCase(TransactionTestCase):
         )
 
         season = tournament.current_season
-        
+
         # Try to generate bracket with invalid size
-        from heltour.tournament.pairinggen import generate_knockout_bracket, PairingGenerationException
-        
+        from heltour.tournament.pairinggen import (
+            generate_knockout_bracket,
+            PairingGenerationException,
+        )
+
         with self.assertRaises(PairingGenerationException) as context:
             generate_knockout_bracket(season)
-        
+
         self.assertIn("power of 2", str(context.exception))

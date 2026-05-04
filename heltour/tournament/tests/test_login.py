@@ -10,7 +10,6 @@ from heltour.tournament.tests.testutils import (
     get_league,
     league_tag,
     league_url,
-    season_url,
     Shush,
 )
 import re
@@ -236,7 +235,6 @@ class LoginWithCodeTestCase(TestCase):
 
 
 class LoginBadTestCase(TestCase):
-
     def test_bad_response(self, *args):
         # failed logins write to the log, disable logging temporarily for nicer test output
         with Shush():

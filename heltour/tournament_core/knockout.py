@@ -67,7 +67,7 @@ def generate_knockout_seedings_traditional(
     team_ids: List[int],
 ) -> List[Tuple[int, int]]:
     """Generate knockout bracket with traditional seedings in proper bracket order.
-    
+
     Creates pairings like 1v32, 2v31, etc., but arranges them in the correct
     bracket positions so that winners flow properly through subsequent rounds.
 
@@ -81,62 +81,64 @@ def generate_knockout_seedings_traditional(
         raise ValueError(f"Team count {len(team_ids)} is not a power of 2")
 
     n = len(team_ids)
-    
+
     # Generate the traditional pairings (1v32, 2v31, etc.)
     traditional_pairings = []
     for i in range(n // 2):
         # Pair seed i+1 with seed n-i
         traditional_pairings.append((team_ids[i], team_ids[n - 1 - i]))
-    
+
     # Now arrange them in proper bracket order
     return _arrange_pairings_in_bracket_order(traditional_pairings)
 
 
-def _arrange_pairings_in_bracket_order(pairings: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+def _arrange_pairings_in_bracket_order(
+    pairings: List[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
     """Arrange pairings in proper bracket order for standard tournament flow.
-    
+
     This function takes traditional seeding pairings and arranges them so that
     the bracket flows correctly through subsequent rounds. This implements the
     standard tournament bracket structure where 1 and 2 seeds are on opposite
     halves and can only meet in the final.
-    
+
     The algorithm creates the bracket structure described as:
     - For 32 teams: 1v32 at top, then 16v17 below that, 8v25, 9v24, etc.
     - The second half starts with 2v31 and follows the same pattern
-    
+
     Args:
         pairings: List of (team1_id, team2_id) tuples from traditional seeding
-        
+
     Returns:
         List of pairings reordered for proper bracket positioning
     """
     n = len(pairings)
     if n <= 1:
         return pairings
-    
+
     # Build the bracket order using the standard tournament bracket algorithm
     # This creates the bracket positions so teams advance to meet the right opponents
-    
+
     # Create a mapping from pairing index to bracket position
     bracket_order = _calculate_bracket_order(n)
-    
+
     # Reorder the pairings according to bracket positions
     result = [None] * n
     for i, bracket_pos in enumerate(bracket_order):
         result[bracket_pos] = pairings[i]
-    
+
     return result
 
 
 def _calculate_bracket_order(num_matches: int) -> List[int]:
     """Calculate the bracket ordering for a tournament with num_matches first-round matches.
-    
+
     This creates the standard tournament bracket structure where the #1 and #2 seeds
     are positioned on opposite sides of the bracket and can only meet in the final.
-    
+
     Args:
         num_matches: Number of first-round matches (must be power of 2)
-        
+
     Returns:
         List where index i contains the bracket position for traditional pairing i
     """
@@ -144,35 +146,35 @@ def _calculate_bracket_order(num_matches: int) -> List[int]:
         return [0]
     elif num_matches == 2:
         return [0, 1]
-    
+
     # Build the bracket using the standard seeding algorithm
     # This creates the positions that ensure proper bracket flow
     bracket_positions = _build_standard_bracket_positions(num_matches)
-    
+
     # Map traditional seeding order to bracket positions
     result = [0] * num_matches
     for i in range(num_matches):
         result[i] = bracket_positions[i]
-    
+
     return result
 
 
 def _build_standard_bracket_positions(num_matches: int) -> List[int]:
     """Build the standard tournament bracket positions.
-    
+
     This implements the specific bracket ordering requested:
     1v32, 16v17, 3v30, 14v19, 5v28, 12v21, 7v26, 10v23, 2v31, 15v18, 4v29, 13v20, 6v27, 11v22, 8v25, 9v24
-    
+
     Returns a list where index i contains the bracket position for traditional pairing i.
     """
     if num_matches <= 1:
         return list(range(num_matches))
-    
+
     if num_matches == 2:
         # 4 teams: 1v4, 2v3 -> 1v4, 2v3 (keep order)
         return [0, 1]
     elif num_matches == 4:
-        # 8 teams: traditional order is 1v8, 2v7, 3v6, 4v5 
+        # 8 teams: traditional order is 1v8, 2v7, 3v6, 4v5
         # Requested bracket order: 1v8, 4v5, 3v6, 2v7
         # So pairing 0(1v8)->pos 0, pairing 1(2v7)->pos 3, pairing 2(3v6)->pos 2, pairing 3(4v5)->pos 1
         return [0, 3, 2, 1]
@@ -184,10 +186,10 @@ def _build_standard_bracket_positions(num_matches: int) -> List[int]:
         # 32 teams: the exact requested pattern
         # Traditional pairings: 1v32, 2v31, 3v30, 4v29, 5v28, 6v27, 7v26, 8v25, 9v24, 10v23, 11v22, 12v21, 13v20, 14v19, 15v18, 16v17
         # Requested order:      1v32, 16v17, 3v30, 14v19, 5v28, 12v21, 7v26, 10v23, 2v31, 15v18, 4v29, 13v20, 6v27, 11v22, 8v25, 9v24
-        
+
         # Map traditional pairing index to bracket position:
         # pairing 0 (1v32) -> position 0
-        # pairing 15 (16v17) -> position 1  
+        # pairing 15 (16v17) -> position 1
         # pairing 2 (3v30) -> position 2
         # pairing 13 (14v19) -> position 3
         # pairing 4 (5v28) -> position 4
@@ -202,21 +204,21 @@ def _build_standard_bracket_positions(num_matches: int) -> List[int]:
         # pairing 10 (11v22) -> position 13
         # pairing 7 (8v25) -> position 14
         # pairing 8 (9v24) -> position 15
-        
+
         return [0, 8, 2, 10, 4, 12, 6, 14, 15, 7, 13, 5, 11, 3, 9, 1]
-    
-    # For other sizes, use recursive construction  
+
+    # For other sizes, use recursive construction
     half = num_matches // 2
     first_half = _build_standard_bracket_positions(half)
     second_half = _build_standard_bracket_positions(half)
-    
+
     # Combine the halves with proper offset
     result = []
     for pos in first_half:
         result.append(pos)
     for pos in second_half:
         result.append(pos + half)
-    
+
     return result
 
 
@@ -454,51 +456,66 @@ def get_knockout_winner(tournament: Tournament) -> Optional[int]:
     return final_match.winner_id()
 
 
-def can_generate_next_match_set_for_tournament(tournament: Tournament, round_number: int) -> bool:
+def can_generate_next_match_set_for_tournament(
+    tournament: Tournament, round_number: int
+) -> bool:
     """Check if next match set can be generated for a tournament round.
-    
+
     This is a convenience wrapper around the multi_match module function.
     """
     # Import here to avoid circular imports
     from heltour.tournament_core.multi_match import can_generate_next_match_set
+
     return can_generate_next_match_set(tournament, round_number)
 
 
-def generate_next_match_set_for_tournament(tournament: Tournament, round_number: int) -> Tournament:
+def generate_next_match_set_for_tournament(
+    tournament: Tournament, round_number: int
+) -> Tournament:
     """Generate the next match set for a tournament round.
-    
+
     This is a convenience wrapper around the multi_match module function.
     """
     # Import here to avoid circular imports
     from heltour.tournament_core.multi_match import generate_next_match_set
+
     return generate_next_match_set(tournament, round_number)
 
 
-def calculate_multi_match_knockout_advancement(tournament: Tournament, round_number: int) -> List[int]:
+def calculate_multi_match_knockout_advancement(
+    tournament: Tournament, round_number: int
+) -> List[int]:
     """Calculate advancement from a multi-match knockout round.
-    
+
     Args:
         tournament: Tournament structure
         round_number: Round number to calculate advancement for (1-indexed)
-        
+
     Returns:
         List of advancing competitor IDs
-        
+
     Raises:
         ValueError: If round is not complete or winners can't be determined
     """
     if round_number < 1 or round_number > len(tournament.rounds):
         raise ValueError(f"Invalid round number: {round_number}")
-        
+
     round_obj = tournament.rounds[round_number - 1]
-    
+
     if tournament.matches_per_stage == 1:
         # Single match per stage - use existing logic
         return calculate_knockout_advancement(round_obj.matches, tournament.scoring)
     else:
         # Multi-match per stage - use multi-match logic
-        from heltour.tournament_core.multi_match import calculate_multi_match_winners, _get_total_pairs_in_round
+        from heltour.tournament_core.multi_match import (
+            calculate_multi_match_winners,
+            _get_total_pairs_in_round,
+        )
+
         total_pairs = _get_total_pairs_in_round(round_obj)
         return calculate_multi_match_winners(
-            round_obj.matches, total_pairs, tournament.matches_per_stage, tournament.scoring
+            round_obj.matches,
+            total_pairs,
+            tournament.matches_per_stage,
+            tournament.scoring,
         )

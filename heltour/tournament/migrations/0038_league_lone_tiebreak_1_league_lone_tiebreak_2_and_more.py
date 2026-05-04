@@ -5,65 +5,129 @@ import heltour.tournament.models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0037_set_existing_leagues_field_requirements'),
+        ("tournament", "0037_set_existing_leagues_field_requirements"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='lone_tiebreak_1',
-            field=models.CharField(blank=True, choices=[('head_to_head', 'Head-to-Head'), ('buchholz_cut1', 'Buchholz Cut-1'), ('buchholz', 'Buchholz'), ('games_won', 'Games Won'), ('games_with_black', 'Games with Black'), ('sonneborn_berger', 'Sonneborn-Berger')], default='head_to_head', help_text='First tiebreak for individual tournaments', max_length=32),
+            model_name="league",
+            name="lone_tiebreak_1",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("head_to_head", "Head-to-Head"),
+                    ("buchholz_cut1", "Buchholz Cut-1"),
+                    ("buchholz", "Buchholz"),
+                    ("games_won", "Games Won"),
+                    ("games_with_black", "Games with Black"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                ],
+                default="head_to_head",
+                help_text="First tiebreak for individual tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='lone_tiebreak_2',
-            field=models.CharField(blank=True, choices=[('head_to_head', 'Head-to-Head'), ('buchholz_cut1', 'Buchholz Cut-1'), ('buchholz', 'Buchholz'), ('games_won', 'Games Won'), ('games_with_black', 'Games with Black'), ('sonneborn_berger', 'Sonneborn-Berger')], default='buchholz_cut1', help_text='Second tiebreak for individual tournaments', max_length=32),
+            model_name="league",
+            name="lone_tiebreak_2",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("head_to_head", "Head-to-Head"),
+                    ("buchholz_cut1", "Buchholz Cut-1"),
+                    ("buchholz", "Buchholz"),
+                    ("games_won", "Games Won"),
+                    ("games_with_black", "Games with Black"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                ],
+                default="buchholz_cut1",
+                help_text="Second tiebreak for individual tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='lone_tiebreak_3',
-            field=models.CharField(blank=True, choices=[('head_to_head', 'Head-to-Head'), ('buchholz_cut1', 'Buchholz Cut-1'), ('buchholz', 'Buchholz'), ('games_won', 'Games Won'), ('games_with_black', 'Games with Black'), ('sonneborn_berger', 'Sonneborn-Berger')], default='buchholz', help_text='Third tiebreak for individual tournaments', max_length=32),
+            model_name="league",
+            name="lone_tiebreak_3",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("head_to_head", "Head-to-Head"),
+                    ("buchholz_cut1", "Buchholz Cut-1"),
+                    ("buchholz", "Buchholz"),
+                    ("games_won", "Games Won"),
+                    ("games_with_black", "Games with Black"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                ],
+                default="buchholz",
+                help_text="Third tiebreak for individual tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='lone_tiebreak_4',
-            field=models.CharField(blank=True, choices=[('head_to_head', 'Head-to-Head'), ('buchholz_cut1', 'Buchholz Cut-1'), ('buchholz', 'Buchholz'), ('games_won', 'Games Won'), ('games_with_black', 'Games with Black'), ('sonneborn_berger', 'Sonneborn-Berger')], default='games_won', help_text='Fourth tiebreak for individual tournaments', max_length=32),
+            model_name="league",
+            name="lone_tiebreak_4",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("head_to_head", "Head-to-Head"),
+                    ("buchholz_cut1", "Buchholz Cut-1"),
+                    ("buchholz", "Buchholz"),
+                    ("games_won", "Games Won"),
+                    ("games_with_black", "Games with Black"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                ],
+                default="games_won",
+                help_text="Fourth tiebreak for individual tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='lone_tiebreak_5',
-            field=models.CharField(blank=True, choices=[('head_to_head', 'Head-to-Head'), ('buchholz_cut1', 'Buchholz Cut-1'), ('buchholz', 'Buchholz'), ('games_won', 'Games Won'), ('games_with_black', 'Games with Black'), ('sonneborn_berger', 'Sonneborn-Berger')], default='games_with_black', help_text='Fifth tiebreak for individual tournaments', max_length=32),
+            model_name="league",
+            name="lone_tiebreak_5",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("head_to_head", "Head-to-Head"),
+                    ("buchholz_cut1", "Buchholz Cut-1"),
+                    ("buchholz", "Buchholz"),
+                    ("games_won", "Games Won"),
+                    ("games_with_black", "Games with Black"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                ],
+                default="games_with_black",
+                help_text="Fifth tiebreak for individual tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='buchholz',
+            model_name="loneplayerscore",
+            name="buchholz",
             field=heltour.tournament.models.ScoreField(default=0),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='buchholz_cut1',
+            model_name="loneplayerscore",
+            name="buchholz_cut1",
             field=heltour.tournament.models.ScoreField(default=0),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='games_with_black',
+            model_name="loneplayerscore",
+            name="games_with_black",
             field=models.PositiveIntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='games_won',
+            model_name="loneplayerscore",
+            name="games_won",
             field=models.PositiveIntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='head_to_head',
+            model_name="loneplayerscore",
+            name="head_to_head",
             field=heltour.tournament.models.ScoreField(default=0),
         ),
         migrations.AddField(
-            model_name='loneplayerscore',
-            name='sonneborn_berger',
+            model_name="loneplayerscore",
+            name="sonneborn_berger",
             field=heltour.tournament.models.ScoreField(default=0),
         ),
     ]

@@ -56,16 +56,23 @@ async def discovery_home_ws(ws: WebSocket) -> None:
             sent += 1
             logger.info(
                 "ws forward discovery:home client=%s seq=%s type=%s slug=%s",
-                client, sent, message.get("type"), message.get("slug"),
+                client,
+                sent,
+                message.get("type"),
+                message.get("slug"),
             )
             await ws.send_json(message)
     except WebSocketDisconnect:
         logger.info(
-            "ws disconnect discovery:home client=%s sent=%s", client, sent,
+            "ws disconnect discovery:home client=%s sent=%s",
+            client,
+            sent,
         )
     except Exception:
         logger.exception(
-            "ws error discovery:home client=%s sent=%s", client, sent,
+            "ws error discovery:home client=%s sent=%s",
+            client,
+            sent,
         )
         raise
 
@@ -88,7 +95,8 @@ async def discovery_event_ws(ws: WebSocket, slug: str) -> None:
     if season is None or not can_subscribe_event_slug(viewer, season):
         logger.info(
             "ws reject discovery:slug=%s client=%s reason=visibility",
-            slug, client,
+            slug,
+            client,
         )
         await ws.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -107,17 +115,24 @@ async def discovery_event_ws(ws: WebSocket, slug: str) -> None:
             sent += 1
             logger.info(
                 "ws forward discovery:slug=%s client=%s seq=%s type=%s",
-                slug, client, sent, message.get("type"),
+                slug,
+                client,
+                sent,
+                message.get("type"),
             )
             await ws.send_json(message)
     except WebSocketDisconnect:
         logger.info(
             "ws disconnect discovery:slug=%s client=%s sent=%s",
-            slug, client, sent,
+            slug,
+            client,
+            sent,
         )
     except Exception:
         logger.exception(
             "ws error discovery:slug=%s client=%s sent=%s",
-            slug, client, sent,
+            slug,
+            client,
+            sent,
         )
         raise

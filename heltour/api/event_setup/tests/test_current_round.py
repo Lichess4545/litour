@@ -13,10 +13,17 @@ from heltour.tournament.models import League, Round, Season
 class CurrentRoundTests(TestCase):
     def test_picks_latest_published_in_progress_round(self):
         league = League.objects.create(
-            name="CR", tag="cr", competitor_type="team", rating_type="classical",
+            name="CR",
+            tag="cr",
+            competitor_type="team",
+            rating_type="classical",
         )
         season = Season.objects.create(
-            league=league, name="S", tag="s1", rounds=3, boards=2,
+            league=league,
+            name="S",
+            tag="s1",
+            rounds=3,
+            boards=2,
         )
         rounds = list(Round.objects.filter(season=season).order_by("number"))
         rounds[0].publish_pairings = True
@@ -34,10 +41,17 @@ class CurrentRoundTests(TestCase):
 
     def test_falls_back_to_latest_completed_when_nothing_in_progress(self):
         league = League.objects.create(
-            name="CR2", tag="cr2", competitor_type="team", rating_type="classical",
+            name="CR2",
+            tag="cr2",
+            competitor_type="team",
+            rating_type="classical",
         )
         season = Season.objects.create(
-            league=league, name="S", tag="s1", rounds=2, boards=2,
+            league=league,
+            name="S",
+            tag="s1",
+            rounds=2,
+            boards=2,
         )
         rounds = list(Round.objects.filter(season=season).order_by("number"))
         for r in rounds:
@@ -56,7 +70,9 @@ class CurrentRoundTests(TestCase):
 
     def test_404_when_no_published_round(self):
         League.objects.create(
-            name="empty", tag="empty", competitor_type="team",
+            name="empty",
+            tag="empty",
+            competitor_type="team",
             rating_type="classical",
         )
         with self.assertRaises(HTTPException) as ctx:
@@ -66,10 +82,17 @@ class CurrentRoundTests(TestCase):
 
     def test_uses_constant_queries(self):
         league = League.objects.create(
-            name="cr-q", tag="crq", competitor_type="team", rating_type="classical",
+            name="cr-q",
+            tag="crq",
+            competitor_type="team",
+            rating_type="classical",
         )
         season = Season.objects.create(
-            league=league, name="S", tag="s1", rounds=2, boards=2,
+            league=league,
+            name="S",
+            tag="s1",
+            rounds=2,
+            boards=2,
         )
         rounds = list(Round.objects.filter(season=season).order_by("number"))
         for r in rounds:

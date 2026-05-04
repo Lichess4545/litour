@@ -103,11 +103,7 @@ season_urlpatterns = [
         views.PlayerProfileView.as_view(),
         name="player_profile",
     ),
-    path(
-        "team/create/",
-        views.TeamCreateView.as_view(),
-        name="team_create"
-    ),
+    path("team/create/", views.TeamCreateView.as_view(), name="team_create"),
     path(
         "team/<int:team_number>/", views.TeamProfileView.as_view(), name="team_profile"
     ),
@@ -185,14 +181,13 @@ league_urlpatterns = [
         "login/<slug:secret_token>/", views.LoginView.as_view(), name="login_with_token"
     ),
     path("logout/", views.LogoutView.as_view(), name="logout"),
-    path("active_players/",
-         views.ActivePlayerTableView.as_view(),
-         name="active_players"
+    path(
+        "active_players/", views.ActivePlayerTableView.as_view(), name="active_players"
     ),
     path(
         "active_players/<int:page>/",
         views.ActivePlayerTableView.as_view(),
-        name="active_players"
+        name="active_players",
     ),
 ]
 

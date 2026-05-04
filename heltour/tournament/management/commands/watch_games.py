@@ -185,9 +185,7 @@ def apply_event(event: dict) -> bool:
     for pairing in candidates:
         round_ = pairing.get_round()
         if round_ is None or round_.is_completed or not round_.publish_pairings:
-            logger.info(
-                "watcher: pairing %s skipped (round inactive)", pairing.pk
-            )
+            logger.info("watcher: pairing %s skipped (round inactive)", pairing.pk)
             continue
         league = round_.season.league
         existing_link = pairing.game_link
@@ -376,9 +374,7 @@ def stream_games(
                         return
                     if response.status_code == 429:
                         backoff = max(backoff, RATE_LIMIT_BACKOFF_SECONDS)
-                        logger.warning(
-                            "watcher[%s]: rate limited (429)", request_id
-                        )
+                        logger.warning("watcher[%s]: rate limited (429)", request_id)
                     else:
                         response.raise_for_status()
                         backoff = INITIAL_BACKOFF_SECONDS
@@ -404,9 +400,7 @@ def stream_games(
 
             if stop_event.is_set():
                 break
-            logger.info(
-                "watcher[%s]: reconnecting in %ss", request_id, backoff
-            )
+            logger.info("watcher[%s]: reconnecting in %ss", request_id, backoff)
             if stop_event.wait(backoff):
                 break
             backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
@@ -419,21 +413,19 @@ def stream_games(
 # Presence polling.
 
 
-def _resolve_player_context(uname: str) -> tuple[Player | None, PlayerPairing | None, object | None]:
+def _resolve_player_context(
+    uname: str,
+) -> tuple[Player | None, PlayerPairing | None, object | None]:
     """Resolve the player and best-effort active pairing/round for `uname`.
 
     Returns (player, pairing, round). Either pairing or round may be None
     when the player has no pending pairing in an active round.
     """
-    player = (
-        Player.objects.filter(lichess_username__iexact=uname).nocache().first()
-    )
+    player = Player.objects.filter(lichess_username__iexact=uname).nocache().first()
     if player is None:
         return None, None, None
     pairing = (
-        PlayerPairing.objects.filter(
-            Q(white=player) | Q(black=player), result=""
-        )
+        PlayerPairing.objects.filter(Q(white=player) | Q(black=player), result="")
         .filter(
             Q(
                 loneplayerpairing__round__is_completed=False,

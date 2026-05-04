@@ -4,20 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0045_remove_season_validation_mode'),
+        ("tournament", "0045_remove_season_validation_mode"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='registration',
-            name='validation_issues',
+            model_name="registration",
+            name="validation_issues",
             field=models.JSONField(blank=True, default=list),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='validation_status',
-            field=models.CharField(choices=[('ok', 'OK'), ('warning', 'Warning'), ('error', 'Error')], db_index=True, default='ok', max_length=10),
+            model_name="registration",
+            name="validation_status",
+            field=models.CharField(
+                choices=[("ok", "OK"), ("warning", "Warning"), ("error", "Error")],
+                db_index=True,
+                default="ok",
+                max_length=10,
+            ),
         ),
     ]

@@ -18,18 +18,18 @@ def set_existing_leagues_to_require_fields(apps, schema_editor):
     New leagues created after this migration will have these fields default to False,
     giving tournament organizers the flexibility to choose which fields to require.
     """
-    League = apps.get_model('tournament', 'League')
+    League = apps.get_model("tournament", "League")
 
     # Update all existing leagues to require the standard set of fields
     # This mimics the old require_personal_info=True and require_corporate_info=True behavior
     League.objects.all().update(
-        require_name=True,              # Was part of require_personal_info
-        require_personal_email=True,    # Was part of require_corporate_info
-        require_gender=True,            # Was part of require_personal_info
-        require_date_of_birth=True,     # Was part of require_personal_info
-        require_nationality=True,       # Was part of require_personal_info
-        require_corporate_email=True,   # Was part of require_corporate_info
-        require_contact_number=True,    # Was part of require_corporate_info
+        require_name=True,  # Was part of require_personal_info
+        require_personal_email=True,  # Was part of require_corporate_info
+        require_gender=True,  # Was part of require_personal_info
+        require_date_of_birth=True,  # Was part of require_personal_info
+        require_nationality=True,  # Was part of require_personal_info
+        require_corporate_email=True,  # Was part of require_corporate_info
+        require_contact_number=True,  # Was part of require_corporate_info
         # require_fide_id remains False (was optional before, stays optional)
         # require_regional_rating is new, defaults to False
     )
@@ -39,7 +39,7 @@ def reverse_migration(apps, schema_editor):
     """
     Reverse the migration by setting all leagues back to the new defaults (False).
     """
-    League = apps.get_model('tournament', 'League')
+    League = apps.get_model("tournament", "League")
 
     League.objects.all().update(
         require_name=False,
@@ -55,9 +55,8 @@ def reverse_migration(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0036_league_regional_rating_name_and_more'),
+        ("tournament", "0036_league_regional_rating_name_and_more"),
     ]
 
     operations = [

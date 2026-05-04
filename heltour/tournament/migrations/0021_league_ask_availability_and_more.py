@@ -4,20 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0020_league_show_provisional_warning_and_more'),
+        ("tournament", "0020_league_show_provisional_warning_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='ask_availability',
-            field=models.BooleanField(default=True, help_text='If true, ask players about their availability during registration. Default is true.'),
+            model_name="league",
+            name="ask_availability",
+            field=models.BooleanField(
+                default=True,
+                help_text="If true, ask players about their availability during registration. Default is true.",
+            ),
         ),
         migrations.AlterField(
-            model_name='registration',
-            name='has_played_20_games',
+            model_name="registration",
+            name="has_played_20_games",
             field=models.BooleanField(default=True),
         ),
     ]

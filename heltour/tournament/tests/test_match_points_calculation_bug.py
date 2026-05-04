@@ -150,15 +150,15 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp1,
             board_number=1,
-            white=self.players["Player9"],   # Swift (Anatoly)
-            black=self.players["Player1"],   # Storm (Levon)
+            white=self.players["Player9"],  # Swift (Anatoly)
+            black=self.players["Player1"],  # Storm (Levon)
             result="1/2-1/2",  # Draw
         )
         # Board 2: Colors alternate - Swift player has black - Sergey vs Jan-Krzysztof
         TeamPlayerPairing.objects.create(
             team_pairing=tp1,
             board_number=2,
-            white=self.players["Player2"],   # Storm (Jan-Krzysztof)
+            white=self.players["Player2"],  # Storm (Jan-Krzysztof)
             black=self.players["Player10"],  # Swift (Sergey)
             result="0-1",  # Swift wins (black wins)
         )
@@ -167,7 +167,7 @@ class MatchPointsCalculationTest(TestCase):
             team_pairing=tp1,
             board_number=3,
             white=self.players["Player11"],  # Swift (Anish)
-            black=self.players["Player3"],   # Storm (Alireza)
+            black=self.players["Player3"],  # Storm (Alireza)
             result="1-0",  # Swift wins
         )
         # Board 4: Swift player has black (alternation), but forfeits
@@ -175,7 +175,7 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp1,
             board_number=4,
-            white=self.players["Player4"],   # Storm (Sergey)
+            white=self.players["Player4"],  # Storm (Sergey)
             black=self.players["Player12"],  # Swift forfeits
             result="1X-0F",  # White wins by forfeit (Storm wins)
         )
@@ -200,8 +200,8 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp2,
             board_number=1,
-            white=self.players["Player5"],     # Quantum
-            black=self.players["Player17"],    # Royal
+            white=self.players["Player5"],  # Quantum
+            black=self.players["Player17"],  # Royal
             result="1-0",
         )
         # Board 2: Colors alternate - Quantum player has black
@@ -209,8 +209,8 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp2,
             board_number=2,
-            white=self.players["Player18"],    # Royal (Teimour)
-            black=self.players["Player6"],     # Quantum (Fabiano)
+            white=self.players["Player18"],  # Royal (Teimour)
+            black=self.players["Player6"],  # Quantum (Fabiano)
             result="1-0",  # Royal wins
         )
         # Board 3: Quantum player has white
@@ -218,8 +218,8 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp2,
             board_number=3,
-            white=self.players["Player7"],     # Quantum (Teimour)
-            black=self.players["Player19"],    # Royal (Anatoly)
+            white=self.players["Player7"],  # Quantum (Teimour)
+            black=self.players["Player19"],  # Royal (Anatoly)
             result="1-0",  # Quantum wins
         )
         # Board 4: Quantum wins by forfeit
@@ -227,8 +227,8 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp2,
             board_number=4,
-            white=self.players["Player20"],    # Royal forfeits
-            black=self.players["Player8"],     # Quantum (Sergey)
+            white=self.players["Player20"],  # Royal forfeits
+            black=self.players["Player8"],  # Quantum (Sergey)
             result="0F-1X",  # Quantum wins by forfeit
         )
 
@@ -251,32 +251,32 @@ class MatchPointsCalculationTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp3,
             board_number=1,
-            white=self.players["Player1"],     # Storm
-            black=self.players["Player13"],    # Thunder
+            white=self.players["Player1"],  # Storm
+            black=self.players["Player13"],  # Thunder
             result="1-0",
         )
         # Board 2: Colors alternate - Storm player has black
         TeamPlayerPairing.objects.create(
             team_pairing=tp3,
             board_number=2,
-            white=self.players["Player14"],    # Thunder
-            black=self.players["Player2"],     # Storm
+            white=self.players["Player14"],  # Thunder
+            black=self.players["Player2"],  # Storm
             result="0-1",  # Storm wins
         )
         # Board 3: Storm player has white
         TeamPlayerPairing.objects.create(
             team_pairing=tp3,
             board_number=3,
-            white=self.players["Player3"],     # Storm
-            black=self.players["Player15"],    # Thunder
+            white=self.players["Player3"],  # Storm
+            black=self.players["Player15"],  # Thunder
             result="1-0",
         )
         # Board 4: Storm player has black
         TeamPlayerPairing.objects.create(
             team_pairing=tp3,
             board_number=4,
-            white=self.players["Player16"],    # Thunder
-            black=self.players["Player4"],     # Storm
+            white=self.players["Player16"],  # Thunder
+            black=self.players["Player4"],  # Storm
             result="1-0",  # Thunder wins
         )
 
@@ -300,31 +300,31 @@ class MatchPointsCalculationTest(TestCase):
             team_pairing=tp4,
             board_number=1,
             white=self.players["Player21"],  # Fire (Vladimir)
-            black=self.players["Player5"],    # Quantum (Shakhriyar)
+            black=self.players["Player5"],  # Quantum (Shakhriyar)
             result="1-0",
         )
-        # Board 2: Fire player has black - Richárd_FireDragons beats Fabiano_QuantumLions  
+        # Board 2: Fire player has black - Richárd_FireDragons beats Fabiano_QuantumLions
         TeamPlayerPairing.objects.create(
             team_pairing=tp4,
             board_number=2,
-            white=self.players["Player6"],    # Quantum (Fabiano)
-            black=self.players["Player22"],   # Fire (Richárd)
+            white=self.players["Player6"],  # Quantum (Fabiano)
+            black=self.players["Player22"],  # Fire (Richárd)
             result="0-1",  # Fire wins (black wins)
         )
         # Board 3: Fire player has white - Sam_FireDragons draws Teimour_QuantumLions
         TeamPlayerPairing.objects.create(
             team_pairing=tp4,
             board_number=3,
-            white=self.players["Player23"],   # Fire (Sam)
-            black=self.players["Player7"],    # Quantum (Teimour)
+            white=self.players["Player23"],  # Fire (Sam)
+            black=self.players["Player7"],  # Quantum (Teimour)
             result="1/2-1/2",  # Draw
         )
         # Board 4: Fire player has black - Anish_FireDragons loses to Sergey_QuantumLions
         TeamPlayerPairing.objects.create(
             team_pairing=tp4,
             board_number=4,
-            white=self.players["Player8"],    # Quantum (Sergey)
-            black=self.players["Player24"],   # Fire (Anish)
+            white=self.players["Player8"],  # Quantum (Sergey)
+            black=self.players["Player24"],  # Fire (Anish)
             result="1-0",  # Quantum wins
         )
 
@@ -407,9 +407,9 @@ Quantum Lions:
         # Storm as black: vs Swift
         black_match = storm_black_pairings.first()
         self.assertEqual(black_match.white_team, self.swift)
-        
+
         # Check actual calculated values
-        self.assertEqual(black_match.white_points, 2.5)  
+        self.assertEqual(black_match.white_points, 2.5)
         self.assertEqual(black_match.black_points, 1.5)
 
         # Verify Quantum's matches
@@ -430,14 +430,13 @@ Quantum Lions:
         # Quantum as white: vs Royal, won 3-1
         white_match = quantum_white_pairings.first()
         self.assertEqual(white_match.black_team, self.royal)
-        
+
         self.assertEqual(white_match.white_points, 3.0)
         self.assertEqual(white_match.black_points, 1.0)
 
         # Quantum as black: vs Fire, lost 1.5-2.5
         black_match = quantum_black_pairings.first()
         self.assertEqual(black_match.white_team, self.fire)
-        
+
         self.assertEqual(black_match.white_points, 2.5)
         self.assertEqual(black_match.black_points, 1.5)
-

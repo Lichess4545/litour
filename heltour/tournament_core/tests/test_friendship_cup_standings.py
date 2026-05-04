@@ -474,13 +474,9 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
                     expected_wins
                 ).draws(expected_draws).losses(expected_losses).match_points(
                     expected_match_points
-                ).game_points(
-                    expected_game_points
-                ).tiebreak(
+                ).game_points(expected_game_points).tiebreak(
                     "eggsb", expected_eggsb
-                ).tiebreak(
-                    "buchholz", expected_buchholz
-                )
+                ).tiebreak("buchholz", expected_buchholz)
 
     def test_round1_ofh1_vs_hersonisos_forfeit_handling(self):
         """Test Round 1: ΟΦΗ 1 vs Σ.A.ΧΕΡΣΟΝΗΣΟΥ including Titos forfeit win.
@@ -880,29 +876,29 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
                 self.assertEqual(
                     actual_team,
                     expected_team,
-                    f"Rank {i+1}: expected {expected_team}, got {actual_team}",
+                    f"Rank {i + 1}: expected {expected_team}, got {actual_team}",
                 )
                 self.assertEqual(
                     actual_mp,
                     expected_mp,
-                    f"Rank {i+1} {expected_team}: expected {expected_mp} match points, got {actual_mp}",
+                    f"Rank {i + 1} {expected_team}: expected {expected_mp} match points, got {actual_mp}",
                 )
                 self.assertAlmostEqual(
                     actual_gp,
                     expected_gp,
                     places=1,
-                    msg=f"Rank {i+1} {expected_team}: expected {expected_gp} game points, got {actual_gp}",
+                    msg=f"Rank {i + 1} {expected_team}: expected {expected_gp} game points, got {actual_gp}",
                 )
                 self.assertAlmostEqual(
                     actual_eggsb,
                     expected_eggsb,
                     places=2,
-                    msg=f"Rank {i+1} {expected_team}: expected {expected_eggsb} EGGSB, got {actual_eggsb}",
+                    msg=f"Rank {i + 1} {expected_team}: expected {expected_eggsb} EGGSB, got {actual_eggsb}",
                 )
                 self.assertEqual(
                     actual_bh,
                     expected_bh,
-                    f"Rank {i+1} {expected_team}: expected {expected_bh} Buchholz, got {actual_bh}",
+                    f"Rank {i + 1} {expected_team}: expected {expected_bh} Buchholz, got {actual_bh}",
                 )
 
     def test_top_three_teams_detailed_analysis(self):
@@ -924,7 +920,6 @@ DDD SSSS sTTT NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN RRRR FFF IIIIIIIIIII BBBB/BB/BB 
             team_result = results[team_id]
 
             with self.subTest(team=team_name):
-
                 # Count actual wins/draws/losses
                 wins = sum(
                     1

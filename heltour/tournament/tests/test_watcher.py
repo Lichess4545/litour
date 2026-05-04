@@ -152,19 +152,13 @@ class TestEventMatchesLeague(TestCase):
         self.assertTrue(_event_matches_league(_build_event(), self.league))
 
     def test_clock_initial_mismatch(self):
-        self.assertFalse(
-            _event_matches_league(_build_event(initial=600), self.league)
-        )
+        self.assertFalse(_event_matches_league(_build_event(initial=600), self.league))
 
     def test_clock_increment_mismatch(self):
-        self.assertFalse(
-            _event_matches_league(_build_event(increment=0), self.league)
-        )
+        self.assertFalse(_event_matches_league(_build_event(increment=0), self.league))
 
     def test_perf_mismatch(self):
-        self.assertFalse(
-            _event_matches_league(_build_event(perf="rapid"), self.league)
-        )
+        self.assertFalse(_event_matches_league(_build_event(perf="rapid"), self.league))
 
     def test_perf_missing_passes(self):
         # Some events may omit perf; don't reject solely on missing perf.
@@ -173,9 +167,7 @@ class TestEventMatchesLeague(TestCase):
         self.assertTrue(_event_matches_league(evt, self.league))
 
     def test_unrated_rejected(self):
-        self.assertFalse(
-            _event_matches_league(_build_event(rated=False), self.league)
-        )
+        self.assertFalse(_event_matches_league(_build_event(rated=False), self.league))
 
     def test_missing_clock_rejected(self):
         evt = _build_event()
@@ -253,9 +245,7 @@ class TestApplyEvent(TestCase):
 
     def test_outoftime_with_winner_sets_result(self):
         pairing = self._new_pairing()
-        self.assertTrue(
-            apply_event(_build_event(status="outoftime", winner="black"))
-        )
+        self.assertTrue(apply_event(_build_event(status="outoftime", winner="black")))
         pairing.refresh_from_db()
         self.assertEqual(pairing.result, "0-1")
 
@@ -267,18 +257,14 @@ class TestApplyEvent(TestCase):
 
     def test_aborted_clears_matching_link(self):
         pairing = self._new_pairing(game_link="https://lichess.org/abc123")
-        self.assertTrue(
-            apply_event(_build_event(game_id="abc123", status="aborted"))
-        )
+        self.assertTrue(apply_event(_build_event(game_id="abc123", status="aborted")))
         pairing.refresh_from_db()
         self.assertEqual(pairing.game_link, "")
         self.assertEqual(pairing.tv_state, "default")
 
     def test_aborted_does_not_clear_other_link(self):
         pairing = self._new_pairing(game_link="https://lichess.org/zzz999")
-        self.assertFalse(
-            apply_event(_build_event(game_id="abc123", status="aborted"))
-        )
+        self.assertFalse(apply_event(_build_event(game_id="abc123", status="aborted")))
         pairing.refresh_from_db()
         self.assertEqual(pairing.game_link, "https://lichess.org/zzz999")
 
@@ -367,7 +353,11 @@ class TestApplyEvent(TestCase):
             self.assertTrue(
                 apply_event(
                     _build_event(
-                        initial=600, increment=5, perf="rapid", status="resign", winner="white"
+                        initial=600,
+                        increment=5,
+                        perf="rapid",
+                        status="resign",
+                        winner="white",
                     )
                 )
             )
@@ -383,6 +373,7 @@ class TestApplyEvent(TestCase):
         # even when the league config wouldn't normally validate it (e.g.,
         # mod-set link with different time control).
         from heltour.tournament.models import get_gamelink_from_gameid as gl
+
         link = gl("hardcoded")
         pairing = self._new_pairing(game_link=link)
         # Event has a clock that wouldn't match the league.
@@ -467,9 +458,7 @@ class TestApplyEvent(TestCase):
         # Bypass save() to set a non-zero count without triggering the
         # game_link-changed reset path.
         PlayerPairing.objects.filter(pk=pairing.pk).update(plies_played=2)
-        self.assertTrue(
-            apply_event(_build_event(game_id="abc123", status="aborted"))
-        )
+        self.assertTrue(apply_event(_build_event(game_id="abc123", status="aborted")))
         pairing.refresh_from_db()
         self.assertEqual(pairing.plies_played, 0)
 
@@ -491,6 +480,7 @@ class TestGetActiveUsernames(TestCase):
 
     def test_skips_inactive_season_players(self):
         from heltour.tournament.models import SeasonPlayer
+
         sp = SeasonPlayer.objects.get(player__lichess_username="Player1")
         sp.is_active = False
         sp.save()
@@ -508,6 +498,7 @@ class TestGetActiveUsernames(TestCase):
 
     def test_includes_multiple_active_seasons(self):
         from heltour.tournament.models import SeasonPlayer
+
         team_season = get_season("team")
         SeasonPlayer.objects.create(season=team_season, player=get_player("Player1"))
         usernames = get_active_usernames()
@@ -538,7 +529,9 @@ class TestStreamGames(TestCase):
         stop = self._stop()
 
         def session_factory():
-            return MagicMock(post=MagicMock(return_value=_FakeStreamResponse(["", "", ""])))
+            return MagicMock(
+                post=MagicMock(return_value=_FakeStreamResponse(["", "", ""]))
+            )
 
         sess = session_factory()
         # Stop the loop after the first iteration.
@@ -578,8 +571,9 @@ class TestStreamGames(TestCase):
         lines = [json.dumps({"id": "a"}), json.dumps({"id": "b"})]
         sess = MagicMock(post=MagicMock(return_value=_FakeStreamResponse(lines)))
 
-        with Shush(), patch.object(
-            stop, "wait", side_effect=lambda s: stop.set() or True
+        with (
+            Shush(),
+            patch.object(stop, "wait", side_effect=lambda s: stop.set() or True),
         ):
             stream_games(
                 ["alice"],
@@ -876,12 +870,15 @@ class TestWatcher(TestCase):
         watcher = Watcher(refresh_interval=0.01)
         get_users = MagicMock(return_value=[])
 
-        with patch(
-            "heltour.tournament.management.commands.watch_games.get_active_usernames",
-            get_users,
-        ), patch(
-            "heltour.tournament.management.commands.watch_games.stream_games",
-            lambda **kwargs: None,
+        with (
+            patch(
+                "heltour.tournament.management.commands.watch_games.get_active_usernames",
+                get_users,
+            ),
+            patch(
+                "heltour.tournament.management.commands.watch_games.stream_games",
+                lambda **kwargs: None,
+            ),
         ):
             t = threading.Thread(target=watcher.run, daemon=True)
             t.start()
@@ -895,9 +892,12 @@ class TestWatcher(TestCase):
         watcher = Watcher(refresh_interval=0.01)
         get_users = MagicMock(side_effect=RuntimeError("db down"))
 
-        with Shush(), patch(
-            "heltour.tournament.management.commands.watch_games.get_active_usernames",
-            get_users,
+        with (
+            Shush(),
+            patch(
+                "heltour.tournament.management.commands.watch_games.get_active_usernames",
+                get_users,
+            ),
         ):
             t = threading.Thread(target=watcher.run, daemon=True)
             t.start()
@@ -922,12 +922,15 @@ class TestWatcher(TestCase):
 
         watcher._restart_streams = counting_restart  # type: ignore[assignment]
 
-        with patch(
-            "heltour.tournament.management.commands.watch_games.get_active_usernames",
-            get_users,
-        ), patch(
-            "heltour.tournament.management.commands.watch_games.stream_games",
-            lambda **kwargs: kwargs["stop_event"].wait(),
+        with (
+            patch(
+                "heltour.tournament.management.commands.watch_games.get_active_usernames",
+                get_users,
+            ),
+            patch(
+                "heltour.tournament.management.commands.watch_games.stream_games",
+                lambda **kwargs: kwargs["stop_event"].wait(),
+            ),
         ):
             t = threading.Thread(target=watcher.run, daemon=True)
             t.start()
@@ -1004,13 +1007,9 @@ class TestPresencePoller(TestCase):
     def test_unchanged_state_writes_nothing(self):
         poller = self._make_poller(["player1"])
         for _ in range(3):
-            with self._patch_status_response(
-                [{"id": "Player1", "online": True}]
-            ):
+            with self._patch_status_response([{"id": "Player1", "online": True}]):
                 poller._poll_once()
-        self.assertEqual(
-            PlayerPresenceEvent.objects.filter(player=self.p1).count(), 1
-        )
+        self.assertEqual(PlayerPresenceEvent.objects.filter(player=self.p1).count(), 1)
 
     def test_playing_started_records_game_id(self):
         poller = self._make_poller(["player1"])
@@ -1035,9 +1034,7 @@ class TestPresencePoller(TestCase):
             [{"id": "Player1", "online": True, "playingId": "game-aaa"}]
         ):
             poller._poll_once()
-        with self._patch_status_response(
-            [{"id": "Player1", "online": True}]
-        ):
+        with self._patch_status_response([{"id": "Player1", "online": True}]):
             poller._poll_once()
         ended = PlayerPresenceEvent.objects.filter(
             player=self.p1, event_type="playing_ended"

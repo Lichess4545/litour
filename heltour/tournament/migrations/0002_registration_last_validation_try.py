@@ -5,15 +5,14 @@ import django.utils.timezone
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0001_squashed_0195'),
+        ("tournament", "0001_squashed_0195"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='registration',
-            name='last_validation_try',
+            model_name="registration",
+            name="last_validation_try",
             field=models.DateTimeField(default=django.utils.timezone.now),
         ),
     ]

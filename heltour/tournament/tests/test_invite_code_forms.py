@@ -12,7 +12,6 @@ from heltour.tournament.models import (
     RegistrationMode,
     Round,
     Season,
-    Team,
 )
 from heltour.tournament.tests.testutils import get_valid_registration_form_data
 

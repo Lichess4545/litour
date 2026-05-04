@@ -20,6 +20,7 @@
     "bundle": "esbuild src/browser.ts --bundle --format=iife --global-name=LitourApi --outfile=dist/litour-api-client.iife.js --minify --target=es2018 --sourcemap",
     "bundle:watch": "esbuild src/browser.ts --bundle --format=iife --global-name=LitourApi --outfile=../../heltour/tournament/static/tournament/js/litour-api-client.iife.js --target=es2018 --sourcemap --watch",
     "lint": "biome check src",
+    "lint:fix": "biome check --fix --unsafe src",
     "format": "biome format --write src",
     "typecheck": "tsc --noEmit"
   },

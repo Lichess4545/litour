@@ -106,6 +106,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/round_management/cockpit/{pairing_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cockpit Audit */
+        get: operations["get_cockpit_audit_v1_round_management_cockpit__pairing_id__audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/{pairing_id}/force-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Force Result */
+        post: operations["post_force_result_v1_round_management_cockpit__pairing_id__force_result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/{pairing_id}/mark-forfeit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Mark Forfeit */
+        post: operations["post_mark_forfeit_v1_round_management_cockpit__pairing_id__mark_forfeit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/cockpit/{pairing_id}/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Reschedule */
+        post: operations["post_reschedule_v1_round_management_cockpit__pairing_id__reschedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/round_management/events/{event_slug}/cockpit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cockpit */
+        get: operations["get_cockpit_v1_round_management_events__event_slug__cockpit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/rounds/{round_id}/matches": {
         parameters: {
             query?: never;
@@ -127,6 +212,140 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CockpitAttentionDTO */
+        AttentionDTO: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "none" | "watch" | "act";
+            /** Reasons */
+            reasons: ("no_schedule_near_deadline" | "scheduled_but_not_started" | "past_deadline_no_result")[];
+        };
+        /** CockpitAuditEntryDTO */
+        CockpitAuditEntryDTO: {
+            /** Actor Username */
+            actor_username: string;
+            /** After Summary */
+            after_summary: string;
+            /** Before Summary */
+            before_summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Intervention Type
+             * @enum {string}
+             */
+            intervention_type: "force_result" | "mark_forfeit" | "reschedule";
+            /** Pairing Id */
+            pairing_id: number;
+            /** Reason */
+            reason: string;
+        };
+        /** CockpitDTO */
+        CockpitDTO: {
+            /** Event Name */
+            event_name: string;
+            /** Event Tag */
+            event_tag: string;
+            /** Is Completed */
+            is_completed: boolean;
+            /** Is Team */
+            is_team: boolean;
+            /** Last Event Id */
+            last_event_id: number;
+            /** League Tag */
+            league_tag: string;
+            /** Matches */
+            matches: components["schemas"]["CockpitMatchDTO"][];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "live" | "pre_round" | "history" | "empty";
+            /** Needs You Count */
+            needs_you_count: number;
+            /** Presence Events */
+            presence_events: {
+                [key: string]: components["schemas"]["MatchPresenceDTO"];
+            };
+            /** Round Deadline */
+            round_deadline: string | null;
+            /** Round Id */
+            round_id: number;
+            /** Round Number */
+            round_number: number;
+            /** Rounds */
+            rounds: components["schemas"]["EventRoundDTO"][];
+            settings: components["schemas"]["EventSettingsDTO"];
+            /** Team Matches */
+            team_matches: components["schemas"]["TeamMatchDTO"][];
+            viewer: components["schemas"]["CockpitViewerDTO"];
+        };
+        /** CockpitMatchDTO */
+        CockpitMatchDTO: {
+            attention: components["schemas"]["AttentionDTO"];
+            /** Black Fide Name */
+            black_fide_name: string | null;
+            /** Black Gender */
+            black_gender: string | null;
+            /** Black Is Captain */
+            black_is_captain: boolean;
+            /** Black Rating */
+            black_rating: number | null;
+            /** Black Username */
+            black_username: string | null;
+            /** Board Number */
+            board_number: number | null;
+            /** Game Link */
+            game_link: string;
+            /** Id */
+            id: number;
+            /** Result */
+            result: string;
+            /** Scheduled At */
+            scheduled_at: string | null;
+            /** Team Match Id */
+            team_match_id: number | null;
+            /** Version */
+            version: number;
+            /** White Fide Name */
+            white_fide_name: string | null;
+            /** White Gender */
+            white_gender: string | null;
+            /** White Is Captain */
+            white_is_captain: boolean;
+            /** White Rating */
+            white_rating: number | null;
+            /** White Username */
+            white_username: string | null;
+        };
+        /**
+         * CockpitViewerDTO
+         * @description Cockpit-scoped viewer flags (DR per design doc ER3 field tier).
+         *
+         *     Adds the per-intervention capability flags so the UI can choose which
+         *     drawer controls to render without per-pairing roundtrips.
+         */
+        CockpitViewerDTO: {
+            /** Can Edit Pairings */
+            can_edit_pairings: boolean;
+            /** Can Force Result */
+            can_force_result: boolean;
+            /** Can Mark Forfeit */
+            can_mark_forfeit: boolean;
+            /** Can Reschedule */
+            can_reschedule: boolean;
+            /** Can View Presence Log */
+            can_view_presence_log: boolean;
+            /** Is Authenticated */
+            is_authenticated: boolean;
+        };
         /** CurrentRoundDTO */
         CurrentRoundDTO: {
             /** Event Name */
@@ -257,6 +476,12 @@ export interface components {
          * @description Header block on /v2/events/<slug>/... (card-shaped, plus richer fields).
          */
         EventHeaderDTO: {
+            /**
+             * Can Manage
+             * @description True when the viewer holds tournament.change_pairing on the league. Drives whether the event page renders a Manage-cockpit link. Always False on signal-pushed payloads (publishers fan out without a viewer).
+             * @default false
+             */
+            can_manage: boolean;
             /** Format Line */
             format_line: string;
             /** Name */
@@ -325,6 +550,21 @@ export interface components {
             /** Use Fide Information */
             use_fide_information: boolean;
         };
+        /** CockpitForceResultRequest */
+        ForceResultRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "1-0" | "0-1" | "1/2-1/2";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -334,6 +574,21 @@ export interface components {
         HealthDTO: {
             /** Ok */
             ok: boolean;
+        };
+        /** CockpitMarkForfeitRequest */
+        MarkForfeitRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Forfeit Side
+             * @enum {string}
+             */
+            forfeit_side: "white" | "black" | "double";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /**
          * MatchDTO
@@ -421,6 +676,21 @@ export interface components {
             game_id: string | null;
             /** Timestamp */
             timestamp: string;
+        };
+        /** CockpitRescheduleRequest */
+        RescheduleRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * New Scheduled At
+             * Format: date-time
+             */
+            new_scheduled_at: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** RoundMatchesDTO */
         RoundMatchesDTO: {
@@ -743,6 +1013,305 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid result code */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_cockpit_audit_v1_round_management_cockpit__pairing_id__audit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pairing_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitAuditEntryDTO"][];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_force_result_v1_round_management_cockpit__pairing_id__force_result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pairing_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForceResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitMatchDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_mark_forfeit_v1_round_management_cockpit__pairing_id__mark_forfeit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pairing_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkForfeitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitMatchDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_reschedule_v1_round_management_cockpit__pairing_id__reschedule_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pairing_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitMatchDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_cockpit_v1_round_management_events__event_slug__cockpit_get: {
+        parameters: {
+            query?: {
+                round_id?: number | null;
+            };
+            header?: never;
+            path: {
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CockpitDTO"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — viewer lacks change_pairing perm */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Optimistic-concurrency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;

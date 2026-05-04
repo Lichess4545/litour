@@ -483,14 +483,14 @@ class TeamAssignmentTestCase(TestCase):
         members = []
         for i in range(3):
             player = Player.objects.create(
-                lichess_username=f"member{i+1}", rating=2000 - (i * 100)
+                lichess_username=f"member{i + 1}", rating=2000 - (i * 100)
             )
 
             # Create unique code for each member
             code = InviteCode.objects.create(
                 league=self.league,
                 season=self.season,
-                code=f"MULTI-MEMBER-{i+1}",
+                code=f"MULTI-MEMBER-{i + 1}",
                 code_type="team_member",
                 team=team,
                 created_by_captain=captain,
@@ -500,8 +500,8 @@ class TeamAssignmentTestCase(TestCase):
             form_data = get_valid_registration_form_data()
             form_data["invite_code"] = code.code
             form_data["first_name"] = "Multi"
-            form_data["last_name"] = f"Member {i+1}"
-            form_data["corporate_email"] = f"member{i+1}@company.com"
+            form_data["last_name"] = f"Member {i + 1}"
+            form_data["corporate_email"] = f"member{i + 1}@company.com"
 
             form = RegistrationForm(data=form_data, season=self.season, player=player)
 

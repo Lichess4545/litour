@@ -5,12 +5,10 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
 
-from heltour.tournament.forms import GenerateTeamInviteCodeForm
 from heltour.tournament.models import (
     InviteCode,
     League,
     Player,
-    Registration,
     RegistrationMode,
     Round,
     Season,

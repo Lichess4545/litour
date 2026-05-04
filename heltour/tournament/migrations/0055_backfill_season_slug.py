@@ -22,7 +22,6 @@ def backfill_season_slugs(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tournament", "0054_season_slug_season_visibility"),
     ]

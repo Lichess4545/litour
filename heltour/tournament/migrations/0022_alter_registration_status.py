@@ -4,15 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0021_league_ask_availability_and_more'),
+        ("tournament", "0021_league_ask_availability_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='registration',
-            name='status',
-            field=models.CharField(choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending', max_length=255),
+            model_name="registration",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending"),
+                    ("approved", "Approved"),
+                    ("rejected", "Rejected"),
+                ],
+                default="pending",
+                max_length=255,
+            ),
         ),
     ]

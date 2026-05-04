@@ -68,6 +68,48 @@ must already exist (it does, by design).
 
 ---
 
+### Sub-in intervention (cockpit, branch: lakin/dashboard-running-tournament)
+
+**What:** Build `heltour/api/roster_formation/service.py` with a
+`swap_pairing_player(pairing_id, side, new_player_id, actor, reason)`
+function and a wrapper POST endpoint
+`POST /api/round_management/cockpit/{pairing_id}/sub-in` that
+delegates to it. The cockpit's intervention drawer adds a sub-in
+control next to the existing force-result / mark-forfeit /
+reschedule controls.
+
+**Why:** The cockpit launches with three interventions; sub-in was
+deferred during /plan-eng-review (ER5) because `roster_formation`
+has no `service.py` today and the screaming-arch-correct home for
+sub-in is in roster_formation, not cockpit. Without it, organizers
+still bounce to `/admin/` for subs — a credibility gap in the
+"cockpit eliminates tab-juggling" pitch.
+
+**Pros:** Closes the launch credibility gap. Establishes
+`roster_formation/service.py` as a module other consumers (future
+captain-side flows, admin tools) can reuse. Audit row pattern from
+CockpitAuditEntry extends naturally to sub-in.
+
+**Cons:** Net new module surface in `roster_formation`. Sub-in is
+not reversible once a result is posted on the new pairing — UI must
+confirm before commit (already noted in design doc).
+
+**Context:** Cockpit design doc
+`~/.gstack/projects/lichess4545-litour/lakin-dashboard-running-tournament-design-20260503-183528.md`,
+ER5. The cockpit's intervention permission scaffold
+(`ChangePairingPermission`, `_BaseInterventionRequest` with
+optimistic concurrency, audit logging) is the pattern to copy.
+
+**Trigger:** Pick up after the cockpit branch lands and the
+roster_formation domain is otherwise touched OR organizer feedback
+explicitly cites the sub-in tab-juggling as the next pain point.
+
+**Depends on / blocked by:** Cockpit branch must land first (so the
+intervention pattern + audit infra exists). `roster_formation/service.py`
+must be created (currently only `routes.py` and `schemas.py`).
+
+---
+
 ### Save-vs-change guards on signal publishers
 
 **What:** Add initial-vs-current value guards to the Season / Round /

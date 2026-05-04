@@ -5,24 +5,34 @@ import django_countries.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0023_registration_contact_number_and_more'),
+        ("tournament", "0023_registration_contact_number_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='team',
-            name='number_of_players',
+            model_name="team",
+            name="number_of_players",
         ),
         migrations.AddField(
-            model_name='registration',
-            name='country',
+            model_name="registration",
+            name="country",
             field=django_countries.fields.CountryField(blank=True, max_length=2),
         ),
         migrations.AlterField(
-            model_name='registration',
-            name='gender',
-            field=models.CharField(blank=True, choices=[('male', 'Male'), ('female', 'Female'), ('non-binary', 'Non-binary'), ('not-represented', 'My gender is not represented'), ('prefer-not-disclose', 'Prefer not to disclose')], max_length=50, verbose_name='Gender'),
+            model_name="registration",
+            name="gender",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("male", "Male"),
+                    ("female", "Female"),
+                    ("non-binary", "Non-binary"),
+                    ("not-represented", "My gender is not represented"),
+                    ("prefer-not-disclose", "Prefer not to disclose"),
+                ],
+                max_length=50,
+                verbose_name="Gender",
+            ),
         ),
     ]

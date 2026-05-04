@@ -5,24 +5,54 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0028_league_team_tiebreak_1_league_team_tiebreak_2_and_more'),
+        ("tournament", "0028_league_team_tiebreak_1_league_team_tiebreak_2_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TeamBye',
+            name="TeamBye",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('full-point-pairing-bye', 'Full-Point Bye (Pairing)'), ('full-point-bye', 'Full-Point Bye'), ('half-point-bye', 'Half-Point Bye'), ('zero-point-bye', 'Zero-Point Bye')], max_length=31)),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.team')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("full-point-pairing-bye", "Full-Point Bye (Pairing)"),
+                            ("full-point-bye", "Full-Point Bye"),
+                            ("half-point-bye", "Half-Point Bye"),
+                            ("zero-point-bye", "Zero-Point Bye"),
+                        ],
+                        max_length=31,
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                (
+                    "team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.team",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('round', 'team')},
+                "unique_together": {("round", "team")},
             },
         ),
     ]

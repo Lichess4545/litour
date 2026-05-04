@@ -22,6 +22,8 @@ from heltour.api.registration import routes as registration_routes
 from heltour.api.roster_formation import routes as roster_formation_routes
 from heltour.api.round_management import routes as round_management_routes
 from heltour.api.round_management import ws as round_management_ws
+from heltour.api.round_management.cockpit import routes as cockpit_routes
+from heltour.api.round_management.cockpit import ws as cockpit_ws
 from heltour.api.shared import health
 from heltour.api.standings import routes as standings_routes
 
@@ -40,11 +42,13 @@ app.include_router(health.router)
 
 # WS routers are unprefixed (matches the existing client URLs).
 app.include_router(round_management_ws.router)
+app.include_router(cockpit_ws.router)
 app.include_router(discovery_ws.router)
 
 # Per-domain v1 routers — adding a new chess domain means adding one
 # include_router line here, nothing else.
 app.include_router(round_management_routes.router, prefix="/v1")
+app.include_router(cockpit_routes.router, prefix="/v1")
 app.include_router(event_setup_routes.router, prefix="/v1")
 app.include_router(registration_routes.router, prefix="/v1")
 app.include_router(roster_formation_routes.router, prefix="/v1")

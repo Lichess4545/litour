@@ -26,6 +26,7 @@ def default_headers() -> dict[str, str]:
         ),
     }
 
+
 SYSTEM_TOKEN_CHECK_CACHE_KEY = "system_api_token_check"
 SYSTEM_TOKEN_CHECK_TTL_SECONDS = 300
 
@@ -207,10 +208,13 @@ def enumerate_user_statuses(lichess_usernames, priority=0, max_retries=5, timeou
 def enumerate_user_statuses_with_games(
     lichess_usernames, priority=0, max_retries=5, timeout=1800
 ):
-    url = "%s/lichessapi/api/users/status?withGameIds=true&priority=%s&max_retries=%s" % (
-        settings.API_WORKER_HOST,
-        priority,
-        max_retries,
+    url = (
+        "%s/lichessapi/api/users/status?withGameIds=true&priority=%s&max_retries=%s"
+        % (
+            settings.API_WORKER_HOST,
+            priority,
+            max_retries,
+        )
     )
     while len(lichess_usernames) > 0:
         batch = lichess_usernames[:40]

@@ -5,15 +5,18 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0007_merge_20250519_1709'),
+        ("tournament", "0007_merge_20250519_1709"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='player',
-            name='lichess_username',
-            field=models.CharField(max_length=255, unique=True, validators=[django.core.validators.RegexValidator('^[\\w-]+$')]),
+            model_name="player",
+            name="lichess_username",
+            field=models.CharField(
+                max_length=255,
+                unique=True,
+                validators=[django.core.validators.RegexValidator("^[\\w-]+$")],
+            ),
         ),
     ]

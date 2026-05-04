@@ -1,5 +1,4 @@
 from datetime import timedelta
-from unittest.mock import Mock
 
 from django.contrib.auth.models import User
 from django.test import TestCase, RequestFactory
@@ -10,7 +9,6 @@ from heltour.tournament.models import (
     InviteCode,
     League,
     Player,
-    Registration,
     RegistrationMode,
     Round,
     Season,
@@ -18,7 +16,6 @@ from heltour.tournament.models import (
     Team,
     TeamMember,
 )
-from heltour.tournament.workflows import ApproveRegistrationWorkflow
 from heltour.tournament.tests.testutils import Shush, get_valid_registration_form_data
 
 
@@ -103,21 +100,22 @@ class InviteCodeIntegrationTestCase(TestCase):
         # In new flow, team is NOT created automatically
         # Captain must create team manually
         from heltour.tournament.forms import TeamCreateForm
+
         team_form = TeamCreateForm(
             data={
-                'team_name': 'Team captain1',
-                'company_name': 'Company 1',
-                'company_address': '123 Main St',
-                'team_contact_email': 'team1@example.com',
-                'team_contact_number_0': 'US',
-                'team_contact_number_1': '2345678900',
+                "team_name": "Team captain1",
+                "company_name": "Company 1",
+                "company_address": "123 Main St",
+                "team_contact_email": "team1@example.com",
+                "team_contact_number_0": "US",
+                "team_contact_number_1": "2345678900",
             },
             season=self.season,
-            player=captain1
+            player=captain1,
         )
         self.assertTrue(team_form.is_valid())
         team1 = team_form.save()
-        
+
         # Now verify team 1 was created
         self.assertEqual(team1.name, "Team captain1")
         self.assertTrue(
@@ -140,18 +138,18 @@ class InviteCodeIntegrationTestCase(TestCase):
         members = []
         for i, code in enumerate(member_codes):
             member = Player.objects.create(
-                lichess_username=f"member1_{i+1}", rating=1600 + (i * 50)
+                lichess_username=f"member1_{i + 1}", rating=1600 + (i * 50)
             )
             members.append(member)
 
             form_data = get_valid_registration_form_data()
-            form_data["email"] = f"member1_{i+1}@example.com"
+            form_data["email"] = f"member1_{i + 1}@example.com"
             form_data["first_name"] = "Member"
-            form_data["last_name"] = f"{i+1}"
+            form_data["last_name"] = f"{i + 1}"
             form_data["gender"] = "female" if i % 2 == 0 else "male"
             form_data["date_of_birth"] = "1992-03-15"
             form_data["nationality"] = "CA"
-            form_data["corporate_email"] = f"member1_{i+1}@company.com"
+            form_data["corporate_email"] = f"member1_{i + 1}@company.com"
             form_data["invite_code"] = code.code
 
             form = RegistrationForm(data=form_data, season=self.season, player=member)
@@ -171,7 +169,9 @@ class InviteCodeIntegrationTestCase(TestCase):
         if team_members.count() != 4:
             print(f"Expected 4 team members, got {team_members.count()}")
             for tm in team_members:
-                print(f"  - Board {tm.board_number}: {tm.player.lichess_username} (Captain: {tm.is_captain})")
+                print(
+                    f"  - Board {tm.board_number}: {tm.player.lichess_username} (Captain: {tm.is_captain})"
+                )
         self.assertEqual(team_members.count(), 4)  # Captain + 3 members
 
         # Verify board assignments
@@ -209,21 +209,22 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         # In new flow, captain2 must also create their team manually
         from heltour.tournament.forms import TeamCreateForm
+
         team2_form = TeamCreateForm(
             data={
-                'team_name': 'Team captain2',
-                'company_name': 'Company 2',
-                'company_address': '456 Second St',
-                'team_contact_email': 'team2@example.com',
-                'team_contact_number_0': 'US',
-                'team_contact_number_1': '2345678900',
+                "team_name": "Team captain2",
+                "company_name": "Company 2",
+                "company_address": "456 Second St",
+                "team_contact_email": "team2@example.com",
+                "team_contact_number_0": "US",
+                "team_contact_number_1": "2345678900",
             },
             season=self.season,
-            player=captain2
+            player=captain2,
         )
         self.assertTrue(team2_form.is_valid())
         team2 = team2_form.save()
-        
+
         # Verify team 2 was created
         self.assertEqual(team2.name, "Team captain2")
         self.assertEqual(team2.number, 2)
@@ -287,17 +288,18 @@ class InviteCodeIntegrationTestCase(TestCase):
         # In new flow, team is NOT created automatically
         # Captain must create team manually
         from heltour.tournament.forms import TeamCreateForm
+
         team_form = TeamCreateForm(
             data={
-                'team_name': 'Team edgecaptain',
-                'company_name': 'Edge Company',
-                'company_address': '789 Edge St',
-                'team_contact_email': 'edge@example.com',
-                'team_contact_number_0': 'US',
-                'team_contact_number_1': '2345678900',
+                "team_name": "Team edgecaptain",
+                "company_name": "Edge Company",
+                "company_address": "789 Edge St",
+                "team_contact_email": "edge@example.com",
+                "team_contact_number_0": "US",
+                "team_contact_number_1": "2345678900",
             },
             season=self.season,
-            player=captain
+            player=captain,
         )
         self.assertTrue(team_form.is_valid())
         team = team_form.save()
@@ -409,7 +411,7 @@ class InviteCodeIntegrationTestCase(TestCase):
         # In new flow, team is NOT created automatically - captain must create it
         # Verify NO team exists yet
         self.assertEqual(Team.objects.filter(season=self.season).count(), 0)
-        
+
         # Verify NO TeamMember exists yet
         self.assertEqual(TeamMember.objects.filter(player=captain).count(), 0)
 
@@ -422,21 +424,22 @@ class InviteCodeIntegrationTestCase(TestCase):
 
         # Now simulate captain creating their team using TeamCreateForm
         from heltour.tournament.forms import TeamCreateForm
+
         team_form = TeamCreateForm(
             data={
-                'team_name': 'Team autocaptain',
-                'company_name': 'Test Company',
-                'company_address': '123 Test St',
-                'team_contact_email': 'team@example.com',
-                'team_contact_number_0': 'US',
-                'team_contact_number_1': '2345678900',
+                "team_name": "Team autocaptain",
+                "company_name": "Test Company",
+                "company_address": "123 Test St",
+                "team_contact_email": "team@example.com",
+                "team_contact_number_0": "US",
+                "team_contact_number_1": "2345678900",
             },
             season=self.season,
-            player=captain
+            player=captain,
         )
         self.assertTrue(team_form.is_valid())
         team = team_form.save()
-        
+
         # Now verify team was created with captain
         self.assertEqual(team.name, "Team autocaptain")
         self.assertTrue(
@@ -582,21 +585,22 @@ class InviteCodeIntegrationTestCase(TestCase):
         # In new flow, team is NOT created automatically
         # Captain must create team manually
         from heltour.tournament.forms import TeamCreateForm
+
         team_form = TeamCreateForm(
             data={
-                'team_name': f'Team {captain.lichess_username}',
-                'company_name': 'Workflow Company',
-                'company_address': '456 Test Ave',
-                'team_contact_email': 'workflow@example.com',
-                'team_contact_number_0': 'US',
-                'team_contact_number_1': '2345678900',
+                "team_name": f"Team {captain.lichess_username}",
+                "company_name": "Workflow Company",
+                "company_address": "456 Test Ave",
+                "team_contact_email": "workflow@example.com",
+                "team_contact_number_0": "US",
+                "team_contact_number_1": "2345678900",
             },
             season=self.season,
-            player=captain
+            player=captain,
         )
         self.assertTrue(team_form.is_valid())
         team = team_form.save()
-        
+
         self.assertEqual(team.name, f"Team {captain.lichess_username}")
 
         # Step 2: Captain creates invite codes for team members
@@ -606,7 +610,7 @@ class InviteCodeIntegrationTestCase(TestCase):
             code = InviteCode.objects.create(
                 league=self.league,
                 season=self.season,
-                code=f"TEAM-{team.number}-MEMBER-{i+1}",
+                code=f"TEAM-{team.number}-MEMBER-{i + 1}",
                 code_type="team_member",
                 team=team,
                 created_by_captain=captain,
@@ -622,17 +626,17 @@ class InviteCodeIntegrationTestCase(TestCase):
         members = []
         for i, code in enumerate(codes[:2]):  # Only use 2 of 3 codes
             member = Player.objects.create(
-                lichess_username=f"team_member_{i+1}", rating=1700 + i * 50
+                lichess_username=f"team_member_{i + 1}", rating=1700 + i * 50
             )
 
             form_data = get_valid_registration_form_data()
-            form_data["email"] = f"member{i+1}@example.com"
+            form_data["email"] = f"member{i + 1}@example.com"
             form_data["first_name"] = "Team"
-            form_data["last_name"] = f"Member {i+1}"
+            form_data["last_name"] = f"Member {i + 1}"
             form_data["gender"] = "female" if i == 0 else "male"
             form_data["date_of_birth"] = "1990-12-25"
             form_data["nationality"] = "JP"
-            form_data["corporate_email"] = f"member{i+1}@company.com"
+            form_data["corporate_email"] = f"member{i + 1}@company.com"
             form_data["invite_code"] = code.code
 
             form = RegistrationForm(data=form_data, season=self.season, player=member)

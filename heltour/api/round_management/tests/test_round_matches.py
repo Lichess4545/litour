@@ -29,7 +29,10 @@ _ANON = Viewer.anonymous()
 class RoundMatchesByIdTeamTests(TestCase):
     def test_returns_team_matches_and_player_matches(self):
         rnd = make_team_round(
-            league_tag="tl1", season_tag="s1", boards=2, team_count=2,
+            league_tag="tl1",
+            season_tag="s1",
+            boards=2,
+            team_count=2,
         )
         dto = round_matches_by_id_sync(rnd.pk, _ANON, None)
 
@@ -63,10 +66,17 @@ class RoundMatchesByIdTeamTests(TestCase):
 
     def test_event_rounds_lists_all_rounds_in_order(self):
         league = League.objects.create(
-            name="L", tag="l1", competitor_type="team", rating_type="classical",
+            name="L",
+            tag="l1",
+            competitor_type="team",
+            rating_type="classical",
         )
         season = Season.objects.create(
-            league=league, name="S", tag="s1", rounds=3, boards=2,
+            league=league,
+            name="S",
+            tag="s1",
+            rounds=3,
+            boards=2,
         )
         rounds = list(Round.objects.filter(season=season).order_by("number"))
         rounds[0].publish_pairings = True
@@ -79,15 +89,20 @@ class RoundMatchesByIdTeamTests(TestCase):
         self.assertEqual(len(dto.rounds), 3)
         self.assertEqual([r.round_number for r in dto.rounds], [1, 2, 3])
         self.assertEqual(
-            [r.is_published for r in dto.rounds], [True, True, False],
+            [r.is_published for r in dto.rounds],
+            [True, True, False],
         )
         self.assertEqual(
-            [r.is_completed for r in dto.rounds], [True, False, False],
+            [r.is_completed for r in dto.rounds],
+            [True, False, False],
         )
 
     def test_use_fide_information_reflects_league_flag(self):
         rnd = make_team_round(
-            league_tag="fideleague", season_tag="s1", boards=2, team_count=2,
+            league_tag="fideleague",
+            season_tag="s1",
+            boards=2,
+            team_count=2,
             show_fide_names=True,
         )
         dto = round_matches_by_id_sync(rnd.pk, _ANON, None)
@@ -102,7 +117,9 @@ class RoundMatchesByIdTeamTests(TestCase):
 class RoundMatchesByIdLoneTests(TestCase):
     def test_returns_individual_matches(self):
         rnd = make_lone_round(
-            league_tag="ll1", season_tag="ls1", pairing_count=3,
+            league_tag="ll1",
+            season_tag="ls1",
+            pairing_count=3,
         )
         dto = round_matches_by_id_sync(rnd.pk, _ANON, None)
         self.assertFalse(dto.is_team)
@@ -118,11 +135,17 @@ class RoundMatchesByIdLoneTests(TestCase):
 
     def test_handles_lone_pairing_with_missing_player(self):
         rnd = make_lone_round(
-            league_tag="ll2", season_tag="ls2", pairing_count=1,
+            league_tag="ll2",
+            season_tag="ls2",
+            pairing_count=1,
         )
         solo = Player.objects.create(lichess_username="ll2_solo")
         LonePlayerPairing.objects.create(
-            round=rnd, white=solo, black=None, pairing_order=2, result="",
+            round=rnd,
+            white=solo,
+            black=None,
+            pairing_order=2,
+            result="",
             game_link="",
         )
         dto = round_matches_by_id_sync(rnd.pk, _ANON, None)
@@ -136,7 +159,10 @@ class RoundMatchesByIdLoneTests(TestCase):
 class RoundMatchesBySlugTests(TestCase):
     def test_resolves_round_by_slug(self):
         rnd = make_team_round(
-            league_tag="slug-l", season_tag="slug-s", boards=2, team_count=2,
+            league_tag="slug-l",
+            season_tag="slug-s",
+            boards=2,
+            team_count=2,
         )
         dto = round_matches_by_slug_sync("slug-l", "slug-s", 1, _ANON, None)
         self.assertEqual(dto.round_id, rnd.pk)
@@ -163,10 +189,16 @@ class NoNPlusOneTests(TestCase):
 
     def test_team_round_query_count_is_constant_in_dataset_size(self):
         small = make_team_round(
-            league_tag="nplus_team_s", season_tag="s", boards=2, team_count=2,
+            league_tag="nplus_team_s",
+            season_tag="s",
+            boards=2,
+            team_count=2,
         )
         large = make_team_round(
-            league_tag="nplus_team_l", season_tag="l", boards=4, team_count=6,
+            league_tag="nplus_team_l",
+            season_tag="l",
+            boards=4,
+            team_count=6,
         )
 
         small_count = self._count_queries(
@@ -184,17 +216,22 @@ class NoNPlusOneTests(TestCase):
         self.assertEqual(len(large_dto.team_matches), 3)
 
         self.assertEqual(
-            small_count, large_count,
+            small_count,
+            large_count,
             f"team-round query count grew with data: {small_count} -> {large_count}",
         )
         self.assertLessEqual(small_count, 6)
 
     def test_lone_round_query_count_is_constant_in_dataset_size(self):
         small = make_lone_round(
-            league_tag="nplus_lone_s", season_tag="s", pairing_count=2,
+            league_tag="nplus_lone_s",
+            season_tag="s",
+            pairing_count=2,
         )
         large = make_lone_round(
-            league_tag="nplus_lone_l", season_tag="l", pairing_count=20,
+            league_tag="nplus_lone_l",
+            season_tag="l",
+            pairing_count=20,
         )
 
         small_count = self._count_queries(
@@ -208,7 +245,8 @@ class NoNPlusOneTests(TestCase):
         self.assertEqual(len(large_dto.matches), 20)
 
         self.assertEqual(
-            small_count, large_count,
+            small_count,
+            large_count,
             f"lone-round query count grew with data: {small_count} -> {large_count}",
         )
         self.assertLessEqual(small_count, 5)

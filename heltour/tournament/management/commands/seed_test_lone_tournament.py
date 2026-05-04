@@ -43,7 +43,9 @@ CHESS_FIRST_NAMES = [
 
 
 class Command(BaseCommand):
-    help = "Seed a test lone (individual Swiss) tournament with players ready for pairing"
+    help = (
+        "Seed a test lone (individual Swiss) tournament with players ready for pairing"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -149,9 +151,7 @@ class Command(BaseCommand):
                 ).count()
 
                 self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Created: {league_name} - {season_name}"
-                    )
+                    self.style.SUCCESS(f"Created: {league_name} - {season_name}")
                 )
                 self.stdout.write(f"  - {sp_count} season players (DB verified)")
                 self.stdout.write(f"  - {score_count} player scores (DB verified)")

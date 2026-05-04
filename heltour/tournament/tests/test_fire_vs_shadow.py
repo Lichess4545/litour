@@ -101,21 +101,43 @@ class FireVsShadowTest(TestCase):
         )
 
         # Add players to season
-        for player in [self.vladimir_fire, self.richard_fire, self.sam_fire, self.anish_fire,
-                      self.anatoly_shadow, self.richard_shadow, self.ding_shadow, self.magnus_shadow]:
+        for player in [
+            self.vladimir_fire,
+            self.richard_fire,
+            self.sam_fire,
+            self.anish_fire,
+            self.anatoly_shadow,
+            self.richard_shadow,
+            self.ding_shadow,
+            self.magnus_shadow,
+        ]:
             SeasonPlayer.objects.create(season=self.season, player=player)
 
         # Create team members for Fire Dragons
-        TeamMember.objects.create(team=self.fire, player=self.vladimir_fire, board_number=1)
-        TeamMember.objects.create(team=self.fire, player=self.richard_fire, board_number=2)
+        TeamMember.objects.create(
+            team=self.fire, player=self.vladimir_fire, board_number=1
+        )
+        TeamMember.objects.create(
+            team=self.fire, player=self.richard_fire, board_number=2
+        )
         TeamMember.objects.create(team=self.fire, player=self.sam_fire, board_number=3)
-        TeamMember.objects.create(team=self.fire, player=self.anish_fire, board_number=4)
+        TeamMember.objects.create(
+            team=self.fire, player=self.anish_fire, board_number=4
+        )
 
         # Create team members for Shadow Legends
-        TeamMember.objects.create(team=self.shadow, player=self.anatoly_shadow, board_number=1)
-        TeamMember.objects.create(team=self.shadow, player=self.richard_shadow, board_number=2)
-        TeamMember.objects.create(team=self.shadow, player=self.ding_shadow, board_number=3)
-        TeamMember.objects.create(team=self.shadow, player=self.magnus_shadow, board_number=4)
+        TeamMember.objects.create(
+            team=self.shadow, player=self.anatoly_shadow, board_number=1
+        )
+        TeamMember.objects.create(
+            team=self.shadow, player=self.richard_shadow, board_number=2
+        )
+        TeamMember.objects.create(
+            team=self.shadow, player=self.ding_shadow, board_number=3
+        )
+        TeamMember.objects.create(
+            team=self.shadow, player=self.magnus_shadow, board_number=4
+        )
 
         # Create team scores
         TeamScore.objects.create(team=self.fire)
@@ -141,7 +163,7 @@ class FireVsShadowTest(TestCase):
         # Note: Fire is WHITE team, but board alternation means:
         # - Odd boards: Fire player has white pieces
         # - Even boards: Fire player has black pieces
-        
+
         # Board 1: Fire player should have white, but data shows Shadow player with white
         # This means the pairing is already set up with alternation
         # Anatoly_ShadowLegends (white) 1-0 Vladimir_FireDragons (black)
@@ -149,7 +171,7 @@ class FireVsShadowTest(TestCase):
             team_pairing=tp,
             board_number=1,
             white=self.anatoly_shadow,  # Shadow player has white
-            black=self.vladimir_fire,   # Fire player has black
+            black=self.vladimir_fire,  # Fire player has black
             result="1-0",  # White wins = Shadow wins
         )
 
@@ -159,7 +181,7 @@ class FireVsShadowTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp,
             board_number=2,
-            white=self.richard_fire,    # Fire
+            white=self.richard_fire,  # Fire
             black=self.richard_shadow,  # Shadow
             result="1-0",  # Fire wins
         )
@@ -170,8 +192,8 @@ class FireVsShadowTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp,
             board_number=3,
-            white=self.ding_shadow,     # Shadow has white
-            black=self.sam_fire,        # Fire has black
+            white=self.ding_shadow,  # Shadow has white
+            black=self.sam_fire,  # Fire has black
             result="0-1",  # Black wins = Fire wins
         )
 
@@ -181,8 +203,8 @@ class FireVsShadowTest(TestCase):
         TeamPlayerPairing.objects.create(
             team_pairing=tp,
             board_number=4,
-            white=self.anish_fire,      # Fire
-            black=self.magnus_shadow,   # Shadow
+            white=self.anish_fire,  # Fire
+            black=self.magnus_shadow,  # Shadow
             result="1-0",  # Fire wins
         )
 
@@ -196,15 +218,13 @@ class FireVsShadowTest(TestCase):
     def test_fire_vs_shadow_scoring(self):
         """Test that Fire beats Shadow 3-1."""
         # Get the match
-        match = TeamPairing.objects.get(
-            white_team=self.fire,
-            black_team=self.shadow
-        )
-
+        match = TeamPairing.objects.get(white_team=self.fire, black_team=self.shadow)
 
         # Test Django model calculation
         self.assertEqual(match.white_points, 3.0, "Fire Dragons should have 3.0 points")
-        self.assertEqual(match.black_points, 1.0, "Shadow Legends should have 1.0 points")
+        self.assertEqual(
+            match.black_points, 1.0, "Shadow Legends should have 1.0 points"
+        )
 
         # Test tournament_core calculation
         tournament = season_to_tournament_structure(self.season)
@@ -214,9 +234,19 @@ class FireVsShadowTest(TestCase):
         shadow_result = results[self.shadow.id]
 
         # Fire should win = 2 match points
-        self.assertEqual(fire_result.match_points, 2, "Fire Dragons should have 2 match points (win)")
-        self.assertEqual(fire_result.game_points, 3.0, "Fire Dragons should have 3.0 game points")
-        
+        self.assertEqual(
+            fire_result.match_points, 2, "Fire Dragons should have 2 match points (win)"
+        )
+        self.assertEqual(
+            fire_result.game_points, 3.0, "Fire Dragons should have 3.0 game points"
+        )
+
         # Shadow should lose = 0 match points
-        self.assertEqual(shadow_result.match_points, 0, "Shadow Legends should have 0 match points (loss)")
-        self.assertEqual(shadow_result.game_points, 1.0, "Shadow Legends should have 1.0 game points")
+        self.assertEqual(
+            shadow_result.match_points,
+            0,
+            "Shadow Legends should have 0 match points (loss)",
+        )
+        self.assertEqual(
+            shadow_result.game_points, 1.0, "Shadow Legends should have 1.0 game points"
+        )

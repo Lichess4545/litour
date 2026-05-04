@@ -111,6 +111,30 @@ def run_ui(c):
         c.run("bun run dev", pty=True)
 
 
+@task
+def format(c):
+    """Auto-format Python (ruff) + TypeScript (biome) sources.
+
+    Ruff comes from devenv (`devenv.nix`); biome ships in node_modules
+    via the workspace devDependencies, so we invoke it through
+    `bun run lint:fix` which uses biome's `--fix --unsafe` to apply all
+    autofixable changes (formatter, sort-imports, simplifications).
+    Review the diff before committing.
+    """
+    api_client_dir = project_relative("frontend/api-client")
+    ui_dir = project_relative("frontend/ui")
+
+    print("\n=== ruff format (Python) ===")
+    c.run("ruff format heltour", pty=True)
+    print("\n=== ruff check --fix (Python) ===")
+    c.run("ruff check --fix heltour", warn=True, pty=True)
+
+    for label, cwd in (("api-client", api_client_dir), ("ui", ui_dir)):
+        print(f"\n=== bun run lint:fix ({label}) ===")
+        with c.cd(cwd):
+            c.run("bun run lint:fix", warn=True, pty=True)
+
+
 @task(help={"purge": "Delete all heltour tasks."})
 def celery(c, purge=False):
     """Run Celery worker for background tasks."""
@@ -548,6 +572,14 @@ def preflight(c, base_url="http://localhost:8001"):
         ("schemathesis", f"schemathesis run --experimental=openapi-3.1 --base-url={base_url} openapi.json", None),
         ("frontend install", "bun install --frozen-lockfile", frontend_dir),
         ("regenerate ts client", "bun run generate", api_client_dir),
+        # Auto-format BEFORE typecheck/lint so a stray formatting blip
+        # doesn't fail the pass — same intent as `inv format`. The
+        # generated.ts drift check below catches any unintended source
+        # changes that reach git.
+        ("format python", "ruff format heltour", None),
+        ("ruff check --fix python", "ruff check --fix heltour", None),
+        ("format api-client", "bun run lint:fix", api_client_dir),
+        ("format ui", "bun run lint:fix", ui_dir),
         ("typecheck api-client", "bun run typecheck", api_client_dir),
         ("build api-client", "bun run build", api_client_dir),
         ("bundle api-client", "bun run bundle", api_client_dir),

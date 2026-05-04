@@ -5,35 +5,82 @@ import heltour.tournament.models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0027_season_welcome_message'),
+        ("tournament", "0027_season_welcome_message"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='team_tiebreak_1',
-            field=models.CharField(choices=[('match_points', 'Match Points'), ('game_points', 'Game Points'), ('head_to_head', 'Head-to-Head'), ('games_won', 'Games Won'), ('sonneborn_berger', 'Sonneborn-Berger'), ('buchholz', 'Buchholz')], default='game_points', help_text='First tiebreak for team tournaments', max_length=32),
+            model_name="league",
+            name="team_tiebreak_1",
+            field=models.CharField(
+                choices=[
+                    ("match_points", "Match Points"),
+                    ("game_points", "Game Points"),
+                    ("head_to_head", "Head-to-Head"),
+                    ("games_won", "Games Won"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                    ("buchholz", "Buchholz"),
+                ],
+                default="game_points",
+                help_text="First tiebreak for team tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='team_tiebreak_2',
-            field=models.CharField(choices=[('match_points', 'Match Points'), ('game_points', 'Game Points'), ('head_to_head', 'Head-to-Head'), ('games_won', 'Games Won'), ('sonneborn_berger', 'Sonneborn-Berger'), ('buchholz', 'Buchholz')], default='head_to_head', help_text='Second tiebreak for team tournaments', max_length=32),
+            model_name="league",
+            name="team_tiebreak_2",
+            field=models.CharField(
+                choices=[
+                    ("match_points", "Match Points"),
+                    ("game_points", "Game Points"),
+                    ("head_to_head", "Head-to-Head"),
+                    ("games_won", "Games Won"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                    ("buchholz", "Buchholz"),
+                ],
+                default="head_to_head",
+                help_text="Second tiebreak for team tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='team_tiebreak_3',
-            field=models.CharField(choices=[('match_points', 'Match Points'), ('game_points', 'Game Points'), ('head_to_head', 'Head-to-Head'), ('games_won', 'Games Won'), ('sonneborn_berger', 'Sonneborn-Berger'), ('buchholz', 'Buchholz')], default='games_won', help_text='Third tiebreak for team tournaments', max_length=32),
+            model_name="league",
+            name="team_tiebreak_3",
+            field=models.CharField(
+                choices=[
+                    ("match_points", "Match Points"),
+                    ("game_points", "Game Points"),
+                    ("head_to_head", "Head-to-Head"),
+                    ("games_won", "Games Won"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                    ("buchholz", "Buchholz"),
+                ],
+                default="games_won",
+                help_text="Third tiebreak for team tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='league',
-            name='team_tiebreak_4',
-            field=models.CharField(choices=[('match_points', 'Match Points'), ('game_points', 'Game Points'), ('head_to_head', 'Head-to-Head'), ('games_won', 'Games Won'), ('sonneborn_berger', 'Sonneborn-Berger'), ('buchholz', 'Buchholz')], default='sonneborn_berger', help_text='Fourth tiebreak for team tournaments', max_length=32),
+            model_name="league",
+            name="team_tiebreak_4",
+            field=models.CharField(
+                choices=[
+                    ("match_points", "Match Points"),
+                    ("game_points", "Game Points"),
+                    ("head_to_head", "Head-to-Head"),
+                    ("games_won", "Games Won"),
+                    ("sonneborn_berger", "Sonneborn-Berger"),
+                    ("buchholz", "Buchholz"),
+                ],
+                default="sonneborn_berger",
+                help_text="Fourth tiebreak for team tournaments",
+                max_length=32,
+            ),
         ),
         migrations.AddField(
-            model_name='teamscore',
-            name='buchholz',
+            model_name="teamscore",
+            name="buchholz",
             field=heltour.tournament.models.ScoreField(default=0),
         ),
     ]

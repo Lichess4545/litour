@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from heltour.api.deps import in_thread
 from heltour.api.discovery.schemas import EventCardsPage, EventDetailDTO
 from heltour.api.discovery.services import get_event_with_tabs, list_events
-from heltour.api.shared.auth import Viewer, get_viewer
+from heltour.api.shared.auth import Viewer, get_viewer, get_viewer_and_user
 
 _ORG_TAG_RE = re.compile(r"^[-a-zA-Z0-9_]+$")
 
@@ -63,9 +63,16 @@ def _validate_organizer_tags(tags: list[str] | None) -> list[str] | None:
     if not tags:
         return tags
     for t in tags:
-        if not isinstance(t, str) or len(t) == 0 or len(t) > 64 or not _ORG_TAG_RE.match(t):
+        if (
+            not isinstance(t, str)
+            or len(t) == 0
+            or len(t) > 64
+            or not _ORG_TAG_RE.match(t)
+        ):
             raise HTTPException(status_code=422, detail="invalid organizer tag")
     return tags
+
+
 LimitQuery = Annotated[int, Query(ge=1, le=100)]
 OffsetQuery = Annotated[int, Query(ge=0)]
 
@@ -101,9 +108,12 @@ async def list_events_route(
 )
 async def event_detail_route(
     slug: EventSlugPath,
-    viewer: Annotated[Viewer, Depends(get_viewer)],
+    viewer_and_user: Annotated[
+        tuple[Viewer, object | None], Depends(get_viewer_and_user)
+    ],
 ) -> EventDetailDTO:
-    detail = await in_thread(get_event_with_tabs, slug, viewer)
+    viewer, user = viewer_and_user
+    detail = await in_thread(get_event_with_tabs, slug, viewer, user)
     if detail is None:
         # 404 covers both "no such slug" and "slug exists but you can't see it"
         # so visibility predicates leak no information about draft existence.

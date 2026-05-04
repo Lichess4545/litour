@@ -55,9 +55,9 @@ def build_presence_for_round(round_obj) -> dict[int, MatchPresenceDTO]:
     lone_pp_ids = list(
         LonePlayerPairing.objects.filter(round=round_obj).values_list("pk", flat=True)
     )
-    pp_qs = PlayerPairing.objects.filter(
-        pk__in=team_pp_ids + lone_pp_ids
-    ).values("pk", "white_id", "black_id", "plies_played")
+    pp_qs = PlayerPairing.objects.filter(pk__in=team_pp_ids + lone_pp_ids).values(
+        "pk", "white_id", "black_id", "plies_played"
+    )
 
     out: dict[int, MatchPresenceDTO] = {}
     for row in pp_qs:
@@ -66,12 +66,8 @@ def build_presence_for_round(round_obj) -> dict[int, MatchPresenceDTO]:
         white_id = row["white_id"]
         black_id = row["black_id"]
         out[pk] = MatchPresenceDTO(
-            white=_player_presence(
-                pk, white_id, plies, by_pair_player, online_players
-            ),
-            black=_player_presence(
-                pk, black_id, plies, by_pair_player, online_players
-            ),
+            white=_player_presence(pk, white_id, plies, by_pair_player, online_players),
+            black=_player_presence(pk, black_id, plies, by_pair_player, online_players),
         )
     return out
 

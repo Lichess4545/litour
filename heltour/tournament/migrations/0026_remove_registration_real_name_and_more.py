@@ -4,24 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0025_remove_registration_country_and_more'),
+        ("tournament", "0025_remove_registration_country_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='registration',
-            name='real_name',
+            model_name="registration",
+            name="real_name",
         ),
         migrations.AddField(
-            model_name='registration',
-            name='first_name',
-            field=models.CharField(blank=True, max_length=100, verbose_name='First Name'),
+            model_name="registration",
+            name="first_name",
+            field=models.CharField(
+                blank=True, max_length=100, verbose_name="First Name"
+            ),
         ),
         migrations.AddField(
-            model_name='registration',
-            name='last_name',
-            field=models.CharField(blank=True, max_length=100, verbose_name='Family Name'),
+            model_name="registration",
+            name="last_name",
+            field=models.CharField(
+                blank=True, max_length=100, verbose_name="Family Name"
+            ),
         ),
     ]

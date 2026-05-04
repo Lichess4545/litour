@@ -32,6 +32,7 @@ export const eventCardsPageDto = z.object({
 
 export const eventHeaderDto = eventCardDto.extend({
   registration_open: z.boolean(),
+  can_manage: z.boolean().default(false),
 });
 
 export const eventDetailDto = z.object({

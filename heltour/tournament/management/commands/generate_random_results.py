@@ -120,6 +120,7 @@ class Command(BaseCommand):
                 if is_knockout:
                     # Force refresh of all team pairing data before advancement check
                     from django.db import transaction
+
                     transaction.commit()  # Ensure all changes are committed
                     self._try_advance_knockout(target_round, season, dry_run)
             else:
@@ -200,11 +201,12 @@ class Command(BaseCommand):
                 # Multi-match knockouts allow ties and handle them at the aggregate level
                 try:
                     from heltour.tournament.models import KnockoutBracket
+
                     bracket = KnockoutBracket.objects.get(season=round_obj.season)
                     is_multi_match = bracket.matches_per_stage > 1
                 except KnockoutBracket.DoesNotExist:
                     is_multi_match = False
-                    
+
                 if is_knockout and not is_multi_match and not dry_run:
                     self._ensure_knockout_decisive_result(team_pairing, pairing_results)
 
@@ -241,7 +243,9 @@ class Command(BaseCommand):
                     winner = (
                         "White"
                         if white_points > black_points
-                        else "Black" if black_points > white_points else "TIE"
+                        else "Black"
+                        if black_points > white_points
+                        else "TIE"
                     )
                     self.stdout.write(
                         f"    → Match result: {white_points:.1f} - {black_points:.1f} ({winner} wins)"
@@ -265,17 +269,18 @@ class Command(BaseCommand):
         # Update all team pairing points for this round (not just current one)
         if not dry_run and results_generated > 0:
             self.stdout.write("Refreshing team pairing points...")
-            
+
             # For multi-match knockout tournaments, we need to aggregate scores across all matches
             # between the same team pairs before determining winners
             if is_knockout:
                 try:
                     from heltour.tournament.models import KnockoutBracket
+
                     bracket = KnockoutBracket.objects.get(season=round_obj.season)
                     is_multi_match = bracket.matches_per_stage > 1
                 except KnockoutBracket.DoesNotExist:
                     is_multi_match = False
-                
+
                 if is_multi_match:
                     self._refresh_multi_match_scores(team_pairings, round_obj)
                 else:
@@ -288,7 +293,7 @@ class Command(BaseCommand):
                 for tp in team_pairings:
                     tp.refresh_points()
                     tp.save()
-            
+
             self.stdout.write(
                 f"✓ Refreshed points for {len(team_pairings)} team pairings"
             )
@@ -299,7 +304,7 @@ class Command(BaseCommand):
         """Refresh scores for multi-match knockout tournaments by aggregating across all matches per team pair."""
         from collections import defaultdict
         from heltour.tournament.models import KnockoutBracket
-        
+
         # Get the bracket to determine matches_per_stage
         try:
             bracket = KnockoutBracket.objects.get(season=target_round.season)
@@ -309,26 +314,28 @@ class Command(BaseCommand):
                 tp.refresh_points()
                 tp.save()
             return
-        
+
         # Group pairings by team pair (using sorted team IDs as key)
         team_pair_groups = defaultdict(list)
         for tp in team_pairings:
             # Create a consistent key for team pairs regardless of white/black assignment
             team_key = tuple(sorted([tp.white_team.id, tp.black_team.id]))
             team_pair_groups[team_key].append(tp)
-        
-        self.stdout.write(f"  Processing {len(team_pair_groups)} unique team pairs across {len(team_pairings)} pairings")
-        
+
+        self.stdout.write(
+            f"  Processing {len(team_pair_groups)} unique team pairs across {len(team_pairings)} pairings"
+        )
+
         for team_key, pairings in team_pair_groups.items():
             # Calculate aggregate scores across all matches for this team pair
             team1_id, team2_id = team_key
             total_team1_points = 0.0
             total_team2_points = 0.0
-            
+
             for pairing in pairings:
                 # Refresh individual pairing points first
                 pairing.refresh_points()
-                
+
                 # Add to aggregate based on which team is which
                 if pairing.white_team.id == team1_id:
                     total_team1_points += pairing.white_points or 0.0
@@ -336,7 +343,7 @@ class Command(BaseCommand):
                 else:
                     total_team1_points += pairing.black_points or 0.0
                     total_team2_points += pairing.white_points or 0.0
-            
+
             # Determine aggregate winner
             if total_team1_points > total_team2_points:
                 aggregate_winner = team1_id
@@ -344,27 +351,37 @@ class Command(BaseCommand):
                 aggregate_winner = team2_id
             else:
                 aggregate_winner = None  # Tie
-            
+
             # Apply aggregate results to the primary pairing (lowest pairing_order)
             primary_pairing = min(pairings, key=lambda p: p.pairing_order)
-            
+
             if aggregate_winner is None:
                 # Tied - need manual tiebreak ONLY if this is the final match of the stage
                 # First, check if all matches between these teams are complete
                 all_matches_complete = all(
-                    (p.white_points is not None and p.black_points is not None) 
+                    (p.white_points is not None and p.black_points is not None)
                     for p in pairings
                 )
-                
+
                 if all_matches_complete and len(pairings) == bracket.matches_per_stage:
                     # All matches complete and tied - apply tiebreak
                     if primary_pairing.manual_tiebreak_value is None:
                         tiebreak_winner = random.choice([1.0, -1.0])
                         primary_pairing.manual_tiebreak_value = tiebreak_winner
-                        winner_name = primary_pairing.white_team.name if (
-                            (primary_pairing.white_team.id == team1_id and tiebreak_winner > 0) or
-                            (primary_pairing.black_team.id == team1_id and tiebreak_winner < 0)
-                        ) else primary_pairing.black_team.name
+                        winner_name = (
+                            primary_pairing.white_team.name
+                            if (
+                                (
+                                    primary_pairing.white_team.id == team1_id
+                                    and tiebreak_winner > 0
+                                )
+                                or (
+                                    primary_pairing.black_team.id == team1_id
+                                    and tiebreak_winner < 0
+                                )
+                            )
+                            else primary_pairing.black_team.name
+                        )
                         self.stdout.write(
                             f"  → Multi-match aggregate TIED: {primary_pairing.white_team.name} vs {primary_pairing.black_team.name} "
                             f"({total_team1_points:.1f}-{total_team2_points:.1f}) - {winner_name} wins by tiebreak"
@@ -377,14 +394,16 @@ class Command(BaseCommand):
                     )
             else:
                 # Clear winner - no tiebreak needed
-                winner_name = primary_pairing.white_team.name if (
-                    (primary_pairing.white_team.id == aggregate_winner) 
-                ) else primary_pairing.black_team.name
+                winner_name = (
+                    primary_pairing.white_team.name
+                    if (primary_pairing.white_team.id == aggregate_winner)
+                    else primary_pairing.black_team.name
+                )
                 self.stdout.write(
                     f"  → Multi-match result: {primary_pairing.white_team.name} vs {primary_pairing.black_team.name} "
                     f"({total_team1_points:.1f}-{total_team2_points:.1f}) - {winner_name} wins"
                 )
-            
+
             # Save all pairings
             for pairing in pairings:
                 pairing.save()
@@ -483,7 +502,7 @@ class Command(BaseCommand):
         """Ensure team match has a decisive result for knockout tournaments."""
         # Only apply this logic for single-match knockouts
         # Multi-match knockouts handle ties differently
-        
+
         white_points = sum(
             self._result_to_points(r["result"], True) for r in pairing_results
         )
@@ -515,7 +534,7 @@ class Command(BaseCommand):
 
     def _try_advance_knockout(self, completed_round, season, dry_run):
         """Try to advance knockout tournament to next round."""
-        from heltour.tournament.models import Round, KnockoutBracket
+        from heltour.tournament.models import KnockoutBracket
 
         # Check if this is a multi-match knockout tournament
         try:
@@ -525,7 +544,9 @@ class Command(BaseCommand):
             is_multi_match = False
 
         if is_multi_match:
-            self._try_advance_multi_match_knockout(completed_round, season, bracket, dry_run)
+            self._try_advance_multi_match_knockout(
+                completed_round, season, bracket, dry_run
+            )
         else:
             self._try_advance_single_match_knockout(completed_round, season, dry_run)
 
@@ -539,15 +560,19 @@ class Command(BaseCommand):
             round=completed_round,
             white_points__isnull=False,
             black_points__isnull=False,
-            manual_tiebreak_value__isnull=True
-        ).filter(white_points=F('black_points'))
-        
+            manual_tiebreak_value__isnull=True,
+        ).filter(white_points=F("black_points"))
+
         if tied_pairings.exists():
-            self.stdout.write(f"Found {tied_pairings.count()} tied pairings - cannot advance yet")
+            self.stdout.write(
+                f"Found {tied_pairings.count()} tied pairings - cannot advance yet"
+            )
             for pairing in tied_pairings:
-                self.stdout.write(f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (needs tiebreak)")
+                self.stdout.write(
+                    f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (needs tiebreak)"
+                )
             return None
-        
+
         # Check if round is complete and can advance
         if not completed_round.is_completed:
             # Mark round as completed
@@ -557,20 +582,26 @@ class Command(BaseCommand):
             self.stdout.write(f"✓ Round {completed_round.number} marked as completed")
 
         # Debug: Check for tied matches before advancement
-        if season.league.competitor_type == 'team':
+        if season.league.competitor_type == "team":
             tied_pairings = TeamPairing.objects.filter(
                 round=completed_round,
                 white_points__isnull=False,
                 black_points__isnull=False,
-                manual_tiebreak_value__isnull=True
-            ).filter(white_points=F('black_points'))
-            
+                manual_tiebreak_value__isnull=True,
+            ).filter(white_points=F("black_points"))
+
             if tied_pairings.exists():
-                self.stdout.write(f"DEBUG: Found {tied_pairings.count()} tied pairings:")
+                self.stdout.write(
+                    f"DEBUG: Found {tied_pairings.count()} tied pairings:"
+                )
                 for pairing in tied_pairings:
-                    self.stdout.write(f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value})")
+                    self.stdout.write(
+                        f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value})"
+                    )
             else:
-                self.stdout.write("DEBUG: No tied pairings found - should be able to advance")
+                self.stdout.write(
+                    "DEBUG: No tied pairings found - should be able to advance"
+                )
 
         # Check if there are more rounds to play
         total_rounds = Round.objects.filter(season=season).count()
@@ -632,140 +663,229 @@ class Command(BaseCommand):
                 self.style.ERROR(f"Failed to advance tournament: {str(e)}")
             )
 
-    def _try_advance_multi_match_knockout(self, completed_round, season, bracket, dry_run):
+    def _try_advance_multi_match_knockout(
+        self, completed_round, season, bracket, dry_run
+    ):
         """Try to advance multi-match knockout tournament."""
         from heltour.tournament.db_to_structure import knockout_bracket_to_structure
-        from heltour.tournament_core.multi_match import can_generate_next_match_set, generate_next_match_set
+        from heltour.tournament_core.multi_match import (
+            can_generate_next_match_set,
+        )
         from heltour.tournament.models import TeamPairing
         from django.db.models import F
-        
+
         # Debug: Check for tied matches before advancement
-        if season.league.competitor_type == 'team':
+        if season.league.competitor_type == "team":
             # Show all pairings in the round first
-            all_pairings = TeamPairing.objects.filter(round=completed_round).order_by('pairing_order')
-            self.stdout.write(f"DEBUG: All {all_pairings.count()} pairings in round {completed_round.number}:")
+            all_pairings = TeamPairing.objects.filter(round=completed_round).order_by(
+                "pairing_order"
+            )
+            self.stdout.write(
+                f"DEBUG: All {all_pairings.count()} pairings in round {completed_round.number}:"
+            )
             for pairing in all_pairings:
                 pairing.refresh_from_db()
-                self.stdout.write(f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value}) [ID: {pairing.id}, Order: {pairing.pairing_order}]")
-            
+                self.stdout.write(
+                    f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value}) [ID: {pairing.id}, Order: {pairing.pairing_order}]"
+                )
+
             # Now check specifically for tied pairings
             tied_pairings = TeamPairing.objects.filter(
                 round=completed_round,
                 white_points__isnull=False,
                 black_points__isnull=False,
-                manual_tiebreak_value__isnull=True
-            ).filter(white_points=F('black_points'))
-            
+                manual_tiebreak_value__isnull=True,
+            ).filter(white_points=F("black_points"))
+
             if tied_pairings.exists():
-                self.stdout.write(f"DEBUG: Found {tied_pairings.count()} tied pairings in multi-match:")
+                self.stdout.write(
+                    f"DEBUG: Found {tied_pairings.count()} tied pairings in multi-match:"
+                )
                 for pairing in tied_pairings:
                     pairing.refresh_from_db()  # Force refresh from database
-                    self.stdout.write(f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value}) [ID: {pairing.id}]")
+                    self.stdout.write(
+                        f"  - {pairing.white_team.name} vs {pairing.black_team.name}: {pairing.white_points}-{pairing.black_points} (tiebreak: {pairing.manual_tiebreak_value}) [ID: {pairing.id}]"
+                    )
             else:
                 self.stdout.write("DEBUG: No tied pairings found in multi-match")
-        
+
         # Convert to tournament structure to check status
         tournament = knockout_bracket_to_structure(bracket)
-        
+
         # Debug: Show tournament state
-        self.stdout.write(f"DEBUG: Tournament matches_per_stage = {tournament.matches_per_stage}")
-        self.stdout.write(f"DEBUG: Tournament current_match_number = {tournament.current_match_number}")
+        self.stdout.write(
+            f"DEBUG: Tournament matches_per_stage = {tournament.matches_per_stage}"
+        )
+        self.stdout.write(
+            f"DEBUG: Tournament current_match_number = {tournament.current_match_number}"
+        )
         if tournament.rounds:
             latest_round = tournament.rounds[completed_round.number - 1]
-            self.stdout.write(f"DEBUG: Round {completed_round.number} has {len(latest_round.matches)} matches")
-            from heltour.tournament_core.multi_match import _get_total_pairs_in_round, _get_current_match_number
+            self.stdout.write(
+                f"DEBUG: Round {completed_round.number} has {len(latest_round.matches)} matches"
+            )
+            from heltour.tournament_core.multi_match import (
+                _get_total_pairs_in_round,
+                _get_current_match_number,
+            )
+
             total_pairs = _get_total_pairs_in_round(latest_round)
             current_match = _get_current_match_number(latest_round, total_pairs)
-            self.stdout.write(f"DEBUG: Calculated total_pairs = {total_pairs}, current_match = {current_match}")
-            self.stdout.write(f"DEBUG: Expected to be able to generate next match? {current_match < tournament.matches_per_stage}")
-            
+            self.stdout.write(
+                f"DEBUG: Calculated total_pairs = {total_pairs}, current_match = {current_match}"
+            )
+            self.stdout.write(
+                f"DEBUG: Expected to be able to generate next match? {current_match < tournament.matches_per_stage}"
+            )
+
             # Show the matches in the round
-            self.stdout.write(f"DEBUG: Matches in tournament structure:")
+            self.stdout.write("DEBUG: Matches in tournament structure:")
             for i, match in enumerate(latest_round.matches):
                 completed = "completed" if len(match.games) > 0 else "pending"
-                self.stdout.write(f"  Match {i+1}: {match.competitor1_id} vs {match.competitor2_id} ({completed}, {len(match.games)} games)")
-        
+                self.stdout.write(
+                    f"  Match {i + 1}: {match.competitor1_id} vs {match.competitor2_id} ({completed}, {len(match.games)} games)"
+                )
+
         # Check if we can generate next match set for current round
         can_generate = can_generate_next_match_set(tournament, completed_round.number)
         self.stdout.write(f"DEBUG: can_generate_next_match_set = {can_generate}")
-        
+
         # Debug why can_generate is False
-        if not can_generate and tournament.rounds and completed_round.number <= len(tournament.rounds):
-            from heltour.tournament_core.multi_match import _all_teams_completed_match, _count_completed_matches_for_match_number
+        if (
+            not can_generate
+            and tournament.rounds
+            and completed_round.number <= len(tournament.rounds)
+        ):
+            from heltour.tournament_core.multi_match import (
+                _all_teams_completed_match,
+                _count_completed_matches_for_match_number,
+            )
+
             latest_round = tournament.rounds[completed_round.number - 1]
             total_pairs = _get_total_pairs_in_round(latest_round)
             current_match = _get_current_match_number(latest_round, total_pairs)
-            all_completed = _all_teams_completed_match(latest_round, current_match, total_pairs)
-            self.stdout.write(f"DEBUG: all_teams_completed_match({current_match}) = {all_completed}")
-            self.stdout.write(f"DEBUG: current_match >= matches_per_stage: {current_match} >= {tournament.matches_per_stage} = {current_match >= tournament.matches_per_stage}")
-            
+            all_completed = _all_teams_completed_match(
+                latest_round, current_match, total_pairs
+            )
+            self.stdout.write(
+                f"DEBUG: all_teams_completed_match({current_match}) = {all_completed}"
+            )
+            self.stdout.write(
+                f"DEBUG: current_match >= matches_per_stage: {current_match} >= {tournament.matches_per_stage} = {current_match >= tournament.matches_per_stage}"
+            )
+
             # Show match completion status
-            completed_count = _count_completed_matches_for_match_number(latest_round.matches, current_match, total_pairs)
-            self.stdout.write(f"DEBUG: completed matches for match {current_match}: {completed_count}/{total_pairs}")
-        
+            completed_count = _count_completed_matches_for_match_number(
+                latest_round.matches, current_match, total_pairs
+            )
+            self.stdout.write(
+                f"DEBUG: completed matches for match {current_match}: {completed_count}/{total_pairs}"
+            )
+
         if can_generate:
-            self.stdout.write(f"Match {tournament.current_match_number + 1} of {tournament.matches_per_stage} completed. Can generate next match set.")
+            self.stdout.write(
+                f"Match {tournament.current_match_number + 1} of {tournament.matches_per_stage} completed. Can generate next match set."
+            )
             if not dry_run:
                 # Use admin logic to generate next match set
                 from heltour.tournament.admin import KnockoutBracketAdmin
                 from django.contrib.admin.sites import AdminSite
-                from django.http import HttpRequest
-                
+
                 # Mock admin request
                 class MockUser:
                     def __init__(self):
                         self.is_authenticated = True
-                        
+
                 class MockRequest:
                     def __init__(self):
                         self.user = MockUser()
                         self._messages = []
-                        
+
                     def _get_messages(self):
                         return self._messages
-                
+
                 # Create admin instance and generate next match set
                 admin = KnockoutBracketAdmin(bracket.__class__, AdminSite())
                 request = MockRequest()
                 queryset = bracket.__class__.objects.filter(id=bracket.id)
-                
+
                 try:
                     admin.generate_next_match_set_action(request, queryset)
-                    self.stdout.write(self.style.SUCCESS("✓ Generated next match set for current stage"))
-                    
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            "✓ Generated next match set for current stage"
+                        )
+                    )
+
                     # Count new pairings in current round
                     if season.league.competitor_type == "team":
                         from heltour.tournament.models import TeamPairing
-                        new_pairings = TeamPairing.objects.filter(round=completed_round).count()
+
+                        new_pairings = TeamPairing.objects.filter(
+                            round=completed_round
+                        ).count()
                     else:
-                        new_pairings = LonePlayerPairing.objects.filter(round=completed_round).count()
-                    
-                    current_match = tournament.current_match_number + 1 if tournament.current_match_number < bracket.matches_per_stage else bracket.matches_per_stage
-                    self.stdout.write(f"  - Now playing match {current_match} of {bracket.matches_per_stage} for this stage")
-                    self.stdout.write(f"  - {new_pairings} total pairings in round {completed_round.number}")
-                    self.stdout.write(f"  - Use 'generate_random_results {season.id} --round-number {completed_round.number}' to continue")
-                    
+                        new_pairings = LonePlayerPairing.objects.filter(
+                            round=completed_round
+                        ).count()
+
+                    current_match = (
+                        tournament.current_match_number + 1
+                        if tournament.current_match_number < bracket.matches_per_stage
+                        else bracket.matches_per_stage
+                    )
+                    self.stdout.write(
+                        f"  - Now playing match {current_match} of {bracket.matches_per_stage} for this stage"
+                    )
+                    self.stdout.write(
+                        f"  - {new_pairings} total pairings in round {completed_round.number}"
+                    )
+                    self.stdout.write(
+                        f"  - Use 'generate_random_results {season.id} --round-number {completed_round.number}' to continue"
+                    )
+
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f"Failed to generate next match set: {str(e)}"))
+                    self.stdout.write(
+                        self.style.ERROR(f"Failed to generate next match set: {str(e)}")
+                    )
             else:
-                self.stdout.write("DRY RUN: Would generate next match set for current stage")
+                self.stdout.write(
+                    "DRY RUN: Would generate next match set for current stage"
+                )
         else:
             # Check if ALL matches for this stage are complete before advancing
             from heltour.tournament.models import TeamPairing
+
             stage_pairings = TeamPairing.objects.filter(round=completed_round)
-            stage_matches_expected = len(set(
-                tuple(sorted([p.white_team.id, p.black_team.id])) 
-                for p in stage_pairings if p.black_team
-            )) * bracket.matches_per_stage
+            stage_matches_expected = (
+                len(
+                    set(
+                        tuple(sorted([p.white_team.id, p.black_team.id]))
+                        for p in stage_pairings
+                        if p.black_team
+                    )
+                )
+                * bracket.matches_per_stage
+            )
             stage_matches_actual = stage_pairings.count()
-            
-            self.stdout.write(f"Stage status: {stage_matches_actual}/{stage_matches_expected} matches created")
-            
+
+            self.stdout.write(
+                f"Stage status: {stage_matches_actual}/{stage_matches_expected} matches created"
+            )
+
             if stage_matches_actual >= stage_matches_expected:
                 # All matches for this stage exist - check if we can advance to next round
-                self.stdout.write("All matches for this stage created. Checking if stage is complete...")
-                self._try_advance_single_match_knockout(completed_round, season, dry_run)
+                self.stdout.write(
+                    "All matches for this stage created. Checking if stage is complete..."
+                )
+                self._try_advance_single_match_knockout(
+                    completed_round, season, dry_run
+                )
             else:
                 # Still need more matches for this stage - should use dashboard to create them
-                self.stdout.write(f"Stage incomplete: {stage_matches_expected - stage_matches_actual} more matches needed.")
-                self.stdout.write("Use the dashboard 'Generate Next Match Set' button to continue.")
+                self.stdout.write(
+                    f"Stage incomplete: {stage_matches_expected - stage_matches_actual} more matches needed."
+                )
+                self.stdout.write(
+                    "Use the dashboard 'Generate Next Match Set' button to continue."
+                )

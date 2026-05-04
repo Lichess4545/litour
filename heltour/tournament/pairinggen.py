@@ -29,9 +29,7 @@ from heltour.tournament_core.knockout import (
     generate_knockout_seedings_adjacent,
     get_knockout_stage_name,
     validate_bracket_size,
-    calculate_knockout_advancement,
     generate_next_round_pairings,
-    create_knockout_tournament,
 )
 
 
@@ -389,7 +387,9 @@ class DutchTeamPairingSystem:
                         (
                             1.0
                             if p.white_points > p.black_points
-                            else 0.5 if p.white_points == p.black_points else 0
+                            else 0.5
+                            if p.white_points == p.black_points
+                            else 0
                         ),
                     )
                 if p.black_team == team:
@@ -399,7 +399,9 @@ class DutchTeamPairingSystem:
                         (
                             1.0
                             if p.black_points > p.white_points
-                            else 0.5 if p.white_points == p.black_points else 0
+                            else 0.5
+                            if p.white_points == p.black_points
+                            else 0
                         ),
                     )
             else:
@@ -573,7 +575,9 @@ def generate_trf_content(total_round_count, players):
             color = (
                 "w"
                 if pairing.color == "white"
-                else "b" if pairing.color == "black" else "-"
+                else "b"
+                if pairing.color == "black"
+                else "-"
             )
             if pairing.forfeit:
                 score = (
@@ -582,7 +586,9 @@ def generate_trf_content(total_round_count, players):
                     else (
                         "-"
                         if pairing.score == 0
-                        else "=" if pairing.score == 0.5 else " "
+                        else "="
+                        if pairing.score == 0.5
+                        else " "
                     )
                 )
             else:
@@ -592,7 +598,9 @@ def generate_trf_content(total_round_count, players):
                     else (
                         "0"
                         if pairing.score == 0
-                        else "=" if pairing.score == 0.5 else " "
+                        else "="
+                        if pairing.score == 0.5
+                        else " "
                     )
                 )
             if score == " ":
@@ -913,7 +921,7 @@ def _generate_initial_knockout_bracket(round_, bracket):
     """Generate initial knockout bracket seedings only - no pairings created."""
     # Generate seedings only, let dashboard create the actual pairings
     _generate_knockout_seedings_only(bracket)
-    
+
     # Set round knockout stage
     teams = Team.objects.filter(season=round_.season, is_active=True)
     stage_name = get_knockout_stage_name(len(teams))
@@ -925,8 +933,8 @@ def _generate_initial_knockout_bracket_lone(round_, bracket):
     """Generate initial knockout bracket seedings only - no pairings created."""
     # Generate seedings only, let dashboard create the actual pairings
     _generate_knockout_seedings_only(bracket)
-    
-    # Set round knockout stage  
+
+    # Set round knockout stage
     season_players = SeasonPlayer.objects.filter(season=round_.season, is_active=True)
     stage_name = get_knockout_stage_name(len(season_players))
     round_.knockout_stage = stage_name
@@ -1333,34 +1341,36 @@ def generate_knockout_bracket(season):
 def create_knockout_pairings(round_):
     """
     Create actual pairings for a knockout round based on existing seedings.
-    
+
     This simulates the dashboard "create missing matches" functionality.
-    
+
     Args:
         round_: Round object to create pairings for
-        
+
     Returns:
         int: Number of pairings created
-        
+
     Raises:
         PairingGenerationException: If pairing creation fails
     """
     from heltour.tournament.views import LeagueDashboardView
-    
+
     # Create a mock view instance to use the pairing creation logic
     view = LeagueDashboardView()
-    
+
     # Get the bracket
     try:
         bracket = KnockoutBracket.objects.get(season=round_.season)
     except KnockoutBracket.DoesNotExist:
         raise PairingGenerationException(f"No bracket found for season {round_.season}")
-    
+
     if round_.season.league.competitor_type == "team":
         # Check if pairings already exist
         if TeamPairing.objects.filter(round=round_).exists():
-            raise PairingGenerationException(f"Pairings already exist for round {round_.number}")
-        
+            raise PairingGenerationException(
+                f"Pairings already exist for round {round_.number}"
+            )
+
         if round_.number == 1:
             # Create initial pairings from seedings
             return view._create_initial_knockout_pairings(round_, bracket)
@@ -1370,58 +1380,60 @@ def create_knockout_pairings(round_):
     else:
         # Individual tournament logic
         if LonePlayerPairing.objects.filter(round=round_).exists():
-            raise PairingGenerationException(f"Pairings already exist for round {round_.number}")
-            
+            raise PairingGenerationException(
+                f"Pairings already exist for round {round_.number}"
+            )
+
         if round_.number == 1:
             # Create initial individual pairings from season players
             return _create_initial_individual_knockout_pairings(round_, bracket)
         else:
             # Individual tournaments advancement not implemented yet
-            raise PairingGenerationException("Individual knockout advancement not implemented yet")
+            raise PairingGenerationException(
+                "Individual knockout advancement not implemented yet"
+            )
 
 
 def _create_initial_individual_knockout_pairings(round_, bracket):
     """Create initial knockout pairings for individual tournaments."""
-    from django.db import transaction
     import reversion
-    
+
     # Get active players
     season_players = (
         SeasonPlayer.objects.filter(season=round_.season, is_active=True)
         .select_related("player")
         .order_by("id")
     )
-    
+
     players = [sp.player for sp in season_players]
-    
+
     if len(players) % 2 != 0:
-        raise PairingGenerationException(f"Cannot create pairings with odd number of players: {len(players)}")
-    
+        raise PairingGenerationException(
+            f"Cannot create pairings with odd number of players: {len(players)}"
+        )
+
     # Generate first round pairings using proper bracket ordering
-    from heltour.tournament_core.knockout import (
-        generate_knockout_seedings_traditional,
-        generate_knockout_seedings_adjacent,
-    )
-    
+
     if bracket.seeding_style == "traditional":
         pairings = generate_knockout_seedings_traditional([p.id for p in players])
     else:  # adjacent
         pairings = generate_knockout_seedings_adjacent([p.id for p in players])
-    
+
     # Set round knockout stage
     from heltour.tournament_core.knockout import get_knockout_stage_name
+
     stage_name = get_knockout_stage_name(len(players))
     round_.knockout_stage = stage_name
     round_.save()
-    
+
     # Create lone player pairings
     rank_dict = lone_player_pairing_rank_dict(round_.season)
     created_count = 0
-    
+
     for i, (player1_id, player2_id) in enumerate(pairings):
         player1 = next(p for p in players if p.id == player1_id)
         player2 = next(p for p in players if p.id == player2_id)
-        
+
         with reversion.create_revision():
             reversion.set_comment("Generated knockout bracket.")
             lone_pairing = LonePlayerPairing.objects.create(
@@ -1433,7 +1445,7 @@ def _create_initial_individual_knockout_pairings(round_, bracket):
             lone_pairing.refresh_ranks(rank_dict)
             lone_pairing.save()
             created_count += 1
-    
+
     return created_count
 
 

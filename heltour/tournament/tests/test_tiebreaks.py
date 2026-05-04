@@ -540,12 +540,12 @@ class LoneTiebreakTestCase(TestCase):
         tournament = (
             self._create_lone_tournament(rounds=2)
             .round(1)
-            .game("Alice", "Bob", "1-0")       # Alice=W, Bob=B
+            .game("Alice", "Bob", "1-0")  # Alice=W, Bob=B
             .game("Charlie", "Dave", "1/2-1/2")  # Charlie=W, Dave=B
             .complete()
             .round(2)
-            .game("Charlie", "Alice", "0-1")   # Alice=B
-            .game("Dave", "Bob", "0-1")        # Bob=B
+            .game("Charlie", "Alice", "0-1")  # Alice=B
+            .game("Dave", "Bob", "0-1")  # Bob=B
             .complete()
             .calculate()
             .build()
@@ -576,7 +576,13 @@ class LoneTiebreakTestCase(TestCase):
         # Default FIDE order
         self.assertEqual(
             league.get_lone_tiebreaks(),
-            ["head_to_head", "buchholz_cut1", "buchholz", "games_won", "games_with_black"],
+            [
+                "head_to_head",
+                "buchholz_cut1",
+                "buchholz",
+                "games_won",
+                "games_with_black",
+            ],
         )
 
         # Custom order
@@ -611,8 +617,12 @@ class LoneTiebreakTestCase(TestCase):
         tournament = (
             TournamentBuilder()
             .league(
-                "Team League", "TM", "team",
-                theme="blue", pairing_type="swiss-dutch", rating_type="classical",
+                "Team League",
+                "TM",
+                "team",
+                theme="blue",
+                pairing_type="swiss-dutch",
+                rating_type="classical",
             )
             .season("TM", "Team Season", rounds=1, boards=2)
             .team("T1", "P1", "P2")

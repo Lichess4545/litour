@@ -641,7 +641,10 @@ VISIBILITY_DRAFT = "draft"
 
 VISIBILITY_CHOICES = (
     (VISIBILITY_PUBLIC, "Public — listed on the discovery home and indexed."),
-    (VISIBILITY_UNLISTED, "Unlisted — accessible by URL, hidden from discovery, noindex."),
+    (
+        VISIBILITY_UNLISTED,
+        "Unlisted — accessible by URL, hidden from discovery, noindex.",
+    ),
     (VISIBILITY_DRAFT, "Draft — visible only to staff."),
 )
 
@@ -738,7 +741,9 @@ class Season(_BaseModel):
     validate_agreed_to_tos = models.BooleanField(default=True)
     validate_predefined_list_contains_username = models.BooleanField(default=False)
     validate_predefined_list_contains_fide_id = models.BooleanField(default=False)
-    validate_predefined_list_contains_username_fide_id_together = models.BooleanField(default=False)
+    validate_predefined_list_contains_username_fide_id_together = models.BooleanField(
+        default=False
+    )
 
     class Meta:
         unique_together = (("league", "name"), ("league", "tag"))
@@ -2009,9 +2014,7 @@ class Team(_BaseModel):
 
     # Captain-provided team information
     company_name = models.CharField(max_length=255, verbose_name="Organisation name")
-    company_address = models.TextField(
-        blank=True, verbose_name="Physical address"
-    )
+    company_address = models.TextField(blank=True, verbose_name="Physical address")
     team_contact_email = models.EmailField(
         blank=True, verbose_name="Team contact email"
     )
@@ -3317,7 +3320,10 @@ class Registration(_BaseModel):
         ("validate_account_status", _check_account_status),
         ("validate_predefined_list_contains_username", _check_predefined_list_username),
         ("validate_predefined_list_contains_fide_id", _check_predefined_list_fide_id),
-        ("validate_predefined_list_contains_username_fide_id_together", _check_predefined_list_pairing),
+        (
+            "validate_predefined_list_contains_username_fide_id_together",
+            _check_predefined_list_pairing,
+        ),
         ("validate_not_provisional", _check_not_provisional),
         ("validate_agreed_to_rules", _check_agreed_to_rules),
         ("validate_agreed_to_tos", _check_agreed_to_tos),
@@ -4437,9 +4443,7 @@ class PlayerPresenceEvent(_BaseModel):
     pairing = models.ForeignKey(
         PlayerPairing, null=True, blank=True, on_delete=models.SET_NULL
     )
-    round = models.ForeignKey(
-        Round, null=True, blank=True, on_delete=models.SET_NULL
-    )
+    round = models.ForeignKey(Round, null=True, blank=True, on_delete=models.SET_NULL)
     game_id = models.CharField(max_length=32, blank=True)
 
     class Meta:
@@ -4869,3 +4873,41 @@ class TeamMultiMatchProgress(_BaseModel):
 
     def __str__(self):
         return f"{self.team.name} vs {self.opponent_team.name} ({self.stage_name}): {self.matches_completed}/{self.total_matches_required}"
+
+
+# -------------------------------------------------------------------------------
+class CockpitAuditEntry(_BaseModel):
+    """One audit row per cockpit intervention.
+
+    Written by the cockpit endpoints in
+    `heltour/api/round_management/cockpit/` whenever an organizer forces a
+    result, marks a forfeit, or reschedules a pairing. Visible to organizers;
+    a future player-visible flag is deferred (see design doc ER6).
+    """
+
+    INTERVENTION_TYPES = (
+        ("force_result", "Force result"),
+        ("mark_forfeit", "Mark forfeit"),
+        ("reschedule", "Reschedule"),
+    )
+
+    intervention_type = models.CharField(max_length=32, choices=INTERVENTION_TYPES)
+    actor = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="cockpit_audit_entries"
+    )
+    pairing = models.ForeignKey(
+        PlayerPairing, on_delete=models.CASCADE, related_name="cockpit_audit_entries"
+    )
+    before_json = JSONField(default=dict, blank=True)
+    after_json = JSONField(default=dict, blank=True)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["actor", "-date_created"]),
+            models.Index(fields=["pairing", "-date_created"]),
+        ]
+        ordering = ["-date_created"]
+
+    def __str__(self):
+        return f"{self.intervention_type} pairing={self.pairing_id} by={self.actor_id}"

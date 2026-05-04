@@ -50,9 +50,7 @@ class TestTournamentAssertions(unittest.TestCase):
         # Wizards: Draw vs Warriors, Draw vs Dragons, Loss vs Knights = 2 pts, 2.0 game pts
         assert_tournament(tournament).team("Wizards").assert_().wins(1).losses(0).draws(
             2
-        ).match_points(4).game_points(4.0).position(
-            1
-        )  # Last place
+        ).match_points(4).game_points(4.0).position(1)  # Last place
 
         # Warriors: Draw vs Wizards, Draw vs Knights, Win vs Dragons = 4 pts, 3.5 game pts
         assert_tournament(tournament).team("Warriors").assert_().wins(1).losses(

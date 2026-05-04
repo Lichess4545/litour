@@ -136,7 +136,7 @@ class TeamTournamentSimulationTest(TestCase):
                     self.assertLess(
                         player["rating"],
                         prev_rating,
-                        f"Board {i+1} should have lower rating than board {i}",
+                        f"Board {i + 1} should have lower rating than board {i}",
                     )
 
         # Verify competitors list
@@ -331,7 +331,12 @@ class TeamTournamentSimulationTest(TestCase):
             "1/2-1/2",  # Alpha 3.5-0.5 Epsilon
         )
         self.builder.match(
-            "Delta Queens", "Zeta Kings", "1-0", "0-1", "1-0", "1-0"  # Delta 3-1 Zeta
+            "Delta Queens",
+            "Zeta Kings",
+            "1-0",
+            "0-1",
+            "1-0",
+            "1-0",  # Delta 3-1 Zeta
         )
 
         # Get final standings

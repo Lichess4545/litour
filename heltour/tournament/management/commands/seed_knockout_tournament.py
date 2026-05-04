@@ -113,7 +113,9 @@ class Command(BaseCommand):
             rounds = custom_rounds
             max_rounds = int(math.log2(teams_count))
             if rounds > max_rounds:
-                raise CommandError(f"Cannot have {rounds} rounds with {teams_count} teams (max: {max_rounds})")
+                raise CommandError(
+                    f"Cannot have {rounds} rounds with {teams_count} teams (max: {max_rounds})"
+                )
         else:
             rounds = int(math.log2(teams_count))
 
@@ -124,17 +126,25 @@ class Command(BaseCommand):
             f"  - {teams_count} {tournament_type}{'s' if tournament_type == 'team' else 's'}"
         )
         if custom_rounds:
-            remaining_teams = teams_count // (2 ** rounds)
+            remaining_teams = teams_count // (2**rounds)
             self.stdout.write(f"  - {rounds} rounds (stops at {remaining_teams} teams)")
         else:
-            self.stdout.write(f"  - {rounds} rounds ({self._get_stage_names(teams_count)})")
+            self.stdout.write(
+                f"  - {rounds} rounds ({self._get_stage_names(teams_count)})"
+            )
         self.stdout.write(f"  - {seeding_style.title()} seeding")
         self.stdout.write(
             f"  - {games_per_match} game{'s' if games_per_match > 1 else ''} per match"
         )
         if matches_per_stage > 1:
-            match_type = "Return matches" if matches_per_stage == 2 else f"Best of {matches_per_stage}"
-            self.stdout.write(f"  - {match_type} ({matches_per_stage} matches per stage)")
+            match_type = (
+                "Return matches"
+                if matches_per_stage == 2
+                else f"Best of {matches_per_stage}"
+            )
+            self.stdout.write(
+                f"  - {match_type} ({matches_per_stage} matches per stage)"
+            )
         else:
             self.stdout.write("  - Single elimination")
         if tournament_type == "team":
@@ -147,9 +157,11 @@ class Command(BaseCommand):
 
                 # Create league and season with knockout configuration
                 competitor_type = "team" if tournament_type == "team" else "lone"
-                
+
                 # Choose pairing type based on matches per stage
-                pairing_type = "knockout-multi" if matches_per_stage > 1 else "knockout-single"
+                pairing_type = (
+                    "knockout-multi" if matches_per_stage > 1 else "knockout-single"
+                )
 
                 # Generate league tag from league name
                 league_tag = league_name.upper().replace(" ", "").replace("-", "")[:20]
@@ -176,9 +188,9 @@ class Command(BaseCommand):
                 )
 
                 builder.knockout_format(
-                    seeding_style=seeding_style, 
+                    seeding_style=seeding_style,
                     games_per_match=games_per_match,
-                    matches_per_stage=matches_per_stage
+                    matches_per_stage=matches_per_stage,
                 )
 
                 season_kwargs = {
@@ -214,12 +226,18 @@ class Command(BaseCommand):
                     try:
                         bracket = generate_knockout_bracket(season)
                         self.stdout.write(
-                            self.style.SUCCESS("✓ Knockout bracket and first round pairings generated")
+                            self.style.SUCCESS(
+                                "✓ Knockout bracket and first round pairings generated"
+                            )
                         )
                         self.stdout.write(f"  - Bracket size: {bracket.bracket_size}")
                         self.stdout.write(f"  - Seeding style: {bracket.seeding_style}")
-                        self.stdout.write(f"  - Matches per stage: {bracket.matches_per_stage}")
-                        self.stdout.write("  - First round match pairings created and ready to play")
+                        self.stdout.write(
+                            f"  - Matches per stage: {bracket.matches_per_stage}"
+                        )
+                        self.stdout.write(
+                            "  - First round match pairings created and ready to play"
+                        )
 
                     except Exception as e:
                         self.stdout.write(
@@ -267,10 +285,10 @@ class Command(BaseCommand):
                     )
                 else:
                     self.stdout.write(
-                        f"\nUse '--generate-bracket' to create knockout bracket"
+                        "\nUse '--generate-bracket' to create knockout bracket"
                     )
                     self.stdout.write(
-                        f"Or use admin interface to generate bracket manually"
+                        "Or use admin interface to generate bracket manually"
                     )
 
         except Exception as e:
@@ -483,7 +501,7 @@ class KnockoutTeamGenerator:
             # Use strong names with team suffix
             base_name = strong_names[i % len(strong_names)]
             team_suffix = team_name.replace(" ", "").replace("'", "")[:8]
-            player_name = f"{base_name}_{team_suffix}_{i+1}"
+            player_name = f"{base_name}_{team_suffix}_{i + 1}"
 
             # Generate competitive ratings for knockout (higher than swiss)
             # Board 1 gets highest rating, board 4 gets lowest
@@ -584,4 +602,3 @@ class KnockoutPlayerGenerator:
         rating = max(1400, min(2500, base_rating + variance))
 
         return unique_name, rating
-

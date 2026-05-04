@@ -169,7 +169,7 @@ class TeamByeHandlingTest(TestCase):
 
         # Add 7 teams
         for i in range(7):
-            team_name = f"Team {i+1}"
+            team_name = f"Team {i + 1}"
             player1 = (f"{team_name}_P1", 2000 - i * 30)
             player2 = (f"{team_name}_P2", 1980 - i * 30)
             builder.team(team_name, player1, player2)

@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0038_league_lone_tiebreak_1_league_lone_tiebreak_2_and_more'),
+        ("tournament", "0038_league_lone_tiebreak_1_league_lone_tiebreak_2_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='league',
-            name='skip_slack_invites',
-            field=models.BooleanField(default=True, help_text='Skip sending Slack workspace invites when approving registrations'),
+            model_name="league",
+            name="skip_slack_invites",
+            field=models.BooleanField(
+                default=True,
+                help_text="Skip sending Slack workspace invites when approving registrations",
+            ),
         ),
     ]

@@ -20,8 +20,9 @@ import logging
 
 import redis
 from django.conf import settings
+from django.contrib.auth.models import Group, User
 from django.db import transaction
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -177,11 +178,7 @@ def _annotated_season(season):
     from heltour.api.discovery.permissions import visible_queryset
     from heltour.api.shared.auth import Viewer
 
-    return (
-        visible_queryset(Viewer.anonymous())
-        .filter(pk=season.pk)
-        .first()
-    )
+    return visible_queryset(Viewer.anonymous()).filter(pk=season.pk).first()
 
 
 def _discovery_publish_card(season) -> None:
@@ -367,3 +364,117 @@ def _discovery_connect():
 
 
 _discovery_connect()
+
+
+# ---------- Permission-revoke fan-out (cockpit + future sensitive sockets) -----
+#
+# Channel: ``permissions:user:{user_id}``
+# Envelope: {"type": "permission_changed", "scope": "user"|"group", "user_id": int}
+#
+# Sensitive WS handlers (today: cockpit) subscribe to this user-scoped
+# channel and close the connection on receipt. The client re-handshakes,
+# which re-evaluates the underlying permission via ``can_change_pairing_sync``.
+#
+# Hooks enumerated in design doc ER13. Launch coverage:
+#  - User.is_active / is_staff / is_superuser change          (post_save)
+#  - User.user_permissions M2M change                          (m2m_changed)
+#  - User.groups M2M change                                    (m2m_changed)
+#  - Group.permissions M2M change                              (m2m_changed)
+#
+# Deferred (no current signal source in this codebase):
+#  - django-guardian per-object permissions (not installed)
+#  - Per-league moderator M2M (no such relation exists today)
+#  - Session deletion (would benefit from a custom log-out hook later)
+
+
+def _publish_user_permission_changed(user_id: int, scope: str) -> None:
+    if not user_id:
+        return
+    _publish(
+        f"permissions:user:{user_id}",
+        {
+            "type": "permission_changed",
+            "scope": scope,
+            "user_id": int(user_id),
+        },
+    )
+
+
+def _publish_group_permission_changed(group_id: int) -> None:
+    """Fan-out to every user in the group.
+
+    A change to a group's permissions invalidates every member's effective
+    perms. We publish per-user so subscribers can match on a stable
+    user-scoped channel pattern.
+    """
+    try:
+        member_ids = list(
+            User.objects.filter(groups__id=group_id, is_active=True).values_list(
+                "id", flat=True
+            )
+        )
+    except Exception:
+        logger.exception(
+            "permissions: failed to enumerate group members id=%s", group_id
+        )
+        return
+    for uid in member_ids:
+        _publish_user_permission_changed(uid, scope="group")
+
+
+def _connect_permissions():
+    @receiver(post_save, sender=User, dispatch_uid="permissions_user_post_save")
+    def _user_saved(sender, instance, created, **kwargs):
+        # Only the flags that affect change_pairing matter; bail early on
+        # an irrelevant save (e.g. last-login update) to keep the channel
+        # quiet at scale.
+        if created:
+            return
+        prior_active = getattr(instance, "_perm_initial_is_active", instance.is_active)
+        prior_staff = getattr(instance, "_perm_initial_is_staff", instance.is_staff)
+        prior_super = getattr(
+            instance, "_perm_initial_is_superuser", instance.is_superuser
+        )
+        changed = (
+            instance.is_active != prior_active
+            or instance.is_staff != prior_staff
+            or instance.is_superuser != prior_super
+        )
+        instance._perm_initial_is_active = instance.is_active
+        instance._perm_initial_is_staff = instance.is_staff
+        instance._perm_initial_is_superuser = instance.is_superuser
+        if changed:
+            _on_commit(lambda: _publish_user_permission_changed(instance.pk, "user"))
+
+    @receiver(
+        m2m_changed,
+        sender=User.user_permissions.through,
+        dispatch_uid="permissions_user_perms_m2m",
+    )
+    def _user_perms_changed(sender, instance, action, **kwargs):
+        if action not in ("post_add", "post_remove", "post_clear"):
+            return
+        _on_commit(lambda: _publish_user_permission_changed(instance.pk, "user"))
+
+    @receiver(
+        m2m_changed,
+        sender=User.groups.through,
+        dispatch_uid="permissions_user_groups_m2m",
+    )
+    def _user_groups_changed(sender, instance, action, **kwargs):
+        if action not in ("post_add", "post_remove", "post_clear"):
+            return
+        _on_commit(lambda: _publish_user_permission_changed(instance.pk, "user"))
+
+    @receiver(
+        m2m_changed,
+        sender=Group.permissions.through,
+        dispatch_uid="permissions_group_perms_m2m",
+    )
+    def _group_perms_changed(sender, instance, action, **kwargs):
+        if action not in ("post_add", "post_remove", "post_clear"):
+            return
+        _on_commit(lambda: _publish_group_permission_changed(instance.pk))
+
+
+_connect_permissions()

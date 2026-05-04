@@ -4,12 +4,10 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0002_registration_last_validation_try'),
-        ('tournament', '0002_round_team_ordering'),
-        ('tournament', '0002_season_ordering'),
+        ("tournament", "0002_registration_last_validation_try"),
+        ("tournament", "0002_round_team_ordering"),
+        ("tournament", "0002_season_ordering"),
     ]
 
-    operations = [
-    ]
+    operations = []

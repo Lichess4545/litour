@@ -2,7 +2,7 @@
 Tests for TRF16 export from Django ORM models.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -56,9 +56,7 @@ class TestTeamSeasonExport(TestCase):
             cls.players.append(p)
 
         # Create teams
-        cls.team1 = Team.objects.create(
-            season=cls.season, number=1, name="Dragons"
-        )
+        cls.team1 = Team.objects.create(season=cls.season, number=1, name="Dragons")
         TeamScore.objects.create(team=cls.team1)
         TeamMember.objects.create(
             team=cls.team1, player=cls.players[0], board_number=1, player_rating=1950
@@ -67,9 +65,7 @@ class TestTeamSeasonExport(TestCase):
             team=cls.team1, player=cls.players[1], board_number=2, player_rating=1900
         )
 
-        cls.team2 = Team.objects.create(
-            season=cls.season, number=2, name="Knights"
-        )
+        cls.team2 = Team.objects.create(season=cls.season, number=2, name="Knights")
         TeamScore.objects.create(team=cls.team2)
         TeamMember.objects.create(
             team=cls.team2, player=cls.players[2], board_number=1, player_rating=1850
@@ -314,9 +310,7 @@ class TestExportForfeits(TestCase):
             r = ratings[p]
             p.profile = {"perfs": {"classical": {"rating": r}}}
             p.save()
-            sp = SeasonPlayer.objects.create(
-                season=cls.season, player=p, seed_rating=r
-            )
+            sp = SeasonPlayer.objects.create(season=cls.season, player=p, seed_rating=r)
             LonePlayerScore.objects.create(season_player=sp)
 
         round1 = Round.objects.get(season=cls.season, number=1)

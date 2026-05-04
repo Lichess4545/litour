@@ -153,9 +153,7 @@ class RegistrationForm(forms.ModelForm):
         if league.require_corporate_email:
             self.fields["corporate_email"].required = True
             label = league.organisation_label or "Organisation"
-            self.fields["corporate_email"].label = _(
-                f"{label} Email Address"
-            )
+            self.fields["corporate_email"].label = _(f"{label} Email Address")
             self.fields["corporate_email"].help_text = _(
                 f"Please use your {label.lower()} email address"
             )
@@ -572,7 +570,6 @@ class ApproveRegistrationForm(forms.Form):
 
 
 class RejectRegistrationForm(forms.Form):
-
     def __init__(self, *args, **kwargs):
         _ = kwargs.pop("registration")
         super(RejectRegistrationForm, self).__init__(*args, **kwargs)
@@ -895,9 +892,9 @@ class CreateTeamsForm(forms.Form):
     def __init__(self, team_count, *args, **kwargs):
         super(CreateTeamsForm, self).__init__(*args, **kwargs)
 
-        self.fields["confirm_create"].label = (
-            f"Yes, I'm sure. Delete {team_count} teams and regenerate"
-        )
+        self.fields[
+            "confirm_create"
+        ].label = f"Yes, I'm sure. Delete {team_count} teams and regenerate"
 
 
 class GenerateTeamInviteCodeForm(forms.Form):
@@ -936,7 +933,7 @@ class GenerateTeamInviteCodeForm(forms.Form):
                     )
                 else:
                     raise forms.ValidationError(
-                        f'You can only create {remaining} more invite code{"s" if remaining != 1 else ""}. '
+                        f"You can only create {remaining} more invite code{'s' if remaining != 1 else ''}. "
                         f"You have created {existing_codes} out of {self.season.codes_per_captain_limit} allowed."
                     )
 
@@ -1003,7 +1000,10 @@ class TeamCreateForm(forms.Form):
         self.season = kwargs.pop("season")
         self.player = kwargs.pop("player")
         super().__init__(*args, **kwargs)
-        label = self.season.league.organisation_label or "Company / University / Organisation"
+        label = (
+            self.season.league.organisation_label
+            or "Company / University / Organisation"
+        )
         self.fields["company_name"].label = f"{label} Name"
         self.fields["company_address"].label = "Physical Address"
 
@@ -1117,7 +1117,7 @@ class BoardOrderForm(forms.Form):
             if not self.upcoming_round.is_board_update_allowed():
                 deadline = self.upcoming_round.get_board_update_deadline()
                 raise forms.ValidationError(
-                    f'Board assignments are locked. The deadline was {deadline.strftime("%Y-%m-%d %H:%M %Z")}.'
+                    f"Board assignments are locked. The deadline was {deadline.strftime('%Y-%m-%d %H:%M %Z')}."
                 )
 
         # Collect all board numbers

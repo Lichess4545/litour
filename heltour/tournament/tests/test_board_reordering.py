@@ -72,7 +72,7 @@ class BoardReorderingTestCase(TestCase):
         cls.members = []
         for i in range(4):
             player = Player.objects.create(
-                lichess_username=f"player{i+1}", rating=1700 - i * 50
+                lichess_username=f"player{i + 1}", rating=1700 - i * 50
             )
             member = TeamMember.objects.create(
                 team=cls.team,
@@ -240,7 +240,7 @@ class BoardReorderingTestCase(TestCase):
         members = []
         for i in range(6):
             player = Player.objects.create(
-                lichess_username=f"largeteam{i+1}", rating=1600 - i * 10
+                lichess_username=f"largeteam{i + 1}", rating=1600 - i * 10
             )
             member = TeamMember.objects.create(
                 team=large_team, player=player, board_number=i + 1, is_captain=(i == 0)

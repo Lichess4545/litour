@@ -107,6 +107,7 @@ def status_label(group: StatusGroup) -> StatusLabel:
 
 # ---------- Slug + URL helpers -----------------------------------------------
 
+
 def resolve_slug(slug: str) -> object | None:
     """Look up a Season by its globally-unique discovery slug.
 
@@ -115,11 +116,7 @@ def resolve_slug(slug: str) -> object | None:
 
     from heltour.tournament.models import Season
 
-    return (
-        Season.objects.select_related("league")
-        .filter(slug=slug)
-        .first()
-    )
+    return Season.objects.select_related("league").filter(slug=slug).first()
 
 
 def organizer_label(season) -> str:
@@ -169,7 +166,9 @@ def format_line(season) -> str:
 
     league = season.league
     competitor = "Team" if league.competitor_type == "team" else "Individual"
-    pairing = _PAIRING_SHORT_LABELS.get(league.pairing_type, league.pairing_type or "Swiss")
+    pairing = _PAIRING_SHORT_LABELS.get(
+        league.pairing_type, league.pairing_type or "Swiss"
+    )
     rounds = f"{season.rounds} rounds"
     return f"{competitor} {pairing} · {rounds}"
 
@@ -204,6 +203,7 @@ def slot_status(season) -> str:
 
 # ---------- Card / header builders -------------------------------------------
 
+
 def build_card(season) -> EventCardDTO:
     """Compose an EventCardDTO from a `select_related('league')` Season."""
 
@@ -223,7 +223,7 @@ def build_card(season) -> EventCardDTO:
     )
 
 
-def build_header(season) -> EventHeaderDTO:
+def build_header(season, *, can_manage: bool = False) -> EventHeaderDTO:
     group = status_group(season)
     return EventHeaderDTO(
         name=season.name,
@@ -238,6 +238,7 @@ def build_header(season) -> EventHeaderDTO:
         registration_url=registration_url(season),
         registration_open=bool(season.registration_open),
         visibility=_visibility(season),
+        can_manage=can_manage,
     )
 
 
@@ -254,6 +255,7 @@ def _visibility(season) -> Visibility:
 
 # ---------- Filtering, sorting, pagination -----------------------------------
 
+
 def _apply_status_filter(qs: QuerySet, status_keys: Iterable[StatusGroup]) -> QuerySet:
     from django.utils import timezone
 
@@ -264,9 +266,8 @@ def _apply_status_filter(qs: QuerySet, status_keys: Iterable[StatusGroup]) -> Qu
     clauses = Q()
     for key in keys:
         if key == "active":
-            clauses |= (
-                Q(is_completed=False, _has_pub_round=True)
-                & (Q(_last_round_end__isnull=True) | Q(_last_round_end__gte=now))
+            clauses |= Q(is_completed=False, _has_pub_round=True) & (
+                Q(_last_round_end__isnull=True) | Q(_last_round_end__gte=now)
             )
         elif key == "upcoming":
             clauses |= Q(is_completed=False, _has_pub_round=False)
@@ -301,18 +302,15 @@ def _apply_default_sort(qs: QuerySet) -> QuerySet:
     from django.utils import timezone
 
     now = timezone.now()
-    return (
-        qs.annotate(
-            _status_priority=Case(
-                When(is_completed=True, then=Value(3)),
-                When(_last_round_end__lt=now, then=Value(2)),
-                When(_has_pub_round=True, then=Value(0)),
-                default=Value(1),
-                output_field=IntegerField(),
-            )
+    return qs.annotate(
+        _status_priority=Case(
+            When(is_completed=True, then=Value(3)),
+            When(_last_round_end__lt=now, then=Value(2)),
+            When(_has_pub_round=True, then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField(),
         )
-        .order_by("_status_priority", F("start_date").desc(nulls_last=True), "-id")
-    )
+    ).order_by("_status_priority", F("start_date").desc(nulls_last=True), "-id")
 
 
 def list_events(
@@ -360,13 +358,20 @@ def list_events(
 
 # ---------- Detail composition -----------------------------------------------
 
-def get_event_with_tabs(slug: str, viewer: Viewer) -> EventDetailDTO | None:
+
+def get_event_with_tabs(
+    slug: str, viewer: Viewer, user: object | None = None
+) -> EventDetailDTO | None:
     """Build the full payload for /v2/events/<slug>/...
 
     Returns None when the slug doesn't resolve OR the viewer isn't
     allowed to see the resolved Season. The route layer maps None to a
     404 (visibility predicates leak no information about the difference
     between "doesn't exist" and "exists but you can't see it").
+
+    ``user`` is the authenticated Django User (or None for anonymous);
+    used to compute the per-viewer ``can_manage`` flag on the header so
+    the page can render a Manage-cockpit link without a separate probe.
     """
 
     season = resolve_slug(slug)
@@ -375,7 +380,10 @@ def get_event_with_tabs(slug: str, viewer: Viewer) -> EventDetailDTO | None:
     if not SEASON_READ_INSTANCE.can_read(viewer, season):
         return None
 
-    header = build_header(season)
+    from heltour.api.round_management.permissions import can_change_pairing_sync
+
+    can_manage = can_change_pairing_sync(user, season.league)
+    header = build_header(season, can_manage=can_manage)
     tabs_available: list[str] = []
 
     pairings, pairings_error = _build_pairings_payload(season, viewer)

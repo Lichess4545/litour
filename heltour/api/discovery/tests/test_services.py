@@ -69,21 +69,27 @@ class StatusGroupTests(TestCase):
 class CardCompositionTests(TestCase):
     def test_format_line_team_swiss(self):
         s = make_season(
-            league_tag="fl-ts", competitor_type="team", pairing_type="swiss-dutch",
+            league_tag="fl-ts",
+            competitor_type="team",
+            pairing_type="swiss-dutch",
             rounds=8,
         )
         self.assertEqual(format_line(s), "Team Swiss · 8 rounds")
 
     def test_format_line_individual_knockout(self):
         s = make_season(
-            league_tag="fl-ik", competitor_type="individual",
-            pairing_type="knockout-single", rounds=5, boards=None,
+            league_tag="fl-ik",
+            competitor_type="individual",
+            pairing_type="knockout-single",
+            rounds=5,
+            boards=None,
         )
         self.assertEqual(format_line(s), "Individual Knockout · 5 rounds")
 
     def test_schedule_line_uses_absolute_date_not_weekday_plural(self):
         s = make_season(
-            league_tag="sl-1", time_control="45+45",
+            league_tag="sl-1",
+            time_control="45+45",
             start_date=utc(2026, 5, 3),  # Sunday at 11am UTC
         )
         line = schedule_line(s)
@@ -101,7 +107,8 @@ class CardCompositionTests(TestCase):
 
         s = make_season(league_tag="og-1", league_name="Mother League", is_active=True)
         Season.objects.filter(pk=s.pk).update(
-            organizer_name="Guest Host", organizer_tag_override="guest-host",
+            organizer_name="Guest Host",
+            organizer_tag_override="guest-host",
         )
         s.refresh_from_db()
         from heltour.api.discovery.services import organizer_label, organizer_tag
@@ -118,7 +125,9 @@ class CardCompositionTests(TestCase):
 
     def test_slot_status_active_uses_latest_published_round(self):
         s = make_season(
-            league_tag="ss-a", is_active=True, rounds=8,
+            league_tag="ss-a",
+            is_active=True,
+            rounds=8,
         )
         publish_round(s, 1)
         publish_round(s, 2)
@@ -134,8 +143,10 @@ class CardCompositionTests(TestCase):
 
     def test_build_card_uses_organizer_terminology(self):
         s = make_season(
-            league_tag="bc-1", league_name="Team 4545",
-            season_tag="s30", is_active=True,
+            league_tag="bc-1",
+            league_name="Team 4545",
+            season_tag="s30",
+            is_active=True,
         )
         publish_round(s, 1)
         card = build_card(s)
@@ -151,7 +162,9 @@ class ListEventsTests(TestCase):
         make_season(league_tag="lf-a", is_active=True, season_tag="a")
         s_published = make_season(league_tag="lf-r", is_active=True, season_tag="r")
         publish_round(s_published, 1)
-        make_season(league_tag="lf-c", is_active=True, is_completed=True, season_tag="c")
+        make_season(
+            league_tag="lf-c", is_active=True, is_completed=True, season_tag="c"
+        )
 
         page = list_events(_ANON)
         slugs = {e.slug for e in page.events}
@@ -182,7 +195,9 @@ class ListEventsTests(TestCase):
         make_season(league_tag="sort-u", season_tag="u", is_active=True)
         s_active = make_season(league_tag="sort-a", is_active=True, season_tag="a")
         publish_round(s_active, 1)
-        make_season(league_tag="sort-c", is_active=True, is_completed=True, season_tag="c")
+        make_season(
+            league_tag="sort-c", is_active=True, is_completed=True, season_tag="c"
+        )
 
         page = list_events(_ANON, status=["active", "upcoming", "completed"])
         groups = [e.status_group for e in page.events]
@@ -191,7 +206,9 @@ class ListEventsTests(TestCase):
     def test_pagination_limit_and_offset(self):
         for i in range(5):
             make_season(
-                league_tag=f"pg-{i}", season_tag=f"s{i}", is_active=True,
+                league_tag=f"pg-{i}",
+                season_tag=f"s{i}",
+                is_active=True,
             )
         first = list_events(_ANON, limit=2, offset=0)
         second = list_events(_ANON, limit=2, offset=2)
@@ -224,7 +241,9 @@ class ListEventsTests(TestCase):
     def test_query_count_bounded(self):
         for i in range(20):
             make_season(
-                league_tag=f"qc-{i}", season_tag="s", is_active=True,
+                league_tag=f"qc-{i}",
+                season_tag="s",
+                is_active=True,
             )
         # Warm cacheops; measure the second call.
         list_events(_ANON, limit=20)
@@ -275,7 +294,10 @@ class GetEventWithTabsVisibilityTests(TestCase):
 class TabsAvailabilityTests(TestCase):
     def test_pairings_tab_appears_when_round_published(self):
         s = make_season(
-            league_tag="tp-1", competitor_type="team", rounds=2, boards=2,
+            league_tag="tp-1",
+            competitor_type="team",
+            rounds=2,
+            boards=2,
             is_active=True,
         )
         publish_round(s, 1)

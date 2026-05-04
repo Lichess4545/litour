@@ -9,840 +9,2318 @@ import django.db.models.deletion
 import heltour.tournament.models
 import re
 
-class Migration(migrations.Migration):
 
-    dependencies = [
-    ]
+class Migration(migrations.Migration):
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='OauthToken',
+            name="OauthToken",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('access_token', models.CharField(max_length=4096)),
-                ('token_type', models.CharField(max_length=255)),
-                ('expires', models.DateTimeField()),
-                ('refresh_token', models.CharField(blank=True, max_length=4096)),
-                ('scope', models.TextField(blank=True)),
-                ('account_username', models.CharField(max_length=255)),
-                ('account_email', models.CharField(blank=True, max_length=255)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("access_token", models.CharField(max_length=4096)),
+                ("token_type", models.CharField(max_length=255)),
+                ("expires", models.DateTimeField()),
+                ("refresh_token", models.CharField(blank=True, max_length=4096)),
+                ("scope", models.TextField(blank=True)),
+                ("account_username", models.CharField(max_length=255)),
+                ("account_email", models.CharField(blank=True, max_length=255)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='League',
+            name="League",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255, unique=True)),
-                ('tag', models.SlugField(help_text='The league will be accessible at /{league_tag}/', unique=True)),
-                ('theme', models.CharField(choices=[('blue', 'Blue'), ('green', 'Green'), ('red', 'Red'), ('yellow', 'Yellow')], max_length=32)),
-                ('time_control', models.CharField(blank=True, max_length=32)),
-                ('rating_type', models.CharField(choices=[('classical', 'Classical'), ('rapid', 'Rapid'), ('chess960', 'Chess 960'), ('blitz', 'Blitz')], max_length=32)),
-                ('competitor_type', models.CharField(choices=[('team', 'Team'), ('individual', 'Individual')], max_length=32)),
-                ('enable_notifications', models.BooleanField(default=False)),
-                ('description', models.CharField(blank=True, max_length=1023)),
-                ('pairing_type', models.CharField(choices=[('swiss-dutch', 'Swiss Tournament: Dutch Algorithm'), ('swiss-dutch-baku-accel', 'Swiss Tournament: Dutch Algorithm + Baku Acceleration')], max_length=32)),
-                ('display_order', models.PositiveIntegerField(default=0)),
-                ('is_active', models.BooleanField(default=True)),
-                ('is_default', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255, unique=True)),
+                (
+                    "tag",
+                    models.SlugField(
+                        help_text="The league will be accessible at /{league_tag}/",
+                        unique=True,
+                    ),
+                ),
+                (
+                    "theme",
+                    models.CharField(
+                        choices=[
+                            ("blue", "Blue"),
+                            ("green", "Green"),
+                            ("red", "Red"),
+                            ("yellow", "Yellow"),
+                        ],
+                        max_length=32,
+                    ),
+                ),
+                ("time_control", models.CharField(blank=True, max_length=32)),
+                (
+                    "rating_type",
+                    models.CharField(
+                        choices=[
+                            ("classical", "Classical"),
+                            ("rapid", "Rapid"),
+                            ("chess960", "Chess 960"),
+                            ("blitz", "Blitz"),
+                        ],
+                        max_length=32,
+                    ),
+                ),
+                (
+                    "competitor_type",
+                    models.CharField(
+                        choices=[("team", "Team"), ("individual", "Individual")],
+                        max_length=32,
+                    ),
+                ),
+                ("enable_notifications", models.BooleanField(default=False)),
+                ("description", models.CharField(blank=True, max_length=1023)),
+                (
+                    "pairing_type",
+                    models.CharField(
+                        choices=[
+                            ("swiss-dutch", "Swiss Tournament: Dutch Algorithm"),
+                            (
+                                "swiss-dutch-baku-accel",
+                                "Swiss Tournament: Dutch Algorithm + Baku Acceleration",
+                            ),
+                        ],
+                        max_length=32,
+                    ),
+                ),
+                ("display_order", models.PositiveIntegerField(default=0)),
+                ("is_active", models.BooleanField(default=True)),
+                ("is_default", models.BooleanField(default=False)),
             ],
             options={
-                'permissions': (('view_dashboard', 'Can view dashboard'),),
+                "permissions": (("view_dashboard", "Can view dashboard"),),
             },
         ),
         migrations.CreateModel(
-            name='Player',
+            name="Player",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('lichess_username', models.CharField(max_length=255, validators=[django.core.validators.RegexValidator('^[\\w-]+$')])),
-                ('rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('games_played', models.PositiveIntegerField(blank=True, null=True)),
-                ('email', models.CharField(blank=True, max_length=255)),
-                ('profile', models.JSONField(blank=True, null=True)),
-                ('date_last_agreed_to_tos', models.DateTimeField(blank=True, null=True)),
-                ('date_first_agreed_to_tos', models.DateTimeField(blank=True, null=True)),
-                ('oauth_token', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.oauthtoken')),
-                ('slack_user_id', models.CharField(blank=True, max_length=255)),
-                ('timezone_offset', models.DurationField(blank=True, null=True)),
-                ('account_status', models.CharField(choices=[('normal', 'Normal'), ('tos_violation', 'ToS Violation'), ('closed', 'Closed')], default='normal', max_length=31)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "lichess_username",
+                    models.CharField(
+                        max_length=255,
+                        validators=[django.core.validators.RegexValidator("^[\\w-]+$")],
+                    ),
+                ),
+                ("rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("is_active", models.BooleanField(default=True)),
+                ("games_played", models.PositiveIntegerField(blank=True, null=True)),
+                ("email", models.CharField(blank=True, max_length=255)),
+                ("profile", models.JSONField(blank=True, null=True)),
+                (
+                    "date_last_agreed_to_tos",
+                    models.DateTimeField(blank=True, null=True),
+                ),
+                (
+                    "date_first_agreed_to_tos",
+                    models.DateTimeField(blank=True, null=True),
+                ),
+                (
+                    "oauth_token",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.oauthtoken",
+                    ),
+                ),
+                ("slack_user_id", models.CharField(blank=True, max_length=255)),
+                ("timezone_offset", models.DurationField(blank=True, null=True)),
+                (
+                    "account_status",
+                    models.CharField(
+                        choices=[
+                            ("normal", "Normal"),
+                            ("tos_violation", "ToS Violation"),
+                            ("closed", "Closed"),
+                        ],
+                        default="normal",
+                        max_length=31,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['lichess_username'],
-                'permissions': (('change_player_details', 'Can change player details'), ('invite_to_slack', 'Can invite to slack'), ('link_slack', 'Can manually link slack accounts'), ('dox', 'Can see player emails')),
+                "ordering": ["lichess_username"],
+                "permissions": (
+                    ("change_player_details", "Can change player details"),
+                    ("invite_to_slack", "Can invite to slack"),
+                    ("link_slack", "Can manually link slack accounts"),
+                    ("dox", "Can see player emails"),
+                ),
             },
         ),
         migrations.CreateModel(
-            name='Season',
+            name="Season",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255)),
-                ('tag', models.SlugField(help_text='The season will be accessible at /{league_tag}/season/{season_tag}/')),
-                ('start_date', models.DateTimeField(blank=True, null=True)),
-                ('rounds', models.PositiveIntegerField()),
-                ('round_duration', models.DurationField(default=datetime.timedelta(days=7))),
-                ('is_completed', models.BooleanField(default=False)),
-                ('is_active', models.BooleanField(default=False)),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('boards', models.PositiveIntegerField(blank=True, null=True)),
-                ('registration_open', models.BooleanField(default=False)),
-                ('nominations_open', models.BooleanField(default=False)),
-                ('playoffs', models.PositiveIntegerField(choices=[(0, 'None'), (1, 'Finals'), (2, 'Semi-Finals'), (3, 'Quarter-Finals')], default=0)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "tag",
+                    models.SlugField(
+                        help_text="The season will be accessible at /{league_tag}/season/{season_tag}/"
+                    ),
+                ),
+                ("start_date", models.DateTimeField(blank=True, null=True)),
+                ("rounds", models.PositiveIntegerField()),
+                (
+                    "round_duration",
+                    models.DurationField(default=datetime.timedelta(days=7)),
+                ),
+                ("is_completed", models.BooleanField(default=False)),
+                ("is_active", models.BooleanField(default=False)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                ("boards", models.PositiveIntegerField(blank=True, null=True)),
+                ("registration_open", models.BooleanField(default=False)),
+                ("nominations_open", models.BooleanField(default=False)),
+                (
+                    "playoffs",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (0, "None"),
+                            (1, "Finals"),
+                            (2, "Semi-Finals"),
+                            (3, "Quarter-Finals"),
+                        ],
+                        default=0,
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('league', 'tag'), ('league', 'name')},
-                'ordering': ['league__name', '-name'],
-                'permissions': (('manage_players', 'Can manage players'), ('review_nominated_games', 'Can review nominated games')),
+                "unique_together": {("league", "tag"), ("league", "name")},
+                "ordering": ["league__name", "-name"],
+                "permissions": (
+                    ("manage_players", "Can manage players"),
+                    ("review_nominated_games", "Can review nominated games"),
+                ),
             },
         ),
         migrations.CreateModel(
-            name='Team',
+            name="Team",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255, verbose_name='team name')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('number', models.PositiveIntegerField(verbose_name='team number')),
-                ('is_active', models.BooleanField(default=True)),
-                ('slack_channel', models.CharField(blank=True, max_length=255)),
-                ('seed_rating', models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255, verbose_name="team name")),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                ("number", models.PositiveIntegerField(verbose_name="team number")),
+                ("is_active", models.BooleanField(default=True)),
+                ("slack_channel", models.CharField(blank=True, max_length=255)),
+                ("seed_rating", models.PositiveIntegerField(blank=True, null=True)),
             ],
             options={
-                'unique_together': {('season', 'name'), ('season', 'number')},
+                "unique_together": {("season", "name"), ("season", "number")},
             },
         ),
         migrations.CreateModel(
-            name='Round',
+            name="Round",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('start_date', models.DateTimeField(blank=True, null=True)),
-                ('number', models.PositiveIntegerField(verbose_name='round number')),
-                ('end_date', models.DateTimeField(blank=True, null=True)),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('publish_pairings', models.BooleanField(default=False)),
-                ('is_completed', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("start_date", models.DateTimeField(blank=True, null=True)),
+                ("number", models.PositiveIntegerField(verbose_name="round number")),
+                ("end_date", models.DateTimeField(blank=True, null=True)),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                ("publish_pairings", models.BooleanField(default=False)),
+                ("is_completed", models.BooleanField(default=False)),
             ],
             options={
-                'permissions': (('generate_pairings', 'Can generate and review pairings'),),
+                "permissions": (
+                    ("generate_pairings", "Can generate and review pairings"),
+                ),
             },
         ),
         migrations.CreateModel(
-            name='TeamScore',
+            name="TeamScore",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('match_count', models.PositiveIntegerField(default=0)),
-                ('match_points', models.PositiveIntegerField(default=0)),
-                ('game_points', heltour.tournament.models.ScoreField(default=0)),
-                ('team', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.team')),
-                ('playoff_score', models.PositiveIntegerField(default=0)),
-                ('games_won', models.PositiveIntegerField(default=0)),
-                ('head_to_head', models.PositiveIntegerField(default=0)),
-                ('sb_score', heltour.tournament.models.ScoreField(default=0)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("match_count", models.PositiveIntegerField(default=0)),
+                ("match_points", models.PositiveIntegerField(default=0)),
+                ("game_points", heltour.tournament.models.ScoreField(default=0)),
+                (
+                    "team",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.team",
+                    ),
+                ),
+                ("playoff_score", models.PositiveIntegerField(default=0)),
+                ("games_won", models.PositiveIntegerField(default=0)),
+                ("head_to_head", models.PositiveIntegerField(default=0)),
+                ("sb_score", heltour.tournament.models.ScoreField(default=0)),
             ],
         ),
         migrations.CreateModel(
-            name='TeamPairing',
+            name="TeamPairing",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('white_points', heltour.tournament.models.ScoreField(default=0)),
-                ('black_points', heltour.tournament.models.ScoreField(default=0)),
-                ('white_wins', models.PositiveIntegerField(default=0)),
-                ('black_wins', models.PositiveIntegerField(default=0)),
-                ('black_team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pairings_as_black', to='tournament.team')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('white_team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pairings_as_white', to='tournament.team')),
-                ('pairing_order', models.PositiveIntegerField()),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("white_points", heltour.tournament.models.ScoreField(default=0)),
+                ("black_points", heltour.tournament.models.ScoreField(default=0)),
+                ("white_wins", models.PositiveIntegerField(default=0)),
+                ("black_wins", models.PositiveIntegerField(default=0)),
+                (
+                    "black_team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pairings_as_black",
+                        to="tournament.team",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                (
+                    "white_team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pairings_as_white",
+                        to="tournament.team",
+                    ),
+                ),
+                ("pairing_order", models.PositiveIntegerField()),
             ],
             options={
-                'unique_together': {('white_team', 'black_team', 'round')},
+                "unique_together": {("white_team", "black_team", "round")},
             },
         ),
         migrations.CreateModel(
-            name='SectionGroup',
+            name="SectionGroup",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255)),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Section',
+            name="Section",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255, verbose_name='section name')),
-                ('min_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('max_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('season', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('section_group', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.sectiongroup')),
-                ('order', models.PositiveIntegerField()),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255, verbose_name="section name")),
+                ("min_rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("max_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "season",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                (
+                    "section_group",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.sectiongroup",
+                    ),
+                ),
+                ("order", models.PositiveIntegerField()),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Registration',
+            name="Registration",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], max_length=255)),
-                ('lichess_username', models.CharField(max_length=255, validators=[django.core.validators.RegexValidator('^[\\w-]+$')])),
-                ('slack_username', models.CharField(blank=True, max_length=255)),
-                ('email', models.EmailField(max_length=255)),
-                ('classical_rating', models.PositiveIntegerField(verbose_name='rating')),
-                ('peak_classical_rating', models.PositiveIntegerField(blank=True, null=True, verbose_name='peak rating')),
-                ('has_played_20_games', models.BooleanField()),
-                ('already_in_slack_group', models.BooleanField()),
-                ('can_commit', models.BooleanField()),
-                ('friends', models.CharField(blank=True, max_length=1023)),
-                ('agreed_to_rules', models.BooleanField()),
-                ('alternate_preference', models.CharField(blank=True, choices=[('alternate', 'Alternate'), ('full_time', 'Full Time'), ('either', 'Either is fine for me.')], max_length=255)),
-                ('weeks_unavailable', models.CharField(blank=True, max_length=255)),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('previous_season_alternate', models.CharField(blank=True, choices=[('alternate', 'Yes, I was an alternate at the end of the last season.'), ('alternate_to_full_time', 'Yes, but I was able to find a consistent team (did not simply fill in for a week or two).'), ('full_time', 'No, I was not an alternate for the last season. I played the season.'), ('new', 'No, I was not an alternate for the last season. I am a new member / I took last season off.')], max_length=255)),
-                ('status_changed_by', models.CharField(blank=True, max_length=255)),
-                ('status_changed_date', models.DateTimeField(blank=True, null=True)),
-                ('agreed_to_tos', models.BooleanField()),
-                ('avoid', models.CharField(blank=True, max_length=1023)),
-                ('section_preference', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='tournament.section')),
-                ('validation_ok', models.BooleanField(blank=True, default=None, null=True)),
-                ('validation_warning', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("approved", "Approved"),
+                            ("rejected", "Rejected"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "lichess_username",
+                    models.CharField(
+                        max_length=255,
+                        validators=[django.core.validators.RegexValidator("^[\\w-]+$")],
+                    ),
+                ),
+                ("slack_username", models.CharField(blank=True, max_length=255)),
+                ("email", models.EmailField(max_length=255)),
+                (
+                    "classical_rating",
+                    models.PositiveIntegerField(verbose_name="rating"),
+                ),
+                (
+                    "peak_classical_rating",
+                    models.PositiveIntegerField(
+                        blank=True, null=True, verbose_name="peak rating"
+                    ),
+                ),
+                ("has_played_20_games", models.BooleanField()),
+                ("already_in_slack_group", models.BooleanField()),
+                ("can_commit", models.BooleanField()),
+                ("friends", models.CharField(blank=True, max_length=1023)),
+                ("agreed_to_rules", models.BooleanField()),
+                (
+                    "alternate_preference",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("alternate", "Alternate"),
+                            ("full_time", "Full Time"),
+                            ("either", "Either is fine for me."),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("weeks_unavailable", models.CharField(blank=True, max_length=255)),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                (
+                    "previous_season_alternate",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            (
+                                "alternate",
+                                "Yes, I was an alternate at the end of the last season.",
+                            ),
+                            (
+                                "alternate_to_full_time",
+                                "Yes, but I was able to find a consistent team (did not simply fill in for a week or two).",
+                            ),
+                            (
+                                "full_time",
+                                "No, I was not an alternate for the last season. I played the season.",
+                            ),
+                            (
+                                "new",
+                                "No, I was not an alternate for the last season. I am a new member / I took last season off.",
+                            ),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("status_changed_by", models.CharField(blank=True, max_length=255)),
+                ("status_changed_date", models.DateTimeField(blank=True, null=True)),
+                ("agreed_to_tos", models.BooleanField()),
+                ("avoid", models.CharField(blank=True, max_length=1023)),
+                (
+                    "section_preference",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="tournament.section",
+                    ),
+                ),
+                (
+                    "validation_ok",
+                    models.BooleanField(blank=True, default=None, null=True),
+                ),
+                ("validation_warning", models.BooleanField(default=False)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='TeamMember',
+            name="TeamMember",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('is_captain', models.BooleanField(default=False)),
-                ('is_vice_captain', models.BooleanField(default=False)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('player_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.team')),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("is_captain", models.BooleanField(default=False)),
+                ("is_vice_captain", models.BooleanField(default=False)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                ("player_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.team",
+                    ),
+                ),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('team', 'board_number')},
+                "unique_together": {("team", "board_number")},
             },
         ),
         migrations.CreateModel(
-            name='SeasonPlayer',
+            name="SeasonPlayer",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('games_missed', models.PositiveIntegerField(default=0)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('registration', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='tournament.registration')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('final_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('seed_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('unresponsive', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                ("games_missed", models.PositiveIntegerField(default=0)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "registration",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="tournament.registration",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                ("final_rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("seed_rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("unresponsive", models.BooleanField(default=False)),
             ],
             options={
-                'unique_together': {('season', 'player')},
+                "unique_together": {("season", "player")},
             },
         ),
         migrations.CreateModel(
-            name='PlayerPairing',
+            name="PlayerPairing",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('result', models.CharField(blank=True, choices=[('1-0', '1-0'), ('1/2-1/2', '½-½'), ('0-1', '0-1'), ('1X-0F', '1X-0F'), ('1/2Z-1/2Z', '½Z-½Z'), ('0F-1X', '0F-1X'), ('0F-0F', '0F-0F')], max_length=16)),
-                ('game_link', models.URLField(blank=True, max_length=1024, validators=[django.core.validators.RegexValidator(re.compile('^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$'))])),
-                ('scheduled_time', models.DateTimeField(blank=True, null=True)),
-                ('black', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='pairings_as_black', to='tournament.player')),
-                ('white', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='pairings_as_white', to='tournament.player')),
-                ('date_player_changed', models.DateTimeField(blank=True, null=True)),
-                ('white_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('black_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('tv_state', models.CharField(choices=[('default', 'Default'), ('hide', 'Hide')], default='default', max_length=31)),
-                ('colors_reversed', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "result",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("1-0", "1-0"),
+                            ("1/2-1/2", "½-½"),
+                            ("0-1", "0-1"),
+                            ("1X-0F", "1X-0F"),
+                            ("1/2Z-1/2Z", "½Z-½Z"),
+                            ("0F-1X", "0F-1X"),
+                            ("0F-0F", "0F-0F"),
+                        ],
+                        max_length=16,
+                    ),
+                ),
+                (
+                    "game_link",
+                    models.URLField(
+                        blank=True,
+                        max_length=1024,
+                        validators=[
+                            django.core.validators.RegexValidator(
+                                re.compile(
+                                    "^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$"
+                                )
+                            )
+                        ],
+                    ),
+                ),
+                ("scheduled_time", models.DateTimeField(blank=True, null=True)),
+                (
+                    "black",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pairings_as_black",
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "white",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pairings_as_white",
+                        to="tournament.player",
+                    ),
+                ),
+                ("date_player_changed", models.DateTimeField(blank=True, null=True)),
+                ("white_rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("black_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "tv_state",
+                    models.CharField(
+                        choices=[("default", "Default"), ("hide", "Hide")],
+                        default="default",
+                        max_length=31,
+                    ),
+                ),
+                ("colors_reversed", models.BooleanField(default=False)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='ApiKey',
+            name="ApiKey",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255, unique=True)),
-                ('secret_token', models.CharField(default=heltour.tournament.models.create_api_token, max_length=255, unique=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255, unique=True)),
+                (
+                    "secret_token",
+                    models.CharField(
+                        default=heltour.tournament.models.create_api_token,
+                        max_length=255,
+                        unique=True,
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Document',
+            name="Document",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255)),
-                ('content', ckeditor_uploader.fields.RichTextUploadingField()),
-                ('owner', models.ForeignKey(limit_choices_to=models.Q(('is_staff', True)), on_delete=django.db.models.deletion.PROTECT, to=settings.AUTH_USER_MODEL)),
-                ('allow_editors', models.BooleanField(default=False, verbose_name='Allow designated editors')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255)),
+                ("content", ckeditor_uploader.fields.RichTextUploadingField()),
+                (
+                    "owner",
+                    models.ForeignKey(
+                        limit_choices_to=models.Q(("is_staff", True)),
+                        on_delete=django.db.models.deletion.PROTECT,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "allow_editors",
+                    models.BooleanField(
+                        default=False, verbose_name="Allow designated editors"
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='LeagueDocument',
+            name="LeagueDocument",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(blank=True, choices=[('faq', 'FAQ'), ('rules', 'Rules'), ('intro', 'Intro'), ('slack-welcome', 'Slack Welcome')], max_length=255)),
-                ('tag', models.SlugField(help_text='The document will be accessible at /{league_tag}/document/{document_tag}/')),
-                ('document', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.document')),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("faq", "FAQ"),
+                            ("rules", "Rules"),
+                            ("intro", "Intro"),
+                            ("slack-welcome", "Slack Welcome"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "tag",
+                    models.SlugField(
+                        help_text="The document will be accessible at /{league_tag}/document/{document_tag}/"
+                    ),
+                ),
+                (
+                    "document",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.document",
+                    ),
+                ),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('league', 'tag')},
+                "unique_together": {("league", "tag")},
             },
         ),
         migrations.CreateModel(
-            name='AlternateBucket',
+            name="AlternateBucket",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
-                ('min_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('max_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
+                ("min_rating", models.PositiveIntegerField(blank=True, null=True)),
+                ("max_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'board_number')},
+                "unique_together": {("season", "board_number")},
             },
         ),
         migrations.CreateModel(
-            name='AlternateAssignment',
+            name="AlternateAssignment",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.team')),
-                ('replaced_player', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='alternate_replacements', to='tournament.player')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                (
+                    "team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.team",
+                    ),
+                ),
+                (
+                    "replaced_player",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="alternate_replacements",
+                        to="tournament.player",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('round', 'team', 'board_number')},
+                "unique_together": {("round", "team", "board_number")},
             },
         ),
         migrations.CreateModel(
-            name='Alternate',
+            name="Alternate",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
-                ('player_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('season_player', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.seasonplayer')),
-                ('status', models.CharField(blank=True, choices=[('waiting', 'Waiting'), ('contacted', 'Contacted'), ('accepted', 'Accepted'), ('declined', 'Declined'), ('unresponsive', 'Unresponsive')], default='waiting', max_length=31)),
-                ('last_contact_date', models.DateTimeField(blank=True, null=True)),
-                ('priority_date_override', models.DateTimeField(blank=True, null=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
+                ("player_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "season_player",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.seasonplayer",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("waiting", "Waiting"),
+                            ("contacted", "Contacted"),
+                            ("accepted", "Accepted"),
+                            ("declined", "Declined"),
+                            ("unresponsive", "Unresponsive"),
+                        ],
+                        default="waiting",
+                        max_length=31,
+                    ),
+                ),
+                ("last_contact_date", models.DateTimeField(blank=True, null=True)),
+                ("priority_date_override", models.DateTimeField(blank=True, null=True)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='PlayerAvailability',
+            name="PlayerAvailability",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('is_available', models.BooleanField(default=True)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("is_available", models.BooleanField(default=True)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
             ],
             options={
-                'verbose_name_plural': 'player availabilities',
+                "verbose_name_plural": "player availabilities",
             },
         ),
         migrations.CreateModel(
-            name='LonePlayerPairing',
+            name="LonePlayerPairing",
             fields=[
-                ('playerpairing_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='tournament.playerpairing')),
-                ('pairing_order', models.PositiveIntegerField()),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('white_rank', models.PositiveIntegerField(blank=True, null=True)),
-                ('black_rank', models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "playerpairing_ptr",
+                    models.OneToOneField(
+                        auto_created=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        parent_link=True,
+                        primary_key=True,
+                        serialize=False,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                ("pairing_order", models.PositiveIntegerField()),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                ("white_rank", models.PositiveIntegerField(blank=True, null=True)),
+                ("black_rank", models.PositiveIntegerField(blank=True, null=True)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
-            bases=('tournament.playerpairing',),
+            bases=("tournament.playerpairing",),
         ),
         migrations.CreateModel(
-            name='TeamPlayerPairing',
+            name="TeamPlayerPairing",
             fields=[
-                ('playerpairing_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='tournament.playerpairing')),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
-                ('team_pairing', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.teampairing')),
+                (
+                    "playerpairing_ptr",
+                    models.OneToOneField(
+                        auto_created=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        parent_link=True,
+                        primary_key=True,
+                        serialize=False,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
+                (
+                    "team_pairing",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.teampairing",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('team_pairing', 'board_number')},
+                "unique_together": {("team_pairing", "board_number")},
             },
-            bases=('tournament.playerpairing',),
+            bases=("tournament.playerpairing",),
         ),
         migrations.CreateModel(
-            name='LonePlayerScore',
+            name="LonePlayerScore",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('points', heltour.tournament.models.ScoreField(default=0)),
-                ('late_join_points', heltour.tournament.models.ScoreField(default=0)),
-                ('tiebreak1', heltour.tournament.models.ScoreField(default=0)),
-                ('tiebreak2', heltour.tournament.models.ScoreField(default=0)),
-                ('tiebreak3', heltour.tournament.models.ScoreField(default=0)),
-                ('tiebreak4', heltour.tournament.models.ScoreField(default=0)),
-                ('acceleration_group', models.PositiveIntegerField(default=0)),
-                ('season_player', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.seasonplayer')),
-                ('perf_rating', models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("points", heltour.tournament.models.ScoreField(default=0)),
+                ("late_join_points", heltour.tournament.models.ScoreField(default=0)),
+                ("tiebreak1", heltour.tournament.models.ScoreField(default=0)),
+                ("tiebreak2", heltour.tournament.models.ScoreField(default=0)),
+                ("tiebreak3", heltour.tournament.models.ScoreField(default=0)),
+                ("tiebreak4", heltour.tournament.models.ScoreField(default=0)),
+                ("acceleration_group", models.PositiveIntegerField(default=0)),
+                (
+                    "season_player",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.seasonplayer",
+                    ),
+                ),
+                ("perf_rating", models.PositiveIntegerField(blank=True, null=True)),
             ],
             options={
-                'abstract': False,
-            },
-        ),
-        migrations.CreateModel(
-            name='SeasonPrize',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('rank', models.PositiveIntegerField()),
-                ('max_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-            ],
-            options={
-                'unique_together': {('season', 'rank', 'max_rating')},
-            },
-        ),
-        migrations.CreateModel(
-            name='SeasonPrizeWinner',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('season_prize', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.seasonprize')),
-            ],
-            options={
-                'unique_together': {('season_prize', 'player')},
-            },
-        ),
-        migrations.CreateModel(
-            name='PlayerWithdrawal',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-            ],
-            options={
-                'unique_together': {('round', 'player')},
-            },
-        ),
-        migrations.CreateModel(
-            name='PlayerBye',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('full-point-pairing-bye', 'Full-Point Bye (Pairing)'), ('full-point-bye', 'Full-Point Bye'), ('half-point-bye', 'Half-Point Bye'), ('zero-point-bye', 'Zero-Point Bye')], max_length=31)),
-                ('player_rank', models.PositiveIntegerField(blank=True, null=True)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('player_rating', models.PositiveIntegerField(blank=True, null=True)),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-            ],
-            options={
-                'unique_together': {('round', 'player')},
-            },
-        ),
-        migrations.CreateModel(
-            name='PlayerLateRegistration',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('retroactive_byes', models.PositiveIntegerField(default=0)),
-                ('late_join_points', heltour.tournament.models.ScoreField(default=0)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-            ],
-            options={
-                'unique_together': {('round', 'player')},
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='GameSelection',
+            name="SeasonPrize",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('game_link', models.URLField(validators=[django.core.validators.RegexValidator(re.compile('^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$'))])),
-                ('pairing', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='tournament.playerpairing')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("rank", models.PositiveIntegerField()),
+                ("max_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'game_link')},
+                "unique_together": {("season", "rank", "max_rating")},
             },
         ),
         migrations.CreateModel(
-            name='NavItem',
+            name="SeasonPrizeWinner",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('order', models.PositiveIntegerField()),
-                ('text', models.CharField(max_length=255)),
-                ('path', models.CharField(blank=True, max_length=1023)),
-                ('league_relative', models.BooleanField(default=False)),
-                ('season_relative', models.BooleanField(default=False)),
-                ('append_separator', models.BooleanField(default=False)),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('parent', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.navitem')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "season_prize",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.seasonprize",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("season_prize", "player")},
             },
         ),
         migrations.CreateModel(
-            name='PrivateUrlAuth',
+            name="PlayerWithdrawal",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('authenticated_user', models.CharField(max_length=255, validators=[django.core.validators.RegexValidator('^[\\w-]+$')])),
-                ('secret_token', models.CharField(default=heltour.tournament.models.create_api_token, max_length=255, unique=True)),
-                ('expires', models.DateTimeField()),
-                ('used', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("round", "player")},
             },
         ),
         migrations.CreateModel(
-            name='AvailableTime',
+            name="PlayerBye",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('time', models.DateTimeField()),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("full-point-pairing-bye", "Full-Point Bye (Pairing)"),
+                            ("full-point-bye", "Full-Point Bye"),
+                            ("half-point-bye", "Half-Point Bye"),
+                            ("zero-point-bye", "Zero-Point Bye"),
+                        ],
+                        max_length=31,
+                    ),
+                ),
+                ("player_rank", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                ("player_rating", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("round", "player")},
             },
         ),
         migrations.CreateModel(
-            name='GameNomination',
+            name="PlayerLateRegistration",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('game_link', models.URLField(validators=[django.core.validators.RegexValidator(re.compile('^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$'))])),
-                ('nominating_player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
-                ('pairing', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='tournament.playerpairing')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("retroactive_byes", models.PositiveIntegerField(default=0)),
+                ("late_join_points", heltour.tournament.models.ScoreField(default=0)),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("round", "player")},
             },
         ),
         migrations.CreateModel(
-            name='PlayerNotificationSetting',
+            name="GameSelection",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('round_started', 'Round started'), ('before_game_time', 'Before game time'), ('game_time', 'Game time'), ('unscheduled_game', 'Unscheduled game'), ('game_warning', 'Game warning'), ('alternate_needed', 'Alternate needed')], max_length=255)),
-                ('offset', models.DurationField(blank=True, null=True)),
-                ('enable_lichess_mail', models.BooleanField()),
-                ('enable_slack_im', models.BooleanField()),
-                ('enable_slack_mpim', models.BooleanField()),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "game_link",
+                    models.URLField(
+                        validators=[
+                            django.core.validators.RegexValidator(
+                                re.compile(
+                                    "^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$"
+                                )
+                            )
+                        ]
+                    ),
+                ),
+                (
+                    "pairing",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('player', 'type', 'league')},
+                "unique_together": {("season", "game_link")},
             },
         ),
         migrations.CreateModel(
-            name='ScheduledNotification',
+            name="NavItem",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('notification_time', models.DateTimeField()),
-                ('pairing', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.playerpairing')),
-                ('setting', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.playernotificationsetting')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("order", models.PositiveIntegerField()),
+                ("text", models.CharField(max_length=255)),
+                ("path", models.CharField(blank=True, max_length=1023)),
+                ("league_relative", models.BooleanField(default=False)),
+                ("season_relative", models.BooleanField(default=False)),
+                ("append_separator", models.BooleanField(default=False)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "parent",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.navitem",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='LeagueChannel',
+            name="PrivateUrlAuth",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('mod', 'Mods'), ('captains', 'Captains'), ('scheduling', 'Scheduling')], max_length=255)),
-                ('slack_channel', models.CharField(max_length=255)),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('send_messages', models.BooleanField(default=True)),
-                ('slack_channel_id', models.CharField(blank=True, max_length=255)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "authenticated_user",
+                    models.CharField(
+                        max_length=255,
+                        validators=[django.core.validators.RegexValidator("^[\\w-]+$")],
+                    ),
+                ),
+                (
+                    "secret_token",
+                    models.CharField(
+                        default=heltour.tournament.models.create_api_token,
+                        max_length=255,
+                        unique=True,
+                    ),
+                ),
+                ("expires", models.DateTimeField()),
+                ("used", models.BooleanField(default=False)),
             ],
             options={
-                'unique_together': {('league', 'slack_channel', 'type')},
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='AlternateSearch',
+            name="AvailableTime",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('board_number', models.PositiveIntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10'), (11, '11'), (12, '12')])),
-                ('is_active', models.BooleanField(default=True)),
-                ('status', models.CharField(blank=True, choices=[('started', 'Started'), ('all_contacted', 'All alternates contacted'), ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('failed', 'Failed')], max_length=31)),
-                ('last_alternate_contact_date', models.DateTimeField(blank=True, null=True)),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('team', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.team')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("time", models.DateTimeField()),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('round', 'team', 'board_number')},
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='LeagueModerator',
+            name="GameNomination",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('league', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('send_contact_emails', models.BooleanField(default=True)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "game_link",
+                    models.URLField(
+                        validators=[
+                            django.core.validators.RegexValidator(
+                                re.compile(
+                                    "^(https?://)?([a-z]+\\.)?lichess\\.org/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?([/#\\?].*)?$"
+                                )
+                            )
+                        ]
+                    ),
+                ),
+                (
+                    "nominating_player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+                (
+                    "pairing",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="tournament.playerpairing",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('league', 'player')},
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='SeasonDocument',
+            name="PlayerNotificationSetting",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('tag', models.SlugField(help_text='The document will be accessible at /{league_tag}/season/{season_tag}/document/{document_tag}/')),
-                ('type', models.CharField(blank=True, choices=[('links', 'Links')], max_length=255)),
-                ('document', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.document')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("round_started", "Round started"),
+                            ("before_game_time", "Before game time"),
+                            ("game_time", "Game time"),
+                            ("unscheduled_game", "Unscheduled game"),
+                            ("game_warning", "Game warning"),
+                            ("alternate_needed", "Alternate needed"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("offset", models.DurationField(blank=True, null=True)),
+                ("enable_lichess_mail", models.BooleanField()),
+                ("enable_slack_im", models.BooleanField()),
+                ("enable_slack_mpim", models.BooleanField()),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'tag')},
+                "unique_together": {("player", "type", "league")},
             },
         ),
         migrations.CreateModel(
-            name='LeagueSetting',
+            name="ScheduledNotification",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('limit_game_nominations_to_participants', models.BooleanField(default=True)),
-                ('league', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('max_game_nominations_per_user', models.PositiveIntegerField(default=3)),
-                ('contact_period', models.DurationField(default=datetime.timedelta(days=2))),
-                ('carry_over_red_cards_as_yellow', models.BooleanField(default=True)),
-                ('close_registration_at_last_round', models.BooleanField(default=True)),
-                ('notify_for_pre_season_registrations', models.BooleanField(default=False)),
-                ('notify_for_registrations', models.BooleanField(default=True)),
-                ('warning_for_late_response', models.BooleanField(default=True)),
-                ('notify_for_comments', models.BooleanField(default=True)),
-                ('notify_for_forfeits', models.BooleanField(default=True)),
-                ('notify_for_latereg_and_withdraw', models.BooleanField(default=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("notification_time", models.DateTimeField()),
+                (
+                    "pairing",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                (
+                    "setting",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.playernotificationsetting",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='FcmSub',
+            name="LeagueChannel",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('slack_user_id', models.CharField(max_length=31)),
-                ('reg_id', models.CharField(max_length=4096, unique=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("mod", "Mods"),
+                            ("captains", "Captains"),
+                            ("scheduling", "Scheduling"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("slack_channel", models.CharField(max_length=255)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                ("send_messages", models.BooleanField(default=True)),
+                ("slack_channel_id", models.CharField(blank=True, max_length=255)),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("league", "slack_channel", "type")},
             },
         ),
         migrations.CreateModel(
-            name='AlternatesManagerSetting',
+            name="AlternateSearch",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('contact_interval', models.DurationField(default=datetime.timedelta(seconds=28800), help_text='How long before the next alternate will be contacted during the round.')),
-                ('unresponsive_interval', models.DurationField(default=datetime.timedelta(days=1), help_text='How long after being contacted until an alternate will be marked as unresponsive.')),
-                ('contact_before_round_start', models.BooleanField(default=True, help_text='If we should search for alternates before the pairings are published. Has no effect for round 1.')),
-                ('contact_offset_before_round_start', models.DurationField(default=datetime.timedelta(days=2), help_text='How long before the round starts we should start searching for alternates. Also ends the previous round searches early.')),
-                ('contact_interval_before_round_start', models.DurationField(default=datetime.timedelta(seconds=43200), help_text="How long before the next alternate will be contacted, if the round hasn't started yet.")),
-                ('league', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('rating_flex', models.PositiveIntegerField(default=0, help_text="How far out of a board's rating range an alternate can be if it helps alternate balance.")),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "board_number",
+                    models.PositiveIntegerField(
+                        choices=[
+                            (1, "1"),
+                            (2, "2"),
+                            (3, "3"),
+                            (4, "4"),
+                            (5, "5"),
+                            (6, "6"),
+                            (7, "7"),
+                            (8, "8"),
+                            (9, "9"),
+                            (10, "10"),
+                            (11, "11"),
+                            (12, "12"),
+                        ]
+                    ),
+                ),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "status",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("started", "Started"),
+                            ("all_contacted", "All alternates contacted"),
+                            ("completed", "Completed"),
+                            ("cancelled", "Cancelled"),
+                            ("failed", "Failed"),
+                        ],
+                        max_length=31,
+                    ),
+                ),
+                (
+                    "last_alternate_contact_date",
+                    models.DateTimeField(blank=True, null=True),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                (
+                    "team",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.team",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("round", "team", "board_number")},
             },
         ),
         migrations.CreateModel(
-            name='PlayerPresence',
+            name="LeagueModerator",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('first_msg_time', models.DateTimeField(blank=True, null=True)),
-                ('last_msg_time', models.DateTimeField(blank=True, null=True)),
-                ('online_for_game', models.BooleanField(default=False)),
-                ('pairing', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.playerpairing')),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                ("send_contact_emails", models.BooleanField(default=True)),
+                ("is_active", models.BooleanField(default=True)),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("league", "player")},
             },
         ),
         migrations.CreateModel(
-            name='ModRequest',
+            name="SeasonDocument",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('withdraw', 'Withdraw'), ('reregister', 'Re-register'), ('appeal_late_response', 'Appeal late response'), ('appeal_noshow', 'Appeal no-show'), ('appeal_draw_scheduling', 'Appeal scheduling draw'), ('claim_win_noshow', 'Claim a forfeit win (no-show)'), ('claim_win_effort', 'Claim a forfeit win (insufficient effort)'), ('claim_draw_scheduling', 'Claim a scheduling draw'), ('claim_loss', 'Claim a forfeit loss'), ('request_continuation', 'Request continuation')], max_length=255)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], max_length=31)),
-                ('status_changed_by', models.CharField(blank=True, max_length=255)),
-                ('status_changed_date', models.DateTimeField(blank=True, null=True)),
-                ('notes', models.TextField(blank=True)),
-                ('screenshot', models.ImageField(blank=True, null=True, upload_to='screenshots/%Y/%m/%d/')),
-                ('response', models.TextField(blank=True)),
-                ('pairing', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.playerpairing')),
-                ('requester', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
-                ('season', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "tag",
+                    models.SlugField(
+                        help_text="The document will be accessible at /{league_tag}/season/{season_tag}/document/{document_tag}/"
+                    ),
+                ),
+                (
+                    "type",
+                    models.CharField(
+                        blank=True, choices=[("links", "Links")], max_length=255
+                    ),
+                ),
+                (
+                    "document",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.document",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "unique_together": {("season", "tag")},
             },
         ),
         migrations.CreateModel(
-            name='PlayerWarning',
+            name="LeagueSetting",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('unresponsive', 'unresponsive'), ('card_unresponsive', 'card for unresponsive'), ('card_noshow', 'card for no-show')], max_length=255)),
-                ('player', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
-                ('round', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.round')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "limit_game_nominations_to_participants",
+                    models.BooleanField(default=True),
+                ),
+                (
+                    "league",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "max_game_nominations_per_user",
+                    models.PositiveIntegerField(default=3),
+                ),
+                (
+                    "contact_period",
+                    models.DurationField(default=datetime.timedelta(days=2)),
+                ),
+                ("carry_over_red_cards_as_yellow", models.BooleanField(default=True)),
+                ("close_registration_at_last_round", models.BooleanField(default=True)),
+                (
+                    "notify_for_pre_season_registrations",
+                    models.BooleanField(default=False),
+                ),
+                ("notify_for_registrations", models.BooleanField(default=True)),
+                ("warning_for_late_response", models.BooleanField(default=True)),
+                ("notify_for_comments", models.BooleanField(default=True)),
+                ("notify_for_forfeits", models.BooleanField(default=True)),
+                ("notify_for_latereg_and_withdraw", models.BooleanField(default=True)),
             ],
             options={
-                'unique_together': {('round', 'player', 'type')},
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='ScheduledEvent',
+            name="FcmSub",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('type', models.CharField(choices=[('notify_mods_unscheduled', 'Notify mods of unscheduled games'), ('notify_mods_no_result', 'Notify mods of games without results'), ('notify_mods_pending_regs', 'Notify mods of pending registrations'), ('start_round_transition', 'Start round transition'), ('notify_players_unscheduled', 'Notify players of unscheduled games'), ('notify_players_game_time', 'Notify players of their game time'), ('automod_unresponsive', 'Auto-mod unresponsive players'), ('automod_noshow', 'Auto-mod no-shows')], max_length=255)),
-                ('offset', models.DurationField()),
-                ('relative_to', models.CharField(choices=[('round_start', 'Round start'), ('round_end', 'Round end'), ('game_scheduled_time', 'Game scheduled time')], max_length=255)),
-                ('last_run', models.DateTimeField(blank=True, null=True)),
-                ('league', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.league')),
-                ('season', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='tournament.season')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("slack_user_id", models.CharField(max_length=31)),
+                ("reg_id", models.CharField(max_length=4096, unique=True)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='LoginToken',
+            name="AlternatesManagerSetting",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('lichess_username', models.CharField(blank=True, max_length=255, validators=[django.core.validators.RegexValidator('^[\\w-]+$')])),
-                ('slack_user_id', models.CharField(blank=True, max_length=255)),
-                ('secret_token', models.CharField(default=heltour.tournament.models.create_api_token, max_length=255, unique=True)),
-                ('expires', models.DateTimeField()),
-                ('used', models.BooleanField(default=False)),
-                ('username_hint', models.CharField(blank=True, max_length=255)),
-                ('mail_id', models.CharField(blank=True, max_length=255)),
-                ('source_ip', models.GenericIPAddressField(blank=True, null=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "contact_interval",
+                    models.DurationField(
+                        default=datetime.timedelta(seconds=28800),
+                        help_text="How long before the next alternate will be contacted during the round.",
+                    ),
+                ),
+                (
+                    "unresponsive_interval",
+                    models.DurationField(
+                        default=datetime.timedelta(days=1),
+                        help_text="How long after being contacted until an alternate will be marked as unresponsive.",
+                    ),
+                ),
+                (
+                    "contact_before_round_start",
+                    models.BooleanField(
+                        default=True,
+                        help_text="If we should search for alternates before the pairings are published. Has no effect for round 1.",
+                    ),
+                ),
+                (
+                    "contact_offset_before_round_start",
+                    models.DurationField(
+                        default=datetime.timedelta(days=2),
+                        help_text="How long before the round starts we should start searching for alternates. Also ends the previous round searches early.",
+                    ),
+                ),
+                (
+                    "contact_interval_before_round_start",
+                    models.DurationField(
+                        default=datetime.timedelta(seconds=43200),
+                        help_text="How long before the next alternate will be contacted, if the round hasn't started yet.",
+                    ),
+                ),
+                (
+                    "league",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "rating_flex",
+                    models.PositiveIntegerField(
+                        default=0,
+                        help_text="How far out of a board's rating range an alternate can be if it helps alternate balance.",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='PlayerSetting',
+            name="PlayerPresence",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date_created', models.DateTimeField(auto_now_add=True)),
-                ('date_modified', models.DateTimeField(auto_now=True)),
-                ('dark_mode', models.BooleanField(default=False)),
-                ('player', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='tournament.player')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("first_msg_time", models.DateTimeField(blank=True, null=True)),
+                ("last_msg_time", models.DateTimeField(blank=True, null=True)),
+                ("online_for_game", models.BooleanField(default=False)),
+                (
+                    "pairing",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
-   ]
+        migrations.CreateModel(
+            name="ModRequest",
+            fields=[
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("withdraw", "Withdraw"),
+                            ("reregister", "Re-register"),
+                            ("appeal_late_response", "Appeal late response"),
+                            ("appeal_noshow", "Appeal no-show"),
+                            ("appeal_draw_scheduling", "Appeal scheduling draw"),
+                            ("claim_win_noshow", "Claim a forfeit win (no-show)"),
+                            (
+                                "claim_win_effort",
+                                "Claim a forfeit win (insufficient effort)",
+                            ),
+                            ("claim_draw_scheduling", "Claim a scheduling draw"),
+                            ("claim_loss", "Claim a forfeit loss"),
+                            ("request_continuation", "Request continuation"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("approved", "Approved"),
+                            ("rejected", "Rejected"),
+                        ],
+                        max_length=31,
+                    ),
+                ),
+                ("status_changed_by", models.CharField(blank=True, max_length=255)),
+                ("status_changed_date", models.DateTimeField(blank=True, null=True)),
+                ("notes", models.TextField(blank=True)),
+                (
+                    "screenshot",
+                    models.ImageField(
+                        blank=True, null=True, upload_to="screenshots/%Y/%m/%d/"
+                    ),
+                ),
+                ("response", models.TextField(blank=True)),
+                (
+                    "pairing",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.playerpairing",
+                    ),
+                ),
+                (
+                    "requester",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="PlayerWarning",
+            fields=[
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("unresponsive", "unresponsive"),
+                            ("card_unresponsive", "card for unresponsive"),
+                            ("card_noshow", "card for no-show"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "player",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+                (
+                    "round",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.round",
+                    ),
+                ),
+            ],
+            options={
+                "unique_together": {("round", "player", "type")},
+            },
+        ),
+        migrations.CreateModel(
+            name="ScheduledEvent",
+            fields=[
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            (
+                                "notify_mods_unscheduled",
+                                "Notify mods of unscheduled games",
+                            ),
+                            (
+                                "notify_mods_no_result",
+                                "Notify mods of games without results",
+                            ),
+                            (
+                                "notify_mods_pending_regs",
+                                "Notify mods of pending registrations",
+                            ),
+                            ("start_round_transition", "Start round transition"),
+                            (
+                                "notify_players_unscheduled",
+                                "Notify players of unscheduled games",
+                            ),
+                            (
+                                "notify_players_game_time",
+                                "Notify players of their game time",
+                            ),
+                            ("automod_unresponsive", "Auto-mod unresponsive players"),
+                            ("automod_noshow", "Auto-mod no-shows"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("offset", models.DurationField()),
+                (
+                    "relative_to",
+                    models.CharField(
+                        choices=[
+                            ("round_start", "Round start"),
+                            ("round_end", "Round end"),
+                            ("game_scheduled_time", "Game scheduled time"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("last_run", models.DateTimeField(blank=True, null=True)),
+                (
+                    "league",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.league",
+                    ),
+                ),
+                (
+                    "season",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.season",
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="LoginToken",
+            fields=[
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                (
+                    "lichess_username",
+                    models.CharField(
+                        blank=True,
+                        max_length=255,
+                        validators=[django.core.validators.RegexValidator("^[\\w-]+$")],
+                    ),
+                ),
+                ("slack_user_id", models.CharField(blank=True, max_length=255)),
+                (
+                    "secret_token",
+                    models.CharField(
+                        default=heltour.tournament.models.create_api_token,
+                        max_length=255,
+                        unique=True,
+                    ),
+                ),
+                ("expires", models.DateTimeField()),
+                ("used", models.BooleanField(default=False)),
+                ("username_hint", models.CharField(blank=True, max_length=255)),
+                ("mail_id", models.CharField(blank=True, max_length=255)),
+                ("source_ip", models.GenericIPAddressField(blank=True, null=True)),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="PlayerSetting",
+            fields=[
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("date_created", models.DateTimeField(auto_now_add=True)),
+                ("date_modified", models.DateTimeField(auto_now=True)),
+                ("dark_mode", models.BooleanField(default=False)),
+                (
+                    "player",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="tournament.player",
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+    ]

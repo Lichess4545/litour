@@ -19,7 +19,10 @@ _AUTHED = Viewer(user_id=1, is_authenticated=True, is_staff=False)
 class ChangePairingPermissionInjectionTests(TestCase):
     def test_authenticated_viewer_with_perm_sees_edit_flag(self):
         rnd = make_team_round(
-            league_tag="perm-y", season_tag="s", boards=2, team_count=2,
+            league_tag="perm-y",
+            season_tag="s",
+            boards=2,
+            team_count=2,
         )
         always_allow = ChangePairingPermission(has_perm_fn=lambda _u, _l: True)
 
@@ -30,7 +33,10 @@ class ChangePairingPermissionInjectionTests(TestCase):
 
     def test_authenticated_viewer_without_perm_does_not_see_edit_flag(self):
         rnd = make_team_round(
-            league_tag="perm-n", season_tag="s", boards=2, team_count=2,
+            league_tag="perm-n",
+            season_tag="s",
+            boards=2,
+            team_count=2,
         )
         always_deny = ChangePairingPermission(has_perm_fn=lambda _u, _l: False)
 

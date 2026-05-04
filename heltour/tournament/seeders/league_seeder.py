@@ -106,7 +106,7 @@ class LeagueSeeder(BaseSeeder):
             league_data.update(kwargs)  # Allow overrides
 
             league = League.objects.create(**league_data)
-            
+
             # Apply settings for invite-only leagues
             if league.tag == "elite":
                 league.email_required = False
@@ -129,10 +129,12 @@ class LeagueSeeder(BaseSeeder):
                 notify_for_registrations=self.weighted_bool(0.7),
                 notify_for_pre_season_registrations=self.weighted_bool(0.5),
             )
-            
+
             # Set board update deadline for team leagues
             if league.is_team_league():
-                league_setting.board_update_deadline_minutes = random.choice([30, 60, 120])
+                league_setting.board_update_deadline_minutes = random.choice(
+                    [30, 60, 120]
+                )
                 league_setting.save()
 
             # for team leagues, create associated settings for the alternates manager

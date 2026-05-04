@@ -23,7 +23,6 @@ def backward(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tournament", "0043_season_validate_account_status_and_more"),
     ]

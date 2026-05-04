@@ -447,7 +447,6 @@ class SimpleTiebreakTests(unittest.TestCase):
             2
         ).game_points(4.0).games_won(4).position(1)
 
-
     def test_royal_knights_ice_warriors_forfeit_issue(self):
         """Test the specific forfeit issue from Royal Knights vs Ice Warriors match."""
         # Create a team tournament with one round
@@ -457,10 +456,7 @@ class SimpleTiebreakTests(unittest.TestCase):
 
         # Royal Knights has only 3 players (no board 4)
         builder.team(
-            "Royal Knights",
-            ("Shakhriyar", 1578),
-            ("Levon", 1995),
-            ("Anatoly", 1899)
+            "Royal Knights", ("Shakhriyar", 1578), ("Levon", 1995), ("Anatoly", 1899)
         )
 
         # Ice Warriors has 4 players
@@ -469,7 +465,7 @@ class SimpleTiebreakTests(unittest.TestCase):
             ("Ding", 2067),
             ("Bobby", 1735),
             ("Viswanathan", 1917),
-            ("Anish", 1740)
+            ("Anish", 1740),
         )
 
         # The match: Royal Knights 1½ - 2½ Ice Warriors
@@ -478,7 +474,9 @@ class SimpleTiebreakTests(unittest.TestCase):
         # Board 3: Anatoly (white) draws Viswanathan (black) → "1/2-1/2"
         # Board 4: Anish (white) wins by forfeit (Royal Knights has no player) → "1X-0F"
         builder.round(1)
-        builder.match("Royal Knights", "Ice Warriors", "0-1", "0F-1X", "1/2-1/2", "1X-0F")
+        builder.match(
+            "Royal Knights", "Ice Warriors", "0-1", "0F-1X", "1/2-1/2", "1X-0F"
+        )
         builder.complete()
 
         tournament = builder.build()
@@ -503,8 +501,12 @@ class SimpleTiebreakTests(unittest.TestCase):
         self.assertEqual(iw_result.game_points, 2.5)
 
         # Also verify using assertions
-        assert_tournament(tournament).team("Royal Knights").assert_().match_points(0).game_points(1.5)
-        assert_tournament(tournament).team("Ice Warriors").assert_().match_points(2).game_points(2.5)
+        assert_tournament(tournament).team("Royal Knights").assert_().match_points(
+            0
+        ).game_points(1.5)
+        assert_tournament(tournament).team("Ice Warriors").assert_().match_points(
+            2
+        ).game_points(2.5)
 
 
 class BuchholzCut1Tests(unittest.TestCase):
@@ -521,7 +523,9 @@ class BuchholzCut1Tests(unittest.TestCase):
             (3, create_single_game_match(1, 4, GameResult.DRAW)),
             (3, create_single_game_match(2, 3, GameResult.P2_WIN)),
         ]
-        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        tournament = create_tournament_from_matches(
+            players, matches_with_rounds, STANDARD_SCORING
+        )
         return tournament, tournament.calculate_results()
 
     def test_buchholz_cut1_basic(self):
@@ -544,7 +548,9 @@ class BuchholzCut1Tests(unittest.TestCase):
             (2, create_single_game_match(1, 3, GameResult.DRAW)),
             (2, create_bye_match(2)),
         ]
-        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        tournament = create_tournament_from_matches(
+            players, matches_with_rounds, STANDARD_SCORING
+        )
         results = tournament.calculate_results()
 
         # P1: 3 MP. Opponents: P2(1), P3(2)
@@ -565,7 +571,9 @@ class UseGamePointsTests(unittest.TestCase):
             (2, create_single_game_match(2, 3, GameResult.DRAW)),
             (2, create_bye_match(1)),
         ]
-        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        tournament = create_tournament_from_matches(
+            players, matches_with_rounds, STANDARD_SCORING
+        )
         return tournament.calculate_results()
 
     def test_buchholz_with_game_points(self):
@@ -588,8 +596,12 @@ class UseGamePointsTests(unittest.TestCase):
         results = self._make_simple()
         # P2 and P3 tied at 1 MP
         tied = {2, 3}
-        gp_h2h_2 = calculate_head_to_head(results[2], tied, results, use_game_points=True)
-        gp_h2h_3 = calculate_head_to_head(results[3], tied, results, use_game_points=True)
+        gp_h2h_2 = calculate_head_to_head(
+            results[2], tied, results, use_game_points=True
+        )
+        gp_h2h_3 = calculate_head_to_head(
+            results[3], tied, results, use_game_points=True
+        )
         # P2 drew P3 → 0.5 game points each
         self.assertEqual(gp_h2h_2, 0.5)
         self.assertEqual(gp_h2h_3, 0.5)
@@ -609,10 +621,18 @@ class CalculateAllTiebreaksTests(unittest.TestCase):
             (3, create_single_game_match(2, 3, GameResult.P1_WIN)),
             (3, create_bye_match(1)),
         ]
-        tournament = create_tournament_from_matches(players, matches_with_rounds, STANDARD_SCORING)
+        tournament = create_tournament_from_matches(
+            players, matches_with_rounds, STANDARD_SCORING
+        )
         results = tournament.calculate_results()
 
-        tiebreak_order = ["head_to_head", "buchholz_cut1", "buchholz", "games_won", "sonneborn_berger"]
+        tiebreak_order = [
+            "head_to_head",
+            "buchholz_cut1",
+            "buchholz",
+            "games_won",
+            "sonneborn_berger",
+        ]
         tb = calculate_all_tiebreaks(results, tiebreak_order, use_game_points=True)
 
         # Verify all keys present for each player

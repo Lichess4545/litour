@@ -55,7 +55,7 @@ class EventCardDTO(BaseModel):
     )
     schedule_line: str = Field(
         description='Composed schedule summary, e.g. "45+45 · Sundays 11am UTC". '
-                    "Empty string when start_date is unset."
+        "Empty string when start_date is unset."
     )
     slot_status: str = Field(
         description=(
@@ -102,6 +102,15 @@ class EventHeaderDTO(BaseModel):
         description="Whether the Register CTA should render as an active button."
     )
     visibility: Visibility
+    can_manage: bool = Field(
+        default=False,
+        description=(
+            "True when the viewer holds tournament.change_pairing on the league. "
+            "Drives whether the event page renders a Manage-cockpit link. "
+            "Always False on signal-pushed payloads (publishers fan out without a "
+            "viewer)."
+        ),
+    )
 
 
 class EventDetailDTO(BaseModel):
@@ -115,7 +124,7 @@ class EventDetailDTO(BaseModel):
     header: EventHeaderDTO
     tabs_available: list[Literal["pairings", "standings", "roster"]] = Field(
         description='Always at least ["pairings"] today. "standings" / "roster" '
-                    "join when their packages graduate from placeholder."
+        "join when their packages graduate from placeholder."
     )
     # Concrete pairings DTO is built lazily in service.get_event_with_tabs and
     # injected as a dict to keep this schema independent of round_management's

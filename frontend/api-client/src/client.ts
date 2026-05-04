@@ -1,5 +1,6 @@
 import createOpenApiClient from "openapi-fetch";
 import { WebSocket as ReconnectingWebSocket } from "partysocket";
+import { type WSCockpitMessage, wsCockpitMessage } from "./cockpit-messages";
 import {
   type WSEventMessage,
   type WSHomeMessage,
@@ -80,6 +81,25 @@ export function connectDiscoveryEventStream(
     baseUrl,
     `/ws/discovery/events/${encodeURIComponent(slug)}`,
     wsEventMessage,
+    onMessage,
+    onError,
+  );
+}
+
+export interface CockpitStream {
+  close(): void;
+}
+
+export function connectCockpitStream(
+  baseUrl: string,
+  eventSlug: string,
+  onMessage: (msg: WSCockpitMessage) => void,
+  onError?: (err: unknown) => void,
+): CockpitStream {
+  return openValidatedStream(
+    baseUrl,
+    `/ws/round_management/events/${encodeURIComponent(eventSlug)}/cockpit`,
+    wsCockpitMessage,
     onMessage,
     onError,
   );

@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start --port 3000",
     "lint": "biome check src",
+    "lint:fix": "biome check --fix --unsafe src",
     "format": "biome format --write src",
     "typecheck": "tsc --noEmit"
   },

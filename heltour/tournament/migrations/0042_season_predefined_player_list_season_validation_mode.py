@@ -4,20 +4,28 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournament', '0041_merge_20260228_1822'),
+        ("tournament", "0041_merge_20260228_1822"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='season',
-            name='predefined_player_list',
-            field=models.TextField(blank=True, help_text='One entry per line: lichess_username,fide_id'),
+            model_name="season",
+            name="predefined_player_list",
+            field=models.TextField(
+                blank=True, help_text="One entry per line: lichess_username,fide_id"
+            ),
         ),
         migrations.AddField(
-            model_name='season',
-            name='validation_mode',
-            field=models.CharField(choices=[('standard', 'Standard'), ('predefined_list', 'Predefined Player List')], default='standard', max_length=32),
+            model_name="season",
+            name="validation_mode",
+            field=models.CharField(
+                choices=[
+                    ("standard", "Standard"),
+                    ("predefined_list", "Predefined Player List"),
+                ],
+                default="standard",
+                max_length=32,
+            ),
         ),
     ]
