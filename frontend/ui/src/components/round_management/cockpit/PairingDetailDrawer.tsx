@@ -50,7 +50,12 @@ export function PairingDetailDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/30" aria-hidden onClick={onClose} />
+      <button
+        type="button"
+        aria-label="Close detail"
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-black/30"
+      />
       <aside
         className="bg-background fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l shadow-xl md:max-w-lg"
         role="dialog"

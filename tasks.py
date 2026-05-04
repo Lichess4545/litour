@@ -125,9 +125,9 @@ def format(c):
     ui_dir = project_relative("frontend/ui")
 
     print("\n=== ruff format (Python) ===")
-    c.run("ruff format heltour", pty=True)
+    c.run("ruff format heltour/api", pty=True)
     print("\n=== ruff check --fix (Python) ===")
-    c.run("ruff check --fix heltour", warn=True, pty=True)
+    c.run("ruff check --fix heltour/api", warn=True, pty=True)
 
     for label, cwd in (("api-client", api_client_dir), ("ui", ui_dir)):
         print(f"\n=== bun run lint:fix ({label}) ===")
@@ -576,8 +576,8 @@ def preflight(c, base_url="http://localhost:8001"):
         # doesn't fail the pass — same intent as `inv format`. The
         # generated.ts drift check below catches any unintended source
         # changes that reach git.
-        ("format python", "ruff format heltour", None),
-        ("ruff check --fix python", "ruff check --fix heltour", None),
+        ("format python", "ruff format heltour/api", None),
+        ("ruff check --fix python", "ruff check --fix heltour/api", None),
         ("format api-client", "bun run lint:fix", api_client_dir),
         ("format ui", "bun run lint:fix", ui_dir),
         ("typecheck api-client", "bun run typecheck", api_client_dir),
