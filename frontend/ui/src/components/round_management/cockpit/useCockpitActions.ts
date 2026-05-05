@@ -5,7 +5,6 @@ import {
   type CockpitActionResultDTO,
   callCockpitAction,
 } from "@litour/api-client";
-import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { useToaster } from "./Toaster";
@@ -15,13 +14,13 @@ interface RunOptions {
   body?: Record<string, unknown> | undefined;
 }
 
-// Single-action runner with pending state, automatic toasting, and
-// router.refresh on actions that signal `refresh: true`. The runner is
-// per-component (each toolbar dropdown / CTA owns its own pending flag)
-// so we don't fight over a global mutex.
+// Single-action runner with pending state and automatic toasting.
+// Page state updates flow through the multiplex WS — the cockpit's
+// `cockpit:event:...:round:...` channel pushes `cockpit.snapshot`
+// envelopes whenever a round/season state change lands server-side, so
+// callers don't need to refetch or refresh.
 export function useCockpitAction(apiBaseUrl: string, eventSlug: string) {
   const toaster = useToaster();
-  const router = useRouter();
   const [pending, setPending] = useState(false);
 
   const run = useCallback(
@@ -37,9 +36,6 @@ export function useCockpitAction(apiBaseUrl: string, eventSlug: string) {
           title: opts.successTitle && result.status === "ok" ? opts.successTitle : result.title,
           detail: result.detail,
         });
-        if (result.refresh) {
-          router.refresh();
-        }
         return result;
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Unknown error";
@@ -49,7 +45,7 @@ export function useCockpitAction(apiBaseUrl: string, eventSlug: string) {
         setPending(false);
       }
     },
-    [apiBaseUrl, eventSlug, pending, router, toaster],
+    [apiBaseUrl, eventSlug, pending, toaster],
   );
 
   return { run, pending };

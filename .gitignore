@@ -32,3 +32,6 @@ wucc_backup_*.dump
 devenv.local.nix
 .direnv/
 .gstack/
+
+# Per-process tee output from `devenv up` (see processes.* in devenv.nix).
+logs/

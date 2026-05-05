@@ -60,8 +60,18 @@ def runapi(c):
     # Bind to :: so both IPv4 (via mapped) and IPv6 work — Firefox prefers ::1
     # for `localhost` and silently fails with NS_ERROR_CONNECT_REFUSED if we
     # only bind 0.0.0.0.
+    #
+    # ``--ws-per-message-deflate true`` enables permessage-deflate on the
+    # WebSocket (RFC 7692) — the browser negotiates it during the
+    # handshake, so envelopes are compressed transparently. JSON
+    # payloads with repeated field names compress 5–10× this way; no
+    # client change required (partysocket sits on top of the native
+    # ``WebSocket``, which negotiates the extension automatically).
+    # Made explicit rather than relying on the uvicorn default so the
+    # behaviour doesn't drift on a future upgrade.
     c.run(
-        "uvicorn heltour.api.main:app --reload --host :: --port 8001",
+        "uvicorn heltour.api.main:app --reload --host :: --port 8001 "
+        "--ws-per-message-deflate true",
         pty=True,
     )
 

@@ -39,7 +39,13 @@ def _get_client() -> redis.Redis:
 
 def _publish(channel: str, payload: dict) -> None:
     try:
-        _get_client().publish(channel, json.dumps(payload))
+        receivers = _get_client().publish(channel, json.dumps(payload))
+        logger.info(
+            "pubsub publish channel=%s type=%s receivers=%s",
+            channel,
+            payload.get("type"),
+            receivers,
+        )
     except Exception:
         logger.exception("pubsub publish failed channel=%s", channel)
 
@@ -100,8 +106,6 @@ def _connect():
         return None
 
     def _emit_match(instance) -> None:
-        # Only emit when something visible changed — avoids a publish on
-        # every save (e.g. unrelated admin edits).
         changed = (
             instance.result != instance.initial_result
             or instance.game_link != instance.initial_game_link
@@ -109,10 +113,16 @@ def _connect():
             or instance.black_id != instance.initial_black_id
         )
         if not changed:
+            logger.info(
+                "pubsub skip pairing=%s: no visible change (result=%r game_link=%r)",
+                instance.pk,
+                instance.result,
+                instance.game_link,
+            )
             return
         resolved = _round_for(instance)
         if resolved is None:
-            logger.debug("no round for pairing=%s; skipping pubsub", instance.pk)
+            logger.warning("no round for pairing=%s; skipping pubsub", instance.pk)
             return
         rnd, league, concrete = resolved
         if isinstance(concrete, TeamPlayerPairing):
@@ -120,6 +130,12 @@ def _connect():
             dto = team_player_pairing_to_match(concrete, league, captains)
         else:
             dto = lone_player_pairing_to_match(concrete, league)
+        logger.info(
+            "pubsub emit pairing=%s round_id=%s type=%s",
+            instance.pk,
+            rnd.pk,
+            type(concrete).__name__,
+        )
         _publish_match_update(dto, rnd.pk)
 
     @receiver(post_save, sender=PlayerPairing, dispatch_uid="api_pp_event")
@@ -478,3 +494,56 @@ def _connect_permissions():
 
 
 _connect_permissions()
+
+
+# ---------- Cockpit invalidation fan-out --------------------------------------
+#
+# Channel: ``cockpit:season:{season_pk}``
+# Envelope: {"type": "cockpit.invalidate", "round_id": int|None}
+#
+# Fires whenever season-scoped state changes that the cockpit DTO would
+# render — round transitions (publish_pairings / is_completed), season
+# completion, and pairing-set creation. The multiplex layer's cockpit
+# transform turns each invalidate into a full ``cockpit.snapshot``
+# rebuilt for the subscriber's viewer/round, so the cockpit page can
+# re-render without router.refresh() or polling.
+#
+# A bare invalidate envelope keeps the publisher cheap (no DTO build at
+# emit time) and lets per-subscriber permission/round context be
+# applied at fan-out time.
+
+
+def _publish_cockpit_invalidate(season_pk: int, round_id: int | None) -> None:
+    if not season_pk:
+        return
+    _publish(
+        f"cockpit:season:{season_pk}",
+        {
+            "type": "cockpit.invalidate",
+            "round_id": int(round_id) if round_id is not None else None,
+        },
+    )
+
+
+def _connect_cockpit_invalidations():
+    from heltour.tournament.models import Round, Season
+
+    @receiver(post_save, sender=Round, dispatch_uid="cockpit_round_post_save")
+    def _round_saved(sender, instance, **kwargs):
+        season_pk = instance.season_id
+        round_pk = instance.pk
+        _on_commit(lambda: _publish_cockpit_invalidate(season_pk, round_pk))
+
+    @receiver(post_delete, sender=Round, dispatch_uid="cockpit_round_post_delete")
+    def _round_deleted(sender, instance, **kwargs):
+        season_pk = instance.season_id
+        round_pk = instance.pk
+        _on_commit(lambda: _publish_cockpit_invalidate(season_pk, round_pk))
+
+    @receiver(post_save, sender=Season, dispatch_uid="cockpit_season_post_save")
+    def _season_saved(sender, instance, **kwargs):
+        season_pk = instance.pk
+        _on_commit(lambda: _publish_cockpit_invalidate(season_pk, None))
+
+
+_connect_cockpit_invalidations()

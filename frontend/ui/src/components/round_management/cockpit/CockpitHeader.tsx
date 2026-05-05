@@ -2,9 +2,16 @@ import Link from "next/link";
 
 import type { CockpitDTO } from "@litour/api-client";
 
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
 import { CockpitPrimaryAction } from "./CockpitPrimaryAction";
 import { CockpitRoundSelector } from "./CockpitRoundSelector";
 import { JobsButton } from "./JobsButton";
+
+function nextRoundFor(dto: CockpitDTO) {
+  return dto.rounds.find((r) => r.round_number === dto.round_number + 1);
+}
 
 // DR2: live → blue dot + "Now playing — Round N of M"; history → muted
 // dot + "Round N of M · Finished"; pre_round + empty handled by ModeBanner.
@@ -51,11 +58,17 @@ export function CockpitHeader({
             <CockpitRoundSelector
               rounds={dto.rounds}
               currentRoundId={dto.round_id}
+              currentRoundNumber={dto.round_number}
               eventSlug={eventSlug}
             />
           ) : null}
         </div>
       </div>
+      {/* Primary-action row. In live/pre_round, the cockpit's CTA
+          (Generate Pairings, Close Round, etc.) lives here. In
+          history mode, the same slot hosts "Go to Round N+1" so the
+          operator's eye finds the next step in one place regardless
+          of round state. */}
       {showPrimaryCta && dto.management?.primary_action ? (
         <div className="flex flex-wrap items-center gap-3">
           <CockpitPrimaryAction
@@ -64,6 +77,10 @@ export function CockpitHeader({
             apiBaseUrl={apiBaseUrl}
             eventSlug={eventSlug}
           />
+        </div>
+      ) : dto.mode === "history" && nextRoundFor(dto) ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <NextRoundButton dto={dto} eventSlug={eventSlug} />
         </div>
       ) : null}
       {dto.mode === "live" ? (
@@ -79,8 +96,38 @@ export function CockpitHeader({
   );
 }
 
+// Prominent CTA the operator hits to advance from a finished round.
+// Lives in the header's right cluster (next to JobsButton + round
+// selector) rather than buried in a small underlined link inside the
+// status copy — operators report scanning past the link otherwise.
+function NextRoundButton({
+  dto,
+  eventSlug,
+}: {
+  dto: CockpitDTO;
+  eventSlug: string;
+}) {
+  const next = nextRoundFor(dto);
+  if (!next) return null;
+  return (
+    <Link
+      href={`/events/${encodeURIComponent(eventSlug)}/manage?round=${next.round_id}`}
+      className={cn(buttonVariants({ variant: "default", size: "default" }))}
+    >
+      Go to Round {next.round_number}
+      <span aria-hidden>→</span>
+    </Link>
+  );
+}
+
 // DR2 mode-specific status lines + DR5 token bindings.
-function StatusLine({ dto, totalRounds }: { dto: CockpitDTO; totalRounds: number }) {
+function StatusLine({
+  dto,
+  totalRounds,
+}: {
+  dto: CockpitDTO;
+  totalRounds: number;
+}) {
   if (dto.mode === "live") {
     return (
       <p className="text-foreground flex items-center gap-2 text-sm">
@@ -96,7 +143,7 @@ function StatusLine({ dto, totalRounds }: { dto: CockpitDTO; totalRounds: number
   }
   if (dto.mode === "history") {
     return (
-      <p className="text-muted-foreground flex items-center gap-2 text-sm">
+      <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
         <span className="bg-muted-foreground inline-block size-2 rounded-full" aria-hidden />
         <span className="tabular-nums">
           Round {dto.round_number} of {totalRounds} · Finished

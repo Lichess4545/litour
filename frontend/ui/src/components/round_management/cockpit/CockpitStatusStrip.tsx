@@ -1,5 +1,6 @@
-import type { CockpitManagementDTO, WSJobLag } from "@litour/api-client";
+import type { CockpitManagementDTO } from "@litour/api-client";
 
+import { selectLagSnapshot, useLagStore } from "@/lib/lagStore";
 import { cn } from "@/lib/utils";
 
 import { JobLagPill } from "./JobLagPill";
@@ -7,18 +8,16 @@ import { JobLagPill } from "./JobLagPill";
 // Always-visible health line at the bottom of the cockpit. Surfaces
 // the same operational signals the Django dashboard renders inline with
 // the action list (Lichess token, queue-lag canary, last-validated
-// tokens). `lagSnapshot` arrives over the lag WebSocket so the
-// chip updates without polling; `lagHistory` is the rolling buffer
-// of recent `queue_lag_latest` values for the popover sparkline.
+// tokens). The lag chip reads from the global ``useLagStore`` so the
+// page-level Live component owns the WS subscription exactly once.
 export function CockpitStatusStrip({
   management,
-  lagSnapshot,
   apiBaseUrl,
 }: {
   management: CockpitManagementDTO;
-  lagSnapshot: WSJobLag | null;
   apiBaseUrl: string;
 }) {
+  const lagSnapshot = useLagStore(selectLagSnapshot);
   const m = management;
   const tokenOk = m.lichess_token?.valid ?? null;
   return (

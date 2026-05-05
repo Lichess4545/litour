@@ -1,11 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
 import { CockpitDialog } from "./CockpitDialog";
 import { useCockpitAction } from "./useCockpitActions";
+
+// Persist the generate-pairings form values per tournament so an
+// operator's chosen knobs (auto-forfeit, publish, overwrite) carry
+// over the next time they hit Generate. Scoped by event slug so
+// preferences stay tournament-local. Falls back gracefully on SSR
+// (no `window`) and on quota / disabled-storage errors.
+interface GeneratePairingsPrefs {
+  overwrite: boolean;
+  autoForfeits: boolean;
+  publishImmediately: boolean;
+}
+
+const GP_DEFAULTS: GeneratePairingsPrefs = {
+  overwrite: false,
+  autoForfeits: true,
+  publishImmediately: false,
+};
+
+function generatePairingsKey(eventSlug: string): string {
+  return `cockpit:generate-pairings:${eventSlug}`;
+}
+
+function loadGeneratePairingsPrefs(eventSlug: string): GeneratePairingsPrefs {
+  if (typeof window === "undefined") return GP_DEFAULTS;
+  try {
+    const raw = window.localStorage.getItem(generatePairingsKey(eventSlug));
+    if (!raw) return GP_DEFAULTS;
+    const parsed = JSON.parse(raw) as Partial<GeneratePairingsPrefs>;
+    return {
+      overwrite: typeof parsed.overwrite === "boolean" ? parsed.overwrite : GP_DEFAULTS.overwrite,
+      autoForfeits:
+        typeof parsed.autoForfeits === "boolean" ? parsed.autoForfeits : GP_DEFAULTS.autoForfeits,
+      publishImmediately:
+        typeof parsed.publishImmediately === "boolean"
+          ? parsed.publishImmediately
+          : GP_DEFAULTS.publishImmediately,
+    };
+  } catch {
+    return GP_DEFAULTS;
+  }
+}
+
+function saveGeneratePairingsPrefs(eventSlug: string, prefs: GeneratePairingsPrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(generatePairingsKey(eventSlug), JSON.stringify(prefs));
+  } catch {
+    // Storage disabled / quota — silently keep in-memory state only.
+  }
+}
 
 interface BaseProps {
   open: boolean;
@@ -25,9 +75,22 @@ export function GeneratePairingsDialog({
   roundNumber,
 }: BaseProps) {
   const { run, pending } = useCockpitAction(apiBaseUrl, eventSlug);
-  const [overwrite, setOverwrite] = useState(false);
-  const [autoForfeits, setAutoForfeits] = useState(true);
-  const [publishImmediately, setPublishImmediately] = useState(false);
+  // Lazy-init from localStorage so SSR renders defaults; the client
+  // re-syncs on first effect tick if the cached prefs differ.
+  const [overwrite, setOverwrite] = useState(GP_DEFAULTS.overwrite);
+  const [autoForfeits, setAutoForfeits] = useState(GP_DEFAULTS.autoForfeits);
+  const [publishImmediately, setPublishImmediately] = useState(GP_DEFAULTS.publishImmediately);
+
+  useEffect(() => {
+    const prefs = loadGeneratePairingsPrefs(eventSlug);
+    setOverwrite(prefs.overwrite);
+    setAutoForfeits(prefs.autoForfeits);
+    setPublishImmediately(prefs.publishImmediately);
+  }, [eventSlug]);
+
+  useEffect(() => {
+    saveGeneratePairingsPrefs(eventSlug, { overwrite, autoForfeits, publishImmediately });
+  }, [eventSlug, overwrite, autoForfeits, publishImmediately]);
 
   async function onSubmit() {
     const result = await run("generate-pairings", {

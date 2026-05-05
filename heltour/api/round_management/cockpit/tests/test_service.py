@@ -90,8 +90,12 @@ class BuildCockpitTests(TestCase):
         self.assertEqual(ctx.exception.status_code, 404)
 
     def test_history_mode_for_past_round_id(self):
+        # Mode is derived from the round's real state, not hardcoded:
+        # a completed round renders ``history``; a still-running round
+        # rendered via the round-id query stays ``live``.
         rnd = _make_live_round("evt-hist")
-        # Build a past round explicitly via round_id query.
+        rnd.is_completed = True
+        rnd.save()
         dto = build_cockpit_for_round_id_sync("evt-hist", rnd.pk, Viewer.anonymous(), None)
         self.assertEqual(dto.mode, "history")
 

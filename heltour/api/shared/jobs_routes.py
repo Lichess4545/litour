@@ -96,9 +96,9 @@ def _get_job_sync(user, job_id: int) -> dict[str, Any]:
     if user is None or not getattr(user, "is_authenticated", False):
         raise HTTPException(status_code=401, detail="not authenticated")
     try:
-        job = BackgroundJob.objects.select_related(
-            "season__league", "league", "triggered_by"
-        ).get(pk=job_id)
+        job = BackgroundJob.objects.select_related("season__league", "league", "triggered_by").get(
+            pk=job_id
+        )
     except BackgroundJob.DoesNotExist as exc:
         raise HTTPException(status_code=404, detail="job not found") from exc
 

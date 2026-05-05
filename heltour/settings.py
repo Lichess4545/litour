@@ -346,6 +346,16 @@ CELERY_TIMEZONE = "UTC"
 CACHEOPS_REDIS = REDIS_URL
 CACHEOPS_DEFAULTS = {"timeout": 60 * 60}
 
+# The FastAPI process opts out of cacheops entirely by setting
+# ``LITOUR_CACHEOPS_DISABLED=1`` before ``django.setup()`` (see
+# ``heltour/api/main.py``). Cacheops's invalidation isn't always
+# synchronous on save, which leaks stale rows into WS-pushed DTOs and
+# has bitten us repeatedly (job-status rollback, stale round mode,
+# duplicate Round queries, RecursionError on chained ``.nocache()``).
+# The legacy Django side keeps caching for the admin and template
+# render paths.
+CACHEOPS_ENABLED = os.environ.get("LITOUR_CACHEOPS_DISABLED") != "1"
+
 CACHEOPS = {
     "auth.user": {"ops": "get", "timeout": 60 * 15},
     "tournament.*": {"ops": {"fetch", "get"}, "timeout": 60 * 15},

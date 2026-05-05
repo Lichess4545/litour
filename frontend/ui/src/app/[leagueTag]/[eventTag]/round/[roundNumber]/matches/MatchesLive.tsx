@@ -1,6 +1,6 @@
 "use client";
 
-import { type WSMessage, type components, connectMatchStream } from "@litour/api-client";
+import { type WSMessage, type components, wsMessage } from "@litour/api-client";
 import { useEffect, useState } from "react";
 
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
@@ -11,12 +11,15 @@ import {
   TeamMatchesView,
   ViewerBadge,
 } from "@/components/round_management";
+import {
+  selectMatchesForRound,
+  useMatchesStore,
+} from "@/components/round_management/matchesStore";
 import { ModeToggle } from "@/components/theme/ModeToggle";
 import type { MatchFilter } from "@/lib/match-filter";
+import { useChannel } from "@/lib/multiplex";
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
-type Match = components["schemas"]["MatchDTO"];
-type TeamMatch = components["schemas"]["TeamMatchDTO"];
 
 interface Props {
   initial: RoundMatches;
@@ -27,40 +30,35 @@ interface Props {
   embedded?: boolean;
 }
 
-export function MatchesLive({ initial, apiBaseUrl, embedded = false }: Props) {
-  const [matches, setMatches] = useState<Match[]>(initial.matches);
-  const [teamMatches, setTeamMatches] = useState<TeamMatch[]>(initial.team_matches);
+export function MatchesLive({ initial, embedded = false }: Props) {
+  const setSnapshot = useMatchesStore((s) => s.setSnapshot);
+  const applyMatchUpdate = useMatchesStore((s) => s.applyMatchUpdate);
+  const applyTeamMatchUpdate = useMatchesStore((s) => s.applyTeamMatchUpdate);
+
+  // Seed from SSR initial. ``initial`` re-keys when the operator
+  // navigates between rounds (page.tsx changes its child key on
+  // round_id), so this also covers re-hydration.
+  useEffect(() => {
+    setSnapshot(initial.round_id, initial.matches, initial.team_matches);
+  }, [initial, setSnapshot]);
+
+  const { matches, teamMatches } = useMatchesStore(selectMatchesForRound(initial.round_id));
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [filter, setFilter] = useState<MatchFilter>("all");
 
-  useEffect(() => {
-    let didError = false;
-    const stream = connectMatchStream(
-      apiBaseUrl,
-      initial.round_id,
-      (msg: WSMessage) => {
-        didError = false;
-        setConnection("live");
-        if (msg.type === "match.update") {
-          setMatches((prev) => replaceById(prev, msg.match));
-        } else if (msg.type === "team_match.update") {
-          setTeamMatches((prev) => replaceById(prev, msg.team_match));
-        }
-      },
-      (err: unknown) => {
-        didError = true;
-        setConnection("reconnecting");
-        console.error("match stream error", err);
-      },
-    );
-    const ready = window.setTimeout(() => {
-      if (!didError) setConnection("live");
-    }, 1500);
-    return () => {
-      window.clearTimeout(ready);
-      stream.close();
-    };
-  }, [apiBaseUrl, initial.round_id]);
+  useChannel(`matches:round:${initial.round_id}`, {
+    schema: wsMessage,
+    onMessage: (msg: WSMessage) => {
+      if (msg.type === "match.update") {
+        applyMatchUpdate(initial.round_id, msg.match);
+      } else if (msg.type === "team_match.update") {
+        applyTeamMatchUpdate(initial.round_id, msg.team_match);
+      }
+    },
+    onStatus: (status) => {
+      setConnection(status === "subscribed" ? "live" : "reconnecting");
+    },
+  });
 
   const body = (
     <>
@@ -127,14 +125,4 @@ export function MatchesLive({ initial, apiBaseUrl, embedded = false }: Props) {
 
   if (embedded) return body;
   return <main className="mx-auto max-w-5xl px-6 py-10">{body}</main>;
-}
-
-function replaceById<T extends { id: number }>(prev: T[], next: T): T[] {
-  let changed = false;
-  const out = prev.map((item) => {
-    if (item.id !== next.id) return item;
-    changed = true;
-    return next;
-  });
-  return changed ? out : prev;
 }

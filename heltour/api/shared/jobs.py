@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 # ---------- pubsub publisher ---------------------------------------------------
 #
 # Mirrors the pattern in `heltour/tournament/signals_pubsub.py` —
-# fire-and-forget Redis publish per state change. Subscribers live in
-# `heltour/api/shared/jobs_ws.py`.
+# fire-and-forget Redis publish per state change. Fan-out to browsers
+# happens via the `/ws` multiplex (`heltour/api/shared/ws_multiplex.py`)
+# on the `jobs:*` channels.
 
 _client: redis.Redis | None = None
 
@@ -63,7 +64,15 @@ def _publish(channels: list[str], payload: dict[str, Any]) -> None:
         client = _get_redis_client()
         body = json.dumps(payload, default=str)
         for channel in channels:
-            client.publish(channel, body)
+            receivers = client.publish(channel, body)
+            logger.info(
+                "jobs pubsub publish channel=%s type=%s job_id=%s status=%s receivers=%s",
+                channel,
+                payload.get("type"),
+                payload.get("job", {}).get("id"),
+                payload.get("job", {}).get("status"),
+                receivers,
+            )
     except Exception:
         logger.exception("jobs pubsub publish failed channels=%s", channels)
 
@@ -156,10 +165,20 @@ def _reload_job(job_id: int):
     and cacheops's invalidation of ``select_related`` variants isn't
     reliably synchronous; without bypassing the cache we observed
     envelopes whose ``status`` regressed as stale snapshots leaked.
+
+    The FastAPI process disables cacheops globally
+    (``LITOUR_CACHEOPS_DISABLED=1`` in ``heltour/api/main.py``), but
+    this code also runs inside the Celery worker — a separate process
+    that still has cacheops enabled — so the per-query ``.nocache()``
+    is what actually keeps stale rows out of the published envelope.
     """
     from heltour.api.shared.models import BackgroundJob
 
-    return BackgroundJob.objects.select_related("season", "league", "triggered_by").get(pk=job_id)
+    return (
+        BackgroundJob.objects.select_related("season", "league", "triggered_by")
+        .nocache()
+        .get(pk=job_id)
+    )
 
 
 # ---------- Registry + decorator -----------------------------------------------

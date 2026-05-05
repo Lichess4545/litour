@@ -175,10 +175,14 @@ function Sparkline({ points, loaded }: { points: JobLagHistoryPoint[]; loaded: b
   const yFor = (v: number) => H - PAD - (v / yMax) * (H - 2 * PAD);
 
   const meanPath = points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i).toFixed(1)} ${yFor(p.queue_lag_mean).toFixed(1)}`)
+    .map(
+      (p, i) => `${i === 0 ? "M" : "L"} ${xFor(i).toFixed(1)} ${yFor(p.queue_lag_mean).toFixed(1)}`,
+    )
     .join(" ");
   const maxPath = points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i).toFixed(1)} ${yFor(p.queue_lag_max).toFixed(1)}`)
+    .map(
+      (p, i) => `${i === 0 ? "M" : "L"} ${xFor(i).toFixed(1)} ${yFor(p.queue_lag_max).toFixed(1)}`,
+    )
     .join(" ");
 
   return (

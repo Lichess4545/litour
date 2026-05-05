@@ -82,10 +82,14 @@
                     }, 250);
                 }
 
-                window.LitourApi.connectMatchStream(apiBase, roundId, function (msg) {
-                    if (msg.type === 'match.update' && msg.match) {
-                        schedule(msg.match.id);
-                    }
+                var multiplex = new window.LitourApi.MultiplexClient(apiBase);
+                multiplex.subscribe('matches:round:' + roundId, {
+                    schema: window.LitourApi.wsMessage,
+                    onMessage: function (msg) {
+                        if (msg.type === 'match.update' && msg.match) {
+                            schedule(msg.match.id);
+                        }
+                    },
                 });
             })();
         </script>

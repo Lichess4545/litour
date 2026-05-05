@@ -220,10 +220,32 @@ class TournamentBuilder:
         if self._db_objects is None:
             self._build_db_objects()
 
-        # Create a new round in the database
-        round_obj = Round.objects.create(
-            season=self._db_objects["season"], number=round_number, is_completed=False
+        # `structure_to_db` already created the round during `build()`
+        # (via `get_or_create`), so look up the existing row instead of
+        # creating a sibling — otherwise the seeder produces two Round-N
+        # rows per season and downstream tools (cockpit selector,
+        # generate_random_results) hit duplicates. Among same-number
+        # rows, prefer the one with the lowest pk to match the
+        # cockpit's tie-break. `.nocache()` is critical here: this runs
+        # immediately after `_clear_data()` + `structure_to_db` insert,
+        # and cacheops's invalidation can lag the DB, so a cached
+        # filter() can still return the pre-insert empty result.
+        round_obj = (
+            Round.objects.nocache()
+            .filter(season=self._db_objects["season"], number=round_number)
+            .order_by("id")
+            .first()
         )
+        if round_obj is None:
+            round_obj = Round.objects.create(
+                season=self._db_objects["season"],
+                number=round_number,
+                is_completed=False,
+            )
+        else:
+            if round_obj.is_completed:
+                round_obj.is_completed = False
+                round_obj.save(update_fields=["is_completed"])
 
         # Generate pairings if requested
         if generate_pairings_auto:

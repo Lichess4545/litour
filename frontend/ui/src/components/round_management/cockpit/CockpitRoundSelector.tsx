@@ -13,18 +13,23 @@ type RoundSummary = components["schemas"]["EventRoundDTO"];
 interface Props {
   rounds: RoundSummary[];
   currentRoundId: number;
+  currentRoundNumber: number;
   eventSlug: string;
 }
 
 // DR11: current round bold + last 3 dimmed + "Show all rounds" disclosure.
 // Trigger styled as an outline button so it lines up with the sibling
 // JobsButton in the cockpit header instead of clashing visually.
-export function CockpitRoundSelector({ rounds, currentRoundId, eventSlug }: Props) {
+export function CockpitRoundSelector({
+  rounds,
+  currentRoundId,
+  currentRoundNumber,
+  eventSlug,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
   const sorted = [...rounds].sort((a, b) => b.round_number - a.round_number);
   const recent = sorted.slice(0, 3);
   const rest = sorted.slice(3);
-  const currentRoundNumber = sorted.find((r) => r.round_id === currentRoundId)?.round_number ?? "?";
 
   return (
     <details
@@ -83,7 +88,7 @@ function RoundLink({
   }
   return (
     <Link
-      href={`/events/${encodeURIComponent(eventSlug)}/manage/?round=${round.round_id}`}
+      href={`/events/${encodeURIComponent(eventSlug)}/manage?round=${round.round_id}`}
       className="text-muted-foreground hover:text-foreground hover:bg-accent block px-3 py-2 tabular-nums rounded-sm"
     >
       Round {round.round_number}

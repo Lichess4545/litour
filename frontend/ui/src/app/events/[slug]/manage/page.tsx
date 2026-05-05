@@ -90,6 +90,12 @@ export default async function CockpitPage({
   }
   return (
     <CockpitLive
+      // Force remount on round change so all client state (dto, drawer
+      // selection, expansion, lag history) resets cleanly. CockpitLive
+      // seeds its state from `initial` via useState, which only runs on
+      // first mount — without a key bump, navigating the dropdown leaves
+      // the stale dto onscreen even though the server fetched the new round.
+      key={result.dto.round_id}
       initial={result.dto}
       initialLag={result.initialLag}
       apiBaseUrl={publicApiBaseUrl()}

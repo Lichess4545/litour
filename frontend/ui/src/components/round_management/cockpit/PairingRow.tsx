@@ -5,6 +5,7 @@ import type { CockpitMatchDTO } from "@litour/api-client";
 import { PlayerName } from "@/components/round_management/PlayerName";
 
 import { AttentionBadge } from "./AttentionBadge";
+import { AttentionChip } from "./AttentionChip";
 
 interface Props {
   match: CockpitMatchDTO;
@@ -81,7 +82,15 @@ export function PairingRow({ match, showFideNames, isExpanded, isHistory, onTogg
       </td>
       <td className="text-muted-foreground px-3 py-3 text-sm tabular-nums">{scheduled}</td>
       <td className="px-3 py-3 text-right">
-        <AttentionBadge level={match.attention.level} />
+        {match.attention.reasons.length > 0 ? (
+          <span className="inline-flex flex-wrap justify-end gap-1">
+            {match.attention.reasons.map((r) => (
+              <AttentionChip key={r} reason={r} />
+            ))}
+          </span>
+        ) : (
+          <AttentionBadge level={match.attention.level} />
+        )}
       </td>
     </tr>
   );

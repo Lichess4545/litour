@@ -1,23 +1,12 @@
 export {
   createClient,
-  connectMatchStream,
-  connectDiscoveryHomeStream,
-  connectDiscoveryEventStream,
-  connectCockpitStream,
-  connectJobsSeasonStream,
-  connectJobsAllStream,
-  connectJobsLagStream,
   callCockpitAction,
   fetchJobLagHistory,
   listJobsForSeason,
 } from "./client";
-export type {
-  MatchStream,
-  DiscoveryStream,
-  CockpitStream,
-  JobsStream,
-  CockpitActionName,
-} from "./client";
+export type { CockpitActionName } from "./client";
+export { MultiplexClient } from "./multiplex";
+export type { ChannelOptions, ChannelStatus } from "./multiplex";
 export {
   backgroundJobDto,
   jobLagHistoryDto,
@@ -73,6 +62,8 @@ export {
   cockpitActionResultDto,
   attentionDto,
   wsCockpitMessage,
+  wsCockpitMatchUpdate,
+  wsCockpitSnapshot,
 } from "./cockpit-messages";
 export type {
   CockpitMode,
@@ -95,8 +86,7 @@ export type {
   CockpitActionResultDTO,
   CtaKind,
   WSCockpitMatchUpdate,
-  WSCockpitClose,
-  WSCockpitQueueLag,
+  WSCockpitSnapshot,
   WSCockpitMessage,
 } from "./cockpit-messages";
 export type { paths, components } from "./generated";

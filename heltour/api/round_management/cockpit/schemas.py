@@ -355,21 +355,23 @@ class WSCockpitMatchUpdate(BaseModel):
     last_event_id: int
 
 
-class WSCockpitClose(BaseModel):
-    """Sentinel pushed before the server closes (round transition / revoke).
+class WSCockpitSnapshot(BaseModel):
+    """Full DTO replacement push.
 
-    The actual WebSocket close follows immediately; this gives the client
-    a typed signal of *why* the close is coming so the UI can show the
-    right reconnect / redirect treatment.
+    Emitted whenever the cockpit's underlying state changes in ways
+    per-match updates can't patch (round transitions, new pairing sets,
+    season completion). The client replaces its in-memory dto with
+    ``dto`` verbatim.
     """
 
-    model_config = ConfigDict(title="WSCockpitClose")
+    model_config = ConfigDict(title="WSCockpitSnapshot")
 
-    type: Literal["cockpit.close"] = "cockpit.close"
-    reason: Literal["round_transition", "permission_revoked", "round_deleted"]
+    type: Literal["cockpit.snapshot"] = "cockpit.snapshot"
+    round_id: int
+    dto: "CockpitDTO"
 
 
 WSCockpitMessage = Annotated[
-    Union[WSCockpitMatchUpdate, WSCockpitClose],
+    Union[WSCockpitMatchUpdate, WSCockpitSnapshot],
     Field(discriminator="type"),
 ]

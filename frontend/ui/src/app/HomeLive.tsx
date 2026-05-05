@@ -1,16 +1,20 @@
 "use client";
 
 import {
-  type EventCardDTO,
   type EventCardsPageDTO,
   type WSHomeMessage,
-  connectDiscoveryHomeStream,
+  wsHomeMessage,
 } from "@litour/api-client";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState, EventGrid, OrganizerFilter } from "@/components/discovery";
+import {
+  selectCards,
+  useDiscoveryStore,
+} from "@/components/discovery/discoveryStore";
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
+import { useChannel } from "@/lib/multiplex";
 import palamedesMark from "../../public/palamedes-mark.png";
 
 interface Props {
@@ -18,38 +22,36 @@ interface Props {
   apiBaseUrl: string;
 }
 
-export function HomeLive({ initial, apiBaseUrl }: Props) {
-  const [cards, setCards] = useState<EventCardDTO[]>(initial.events);
+export function HomeLive({ initial }: Props) {
+  const setCards = useDiscoveryStore((s) => s.setCards);
+  const upsertCard = useDiscoveryStore((s) => s.upsertCard);
+  const removeCard = useDiscoveryStore((s) => s.removeCard);
+
+  // Seed the cards slice from SSR. Subsequent updates flow via WS
+  // events into the same store slice, so HomeLive and any future
+  // surface that wants the live event grid (admin home, dashboards)
+  // read off the same data.
+  useEffect(() => {
+    setCards(initial.events);
+  }, [initial.events, setCards]);
+
+  const cards = useDiscoveryStore(selectCards);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [organizerFilter, setOrganizerFilter] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    let didError = false;
-    const stream = connectDiscoveryHomeStream(
-      apiBaseUrl,
-      (msg: WSHomeMessage) => {
-        didError = false;
-        setConnection("live");
-        if (msg.type === "event.update") {
-          setCards((prev) => upsertBySlug(prev, msg.card));
-        } else if (msg.type === "event.removed") {
-          setCards((prev) => prev.filter((c) => c.slug !== msg.slug));
-        }
-      },
-      (err: unknown) => {
-        didError = true;
-        setConnection("reconnecting");
-        console.error("discovery home stream error", err);
-      },
-    );
-    const ready = window.setTimeout(() => {
-      if (!didError) setConnection("live");
-    }, 1500);
-    return () => {
-      window.clearTimeout(ready);
-      stream.close();
-    };
-  }, [apiBaseUrl]);
+  useChannel("events:home", {
+    schema: wsHomeMessage,
+    onMessage: (msg: WSHomeMessage) => {
+      if (msg.type === "event.update") {
+        upsertCard(msg.card);
+      } else if (msg.type === "event.removed") {
+        removeCard(msg.slug, msg.reason);
+      }
+    },
+    onStatus: (status) => {
+      setConnection(status === "subscribed" ? "live" : "reconnecting");
+    },
+  });
 
   const organizers = useMemo(() => uniqueOrganizers(cards), [cards]);
   const visible = useMemo(
@@ -110,18 +112,9 @@ export function HomeLive({ initial, apiBaseUrl }: Props) {
   );
 }
 
-function upsertBySlug(prev: EventCardDTO[], next: EventCardDTO): EventCardDTO[] {
-  let replaced = false;
-  const out = prev.map((c) => {
-    if (c.slug !== next.slug) return c;
-    replaced = true;
-    return next;
-  });
-  if (replaced) return out;
-  return [...prev, next];
-}
-
-function uniqueOrganizers(cards: EventCardDTO[]): { tag: string; label: string }[] {
+function uniqueOrganizers(
+  cards: { organizer_tag: string; organizer_label: string }[],
+): { tag: string; label: string }[] {
   const seen = new Map<string, string>();
   for (const c of cards) {
     if (!seen.has(c.organizer_tag)) {

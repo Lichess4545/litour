@@ -2,14 +2,12 @@
 
 import {
   type CockpitDTO,
-  type CockpitMatchDTO,
   type WSCockpitMessage,
   type WSJobLag,
-  connectCockpitStream,
-  connectJobsLagStream,
+  cockpitDto,
+  wsCockpitMessage,
 } from "@litour/api-client";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AttentionList,
@@ -21,6 +19,12 @@ import {
   PairingDetailDrawer,
   ToasterProvider,
 } from "@/components/round_management/cockpit";
+import {
+  selectCockpitDto,
+  useCockpitStore,
+} from "@/components/round_management/cockpit/cockpitStore";
+import { useLagSync } from "@/lib/lagStore";
+import { useChannel } from "@/lib/multiplex";
 
 interface Props {
   initial: CockpitDTO;
@@ -38,75 +42,72 @@ export function CockpitLive(props: Props) {
 }
 
 function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props) {
-  const router = useRouter();
-  const [dto, setDto] = useState<CockpitDTO>(initial);
-  // L3 drawer: which pairing is open. null = closed.
+  // Lag store: global single value, no slug. The Sync hook handles
+  // both the SSR seed and the live WS push.
+  useLagSync(initialLag);
+
+  // Cockpit store: ``${slug}:${roundId}`` keyed. Seed it from SSR
+  // initial data and replace whenever the route hydrates a new
+  // ``initial`` (round navigation re-keys the page).
+  const setSnapshot = useCockpitStore((s) => s.setSnapshot);
+  const applyMatchUpdate = useCockpitStore((s) => s.applyMatchUpdate);
+  useEffect(() => {
+    setSnapshot(eventSlug, initial.round_id, initial);
+  }, [eventSlug, initial, setSnapshot]);
+
+  const dto = useCockpitStore(selectCockpitDto(eventSlug, initial.round_id)) ?? initial;
+
   const [openPairingId, setOpenPairingId] = useState<number | null>(null);
-  // L2 expanded: which row is showing inline summary.
   const [expandedPairingId, setExpandedPairingId] = useState<number | null>(null);
-  // Stale-banner: which pairing the open drawer was anchored on, for the
-  // version-mismatch banner per design doc Real-time strategy section.
   const [staleBannerForPairing, setStaleBannerForPairing] = useState<number | null>(null);
-  // Latest queue-lag snapshot from the canary. Hydrated server-side so
-  // the footer chip renders real numbers on first paint; the WS stream
-  // patches it every ~5s thereafter.
-  const [lagSnapshot, setLagSnapshot] = useState<WSJobLag | null>(initialLag);
 
+  // Refs let the WS callback read current values without forcing a
+  // resubscribe on every match update.
+  const openPairingIdRef = useRef(openPairingId);
   useEffect(() => {
-    // CLAUDE.md rule 6: every page is real-time. Open the cockpit WS in
-    // every mode that has a resolvable round (live / pre_round / history);
-    // `empty` has nothing for the WS to subscribe to and the server will
-    // close 1008 — the client tolerates that gracefully.
-    if (initial.mode === "empty") {
-      return;
-    }
+    openPairingIdRef.current = openPairingId;
+  }, [openPairingId]);
 
-    const stream = connectCockpitStream(
-      apiBaseUrl,
-      eventSlug,
-      (msg: WSCockpitMessage) => {
-        if (msg.type === "cockpit.match.update") {
-          setDto((prev) => mergeMatch(prev, msg.match, msg.needs_you_count, msg.last_event_id));
-          // If the open drawer was anchored on this pairing and version changed,
-          // surface the stale-banner. The drawer reads from dto, so the check
-          // can use the current state directly via the merged callback below.
-          setStaleBannerForPairing((prevStale) => {
-            if (openPairingId === msg.match.id) {
-              const before = dto.matches.find((m) => m.id === msg.match.id);
-              if (before && before.version !== msg.match.version) {
-                return msg.match.id;
-              }
-            }
-            return prevStale;
-          });
-        } else if (msg.type === "cockpit.close") {
-          if (msg.reason === "permission_revoked") {
-            router.replace(`/events/${encodeURIComponent(eventSlug)}/`);
-          } else {
-            // Round transition / round deleted: refetch to pick up the new
-            // mode (history / pre_round / empty).
-            router.refresh();
-          }
+  // Cockpit channel — ``cockpit.snapshot`` (round transitions / new
+  // pairings) and ``cockpit.match.update`` (per-pairing merge) both
+  // dispatch into the cockpit store. The component layer only owns
+  // the stale-banner heuristic, which depends on transient UI state
+  // (which pairing the operator currently has open).
+  const cockpitChannel =
+    initial.mode === "empty"
+      ? null
+      : `cockpit:event:${encodeURIComponent(eventSlug)}:round:${initial.round_id}`;
+
+  useChannel(cockpitChannel, {
+    schema: wsCockpitMessage,
+    onMessage: (msg: WSCockpitMessage) => {
+      if (msg.type === "cockpit.match.update") {
+        // Capture the previous version BEFORE the store update so the
+        // stale-banner check has a real before/after pair.
+        const prevVersion = useCockpitStore
+          .getState()
+          .byKey[`${eventSlug}:${initial.round_id}`]?.matches.find((m) => m.id === msg.match.id)
+          ?.version;
+        applyMatchUpdate(
+          eventSlug,
+          initial.round_id,
+          msg.match,
+          msg.needs_you_count,
+          msg.last_event_id,
+        );
+        if (
+          openPairingIdRef.current === msg.match.id &&
+          prevVersion !== undefined &&
+          prevVersion !== msg.match.version
+        ) {
+          setStaleBannerForPairing(msg.match.id);
         }
-      },
-      (err: unknown) => {
-        console.error("cockpit stream error", err);
-      },
-    );
-    return () => stream.close();
-  }, [apiBaseUrl, eventSlug, initial.mode, router, openPairingId, dto.matches]);
-
-  // Queue-health canary stream — opens on every mode (incl. pre_round /
-  // history / empty) so the footer chip is live regardless of round
-  // state. Independent of the cockpit WS lifecycle on purpose.
-  useEffect(() => {
-    const stream = connectJobsLagStream(
-      apiBaseUrl,
-      (msg) => setLagSnapshot(msg),
-      (err) => console.error("lag stream error", err),
-    );
-    return () => stream.close();
-  }, [apiBaseUrl]);
+      } else if (msg.type === "cockpit.snapshot") {
+        setSnapshot(eventSlug, initial.round_id, msg.dto);
+        setStaleBannerForPairing(null);
+      }
+    },
+  });
 
   const openPairing = openPairingId
     ? (dto.matches.find((m) => m.id === openPairingId) ?? null)
@@ -125,14 +126,14 @@ function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props)
             />
           </div>
         ) : null}
-        <ModeBanner mode={dto.mode} eventSlug={eventSlug} />
-        {dto.management ? (
-        <CockpitStatusStrip
-          management={dto.management}
-          lagSnapshot={lagSnapshot}
-          apiBaseUrl={apiBaseUrl}
+        <ModeBanner
+          mode={dto.mode}
+          eventSlug={eventSlug}
+          hasPrimaryAction={dto.management?.primary_action != null}
         />
-      ) : null}
+        {dto.management ? (
+          <CockpitStatusStrip management={dto.management} apiBaseUrl={apiBaseUrl} />
+        ) : null}
       </main>
     );
   }
@@ -140,14 +141,10 @@ function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props)
   const needsYou = dto.matches.filter(
     (m) => m.attention.level === "act" || m.attention.level === "watch",
   );
-  // Split the calm pairings (attention=none) into "Awaiting results"
-  // (still in flight — no result posted) and "Finished" (result posted)
-  // per DESIGN.md status terminology + the user-facing distinction.
   const calm = dto.matches.filter((m) => m.attention.level === "none");
   const awaiting = calm.filter((m) => !m.result);
   const finished = calm.filter((m) => !!m.result);
   const showFideNames = dto.settings.use_fide_information;
-  // Per DR2: history mode hides intervention buttons throughout.
   const isHistory = dto.mode === "history";
 
   return (
@@ -195,11 +192,7 @@ function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props)
         />
       </section>
       {dto.management ? (
-        <CockpitStatusStrip
-          management={dto.management}
-          lagSnapshot={lagSnapshot}
-          apiBaseUrl={apiBaseUrl}
-        />
+        <CockpitStatusStrip management={dto.management} apiBaseUrl={apiBaseUrl} />
       ) : null}
       {openPairing ? (
         <PairingDetailDrawer
@@ -213,7 +206,19 @@ function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props)
             setStaleBannerForPairing(null);
           }}
           onIntervened={(updated) => {
-            setDto((prev) => mergeMatch(prev, updated, prev.needs_you_count, prev.last_event_id));
+            // Read the latest needs_you / last_event_id straight from
+            // the store so a WS push between render and click doesn't
+            // get clobbered by stale closure values.
+            const cur = useCockpitStore
+              .getState()
+              .byKey[`${eventSlug}:${initial.round_id}`];
+            applyMatchUpdate(
+              eventSlug,
+              initial.round_id,
+              updated,
+              cur?.needs_you_count ?? dto.needs_you_count,
+              cur?.last_event_id ?? dto.last_event_id,
+            );
             setStaleBannerForPairing(null);
           }}
         />
@@ -222,16 +227,6 @@ function CockpitLiveInner({ initial, initialLag, apiBaseUrl, eventSlug }: Props)
   );
 }
 
-function mergeMatch(
-  prev: CockpitDTO,
-  updated: CockpitMatchDTO,
-  needsYouCount: number,
-  lastEventId: number,
-): CockpitDTO {
-  return {
-    ...prev,
-    matches: prev.matches.map((m) => (m.id === updated.id ? updated : m)),
-    needs_you_count: needsYouCount,
-    last_event_id: lastEventId,
-  };
-}
+// Keep the cockpit dto schema pinned so changes upstream surface as
+// type errors here too — ws messages already validate at the boundary.
+void cockpitDto;

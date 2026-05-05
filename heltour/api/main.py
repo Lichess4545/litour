@@ -4,6 +4,14 @@ import os
 import django
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "heltour.settings")
+# Disable cacheops globally for the FastAPI worker. Cacheops's
+# invalidation isn't reliably synchronous on save, which leaks stale
+# rows into WS-pushed DTOs (job-status rollback, stale round mode, etc.)
+# and has surfaced as deeply confusing recursion / consistency bugs.
+# The legacy Django web/admin side keeps cacheops; only ``runapi`` opts
+# out. Setting the env var before ``django.setup()`` makes
+# ``CACHEOPS_ENABLED = False`` take effect at config load time.
+os.environ["LITOUR_CACHEOPS_DISABLED"] = "1"
 django.setup()
 
 # Django's settings.LOGGING already configured root handlers; just make sure
@@ -15,18 +23,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from heltour.api.discovery import routes as discovery_routes
-from heltour.api.discovery import ws as discovery_ws
 from heltour.api.event_setup import routes as event_setup_routes
 from heltour.api.middleware import DjangoConnectionMiddleware
 from heltour.api.registration import routes as registration_routes
 from heltour.api.roster_formation import routes as roster_formation_routes
 from heltour.api.round_management import routes as round_management_routes
-from heltour.api.round_management import ws as round_management_ws
 from heltour.api.round_management.cockpit import routes as cockpit_routes
-from heltour.api.round_management.cockpit import ws as cockpit_ws
 from heltour.api.shared import health
 from heltour.api.shared import jobs_routes
-from heltour.api.shared import jobs_ws
+from heltour.api.shared import ws_multiplex
 from heltour.api.standings import routes as standings_routes
 
 app = FastAPI(title="Litour API", version="1")
@@ -42,11 +47,10 @@ app.add_middleware(
 # Health is unprefixed; everything else lives under /v1.
 app.include_router(health.router)
 
-# WS routers are unprefixed (matches the existing client URLs).
-app.include_router(round_management_ws.router)
-app.include_router(cockpit_ws.router)
-app.include_router(discovery_ws.router)
-app.include_router(jobs_ws.router)
+# Single multiplexed WebSocket endpoint at ``/ws``. All real-time UI
+# data — cockpit, jobs, queue lag, discovery, public matches — fans out
+# over this one socket. See ``heltour/api/shared/ws_multiplex.py``.
+app.include_router(ws_multiplex.router)
 
 # Per-domain v1 routers — adding a new chess domain means adding one
 # include_router line here, nothing else.

@@ -242,14 +242,15 @@ export const wsCockpitMatchUpdate = z.object({
   last_event_id: z.number().int(),
 });
 
-export const wsCockpitClose = z.object({
-  type: z.literal("cockpit.close"),
-  reason: z.enum(["round_transition", "permission_revoked", "round_deleted"]),
+export const wsCockpitSnapshot = z.object({
+  type: z.literal("cockpit.snapshot"),
+  round_id: z.number().int(),
+  dto: cockpitDto,
 });
 
 export const wsCockpitMessage = z.discriminatedUnion("type", [
   wsCockpitMatchUpdate,
-  wsCockpitClose,
+  wsCockpitSnapshot,
 ]);
 
 export type CockpitMode = z.infer<typeof cockpitMode>;
@@ -272,5 +273,5 @@ export type CockpitDTO = z.infer<typeof cockpitDto>;
 export type CockpitActionStatus = z.infer<typeof cockpitActionStatus>;
 export type CockpitActionResultDTO = z.infer<typeof cockpitActionResultDto>;
 export type WSCockpitMatchUpdate = z.infer<typeof wsCockpitMatchUpdate>;
-export type WSCockpitClose = z.infer<typeof wsCockpitClose>;
+export type WSCockpitSnapshot = z.infer<typeof wsCockpitSnapshot>;
 export type WSCockpitMessage = z.infer<typeof wsCockpitMessage>;

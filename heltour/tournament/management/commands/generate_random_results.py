@@ -61,18 +61,26 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Processing season: {season.name} ({season.league.name})")
 
-        # Find the target round
+        # Find the target round. Round has no unique constraint on
+        # (season, number), so a re-run of a seeder can produce
+        # duplicates. Tie-break by lowest pk to match the cockpit's
+        # `resolve_current_round`, which uses `order_by("number")` and
+        # therefore picks the lowest-pk row among same-number siblings —
+        # otherwise the operator generates results for a round nobody
+        # is looking at.
         if round_number:
-            try:
-                target_round = Round.objects.get(season=season, number=round_number)
-            except Round.DoesNotExist:
+            target_round = (
+                Round.objects.filter(season=season, number=round_number)
+                .order_by("id")
+                .first()
+            )
+            if target_round is None:
                 raise CommandError(
                     f"Round {round_number} does not exist for season {season_id}"
                 )
         else:
-            # Use the latest round
             target_round = (
-                Round.objects.filter(season=season).order_by("-number").first()
+                Round.objects.filter(season=season).order_by("-number", "id").first()
             )
             if not target_round:
                 raise CommandError(f"No rounds found for season {season_id}")

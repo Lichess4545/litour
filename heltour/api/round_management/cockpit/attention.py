@@ -46,7 +46,6 @@ def compute_attention(
     round_deadline: datetime,
 ) -> AttentionOutput:
     reasons: list[AttentionReason] = []
-    hours_to_deadline = (round_deadline - now).total_seconds() / 3600
 
     past_deadline = not pairing.has_result and now > round_deadline
     scheduled_not_started = (
@@ -55,8 +54,12 @@ def compute_attention(
         and pairing.scheduled_at < now - timedelta(minutes=30)
         and not pairing.has_result
     )
+    # Every unscheduled pairing is operator work from the moment the
+    # round opens — the cockpit's job is to surface that workload, not
+    # hide it until the last three days. The reason code keeps the
+    # legacy "near deadline" name for wire-format stability.
     no_schedule_near = (
-        pairing.scheduled_at is None and not pairing.has_result and 0 < hours_to_deadline < 72
+        pairing.scheduled_at is None and not pairing.has_result and now < round_deadline
     )
 
     if past_deadline:

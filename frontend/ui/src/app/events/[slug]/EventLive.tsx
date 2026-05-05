@@ -4,15 +4,21 @@ import {
   type EventDetailDTO,
   type WSEventMessage,
   type components,
-  connectDiscoveryEventStream,
+  wsEventMessage,
 } from "@litour/api-client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { MatchesLive } from "@/app/[leagueTag]/[eventTag]/round/[roundNumber]/matches/MatchesLive";
 import { EventTabs, StatusPill } from "@/components/discovery";
+import {
+  selectDetailForSlug,
+  selectRemovalReasonForSlug,
+  useDiscoveryStore,
+} from "@/components/discovery/discoveryStore";
 import { ConnectionBadge, type ConnectionState } from "@/components/primitives";
 import { buttonVariants } from "@/components/ui/button";
+import { useChannel } from "@/lib/multiplex";
 import { cn } from "@/lib/utils";
 
 type RoundMatches = components["schemas"]["RoundMatchesDTO"];
@@ -23,41 +29,33 @@ interface Props {
 }
 
 export function EventLive({ initial, apiBaseUrl }: Props) {
-  const [detail, setDetail] = useState<EventDetailDTO>(initial);
-  const [removed, setRemoved] = useState<string | null>(null);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const slug = initial.header.slug;
+  const setDetail = useDiscoveryStore((s) => s.setDetail);
+  const markDetailRemoved = useDiscoveryStore((s) => s.markDetailRemoved);
 
   useEffect(() => {
-    let didError = false;
-    const stream = connectDiscoveryEventStream(
-      apiBaseUrl,
-      slug,
-      (msg: WSEventMessage) => {
-        didError = false;
-        setConnection("live");
-        if (msg.type === "event.update") {
-          setDetail(msg.detail);
-        } else if (msg.type === "event.removed") {
-          setRemoved(msg.reason);
-        }
-      },
-      (err: unknown) => {
-        didError = true;
-        setConnection("reconnecting");
-        console.error("discovery event stream error", err);
-      },
-    );
-    const ready = window.setTimeout(() => {
-      if (!didError) setConnection("live");
-    }, 1500);
-    return () => {
-      window.clearTimeout(ready);
-      stream.close();
-    };
-  }, [apiBaseUrl, slug]);
+    setDetail(slug, initial);
+  }, [slug, initial, setDetail]);
 
-  if (removed) {
+  const detail = useDiscoveryStore(selectDetailForSlug(slug)) ?? initial;
+  const removed = useDiscoveryStore(selectRemovalReasonForSlug(slug));
+  const [connection, setConnection] = useState<ConnectionState>("connecting");
+
+  useChannel(`events:slug:${slug}`, {
+    schema: wsEventMessage,
+    onMessage: (msg: WSEventMessage) => {
+      if (msg.type === "event.update") {
+        setDetail(slug, msg.detail);
+      } else if (msg.type === "event.removed") {
+        markDetailRemoved(slug, msg.reason);
+      }
+    },
+    onStatus: (status) => {
+      setConnection(status === "subscribed" ? "live" : "reconnecting");
+    },
+  });
+
+  if (removed !== undefined) {
     return (
       <main className="mx-auto max-w-4xl px-6 py-16 text-center">
         <p className="font-display text-3xl">This event is no longer available</p>

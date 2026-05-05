@@ -37,13 +37,17 @@ class ComputeAttentionTests(TestCase):
         self.assertEqual(out.level, "watch")
         self.assertIn(AttentionReason.NO_SCHEDULE_NEAR_DEADLINE, out.reasons)
 
-    def test_no_schedule_quiet_outside_72h(self):
+    def test_no_schedule_fires_from_round_open_onward(self):
+        # Per design feedback we dropped the 72h gate so unscheduled
+        # pairings raise attention immediately when the round opens —
+        # a deadline 10 days out still triggers ``watch``.
         out = compute_attention(
             AttentionInput(has_result=False, has_game_link=False, scheduled_at=None),
             now=NOW,
             round_deadline=NOW + timedelta(days=10),
         )
-        self.assertEqual(out.level, "none")
+        self.assertEqual(out.level, "watch")
+        self.assertIn(AttentionReason.NO_SCHEDULE_NEAR_DEADLINE, out.reasons)
 
     def test_scheduled_but_not_started(self):
         out = compute_attention(

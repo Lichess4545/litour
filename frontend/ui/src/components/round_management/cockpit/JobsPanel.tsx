@@ -1,22 +1,17 @@
 "use client";
 
-import {
-  type BackgroundJobDTO,
-  type WSJobEvent,
-  backgroundJobDto,
-  connectJobsSeasonStream,
-  listJobsForSeason,
-} from "@litour/api-client";
+import { type BackgroundJobDTO } from "@litour/api-client";
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
+
+import { selectJobsForSlug, useJobsStore } from "@/lib/jobsStore";
 
 import { CockpitDialog } from "./CockpitDialog";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  apiBaseUrl: string;
   eventSlug: string;
 }
 
@@ -42,8 +37,8 @@ const TERMINAL: ReadonlySet<BackgroundJobDTO["status"]> = new Set(["ok", "warnin
 const FULL_DETAIL_COUNT = 3;
 const COMPACT_PAGE = 7;
 
-export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
-  const [jobs, setJobs] = useState<BackgroundJobDTO[]>([]);
+export function JobsPanel({ open, onClose, eventSlug }: Props) {
+  const jobs = useJobsStore(selectJobsForSlug(eventSlug));
   const [openJob, setOpenJob] = useState<BackgroundJobDTO | null>(null);
   const [compactPages, setCompactPages] = useState(1);
 
@@ -52,46 +47,6 @@ export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
   useEffect(() => {
     if (open) setCompactPages(1);
   }, [open]);
-
-  // Initial fetch + live subscription. Subscribe lifecycle is bound to
-  // the dialog being open so we don't hold a WebSocket open for closed
-  // panels — the cockpit header pill uses its own lighter subscription.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    const refetch = () => {
-      void listJobsForSeason(apiBaseUrl, eventSlug, { limit: 50 }).then((raw) => {
-        if (cancelled) return;
-        const parsed = (raw as unknown[])
-          .map((r) => {
-            try {
-              return backgroundJobDto.parse(r);
-            } catch {
-              return null;
-            }
-          })
-          .filter((j): j is BackgroundJobDTO => j !== null);
-        setJobs(parsed);
-      });
-    };
-    refetch();
-    const stream = connectJobsSeasonStream(
-      apiBaseUrl,
-      eventSlug,
-      (msg: WSJobEvent) => {
-        setJobs((prev) => mergeJob(prev, msg.job));
-      },
-      (err) => console.error("jobs ws error", err),
-      // Resync on every (re)connect — pub/sub envelopes published during
-      // a network blip aren't replayed, so without this the active list
-      // can stay stuck on a job that already finished server-side.
-      refetch,
-    );
-    return () => {
-      cancelled = true;
-      stream.close();
-    };
-  }, [open, apiBaseUrl, eventSlug]);
 
   const active = jobs.filter((j) => !TERMINAL.has(j.status));
   const recent = jobs.filter((j) => TERMINAL.has(j.status));
@@ -350,10 +305,3 @@ function JobDetailDialog({
   );
 }
 
-function mergeJob(prev: BackgroundJobDTO[], updated: BackgroundJobDTO): BackgroundJobDTO[] {
-  const idx = prev.findIndex((j) => j.id === updated.id);
-  if (idx === -1) return [updated, ...prev];
-  const next = prev.slice();
-  next[idx] = updated;
-  return next;
-}

@@ -129,11 +129,23 @@ in
   };
 
   # `devenv up` runs all of these alongside the services above.
+  #
+  # ``logs/`` (gitignored) collects the noisy ones so Claude / tooling
+  # can grep without scrolling the multiplexed devenv UI. Each process
+  # tees stdout+stderr; ``tee`` truncates on its own startup so a
+  # process restart starts a fresh file. ``PYTHONUNBUFFERED=1`` keeps
+  # Python output line-buffered through the pipe.
   processes = {
     django.exec = "invoke runserver";
     apiworker.exec = "invoke runapiworker";
-    runapi.exec = "invoke runapi";
-    celery.exec = "invoke celery";
+    runapi.exec = ''
+      mkdir -p logs
+      PYTHONUNBUFFERED=1 invoke runapi 2>&1 | tee logs/runapi.log
+    '';
+    celery.exec = ''
+      mkdir -p logs
+      PYTHONUNBUFFERED=1 invoke celery 2>&1 | tee logs/celery.log
+    '';
     # Celery Beat — fires `CELERY_BEAT_SCHEDULE` entries (queue-health canary,
     # token validation, FIDE rating refresh, etc). Without this, no scheduled
     # task dispatches in dev. Uses the DatabaseScheduler configured via
@@ -149,7 +161,9 @@ in
     # package.json) just needs a `ui` process restart, not a manual install.
     # `bun install` is a no-op when already in sync.
     ui.exec = ''
-      cd frontend && bun install && cd ui && bun run dev
+      mkdir -p logs
+      LOG="$PWD/logs/ui.log"
+      cd frontend && bun install && cd ui && bun run dev 2>&1 | tee "$LOG"
     '';
 
     # Rebuild the api-client IIFE bundle into Django statics on every TS change

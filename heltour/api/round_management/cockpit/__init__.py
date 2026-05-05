@@ -10,8 +10,9 @@ existing primitives (`MatchDTO`, `ChangePairingPermission`,
 - `mode.py`           — `resolve_current_round` precedence
 - `service.py`        — `build_cockpit` + intervention service functions
 - `routes.py`         — GET cockpit + 3 intervention POSTs
-- `ws.py`             — handshake-only WS, subscribes to matches:round +
-                        permissions:user
+- `ws_channels.py`    — channel registrar for the /ws multiplex endpoint:
+                        `cockpit:event:{slug}:round:{id}` (match.update +
+                        snapshot) and `permissions:user:{id}`
 
 See `~/.gstack/projects/lichess4545-litour/lakin-dashboard-running-tournament-design-20260503-183528.md`
 """

@@ -1,12 +1,7 @@
 // Browser entry point: bundled to an IIFE that assigns these exports to
 // `window.LitourApi`. Used by Django templates via a {% static %} <script> tag.
-export {
-  createClient,
-  connectMatchStream,
-  connectDiscoveryHomeStream,
-  connectDiscoveryEventStream,
-} from "./client";
-export type { MatchStream, DiscoveryStream } from "./client";
+export { createClient } from "./client";
+export { MultiplexClient } from "./multiplex";
 export { wsMessage } from "./ws-messages";
 export type {
   WSMessage,

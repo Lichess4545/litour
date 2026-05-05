@@ -196,7 +196,13 @@ def build_cockpit_for_event_sync(event_slug: str, viewer: Viewer, user) -> Cockp
 def build_cockpit_for_round_id_sync(
     event_slug: str, round_id: int, viewer: Viewer, user
 ) -> CockpitDTO:
-    """Build a read-only history-mode cockpit DTO for a specific past round."""
+    """Build a cockpit DTO for a specific round, with mode derived from
+    the round's real state (not blindly "history"). Past completed
+    rounds render history-mode; the currently running round renders
+    live-mode; an unpublished future round renders pre_round. This
+    matches what the header label and primary-action CTA expect to
+    see — forcing history-mode lies in the StatusLine and suppresses
+    the "Close Round" CTA on a still-running round."""
 
     from heltour.api.shared.models import Round, Season
 
@@ -210,8 +216,13 @@ def build_cockpit_for_round_id_sync(
     except Round.DoesNotExist:
         raise HTTPException(status_code=404, detail="round not found")
 
-    # Past rounds always render in history mode regardless of state.
-    return _build_cockpit_for_round(rnd, viewer, user, "history")
+    if rnd.is_completed:
+        mode: CockpitMode = "history"
+    elif rnd.publish_pairings:
+        mode = "live"
+    else:
+        mode = "pre_round"
+    return _build_cockpit_for_round(rnd, viewer, user, mode)
 
 
 def _build_cockpit_for_round(rnd, viewer: Viewer, user, mode: CockpitMode) -> CockpitDTO:
@@ -759,12 +770,19 @@ def _primary_action(
     urls: CockpitUrlsDTO,
     can_generate: bool,
     knockout: CockpitKnockoutAdvancementDTO | None,
+    current_round=None,
 ) -> CockpitPrimaryActionDTO | None:
     """Pick the single state-aware CTA that drives the round forward.
 
-    Mirrors the conditional ladder at the bottom of the Django dashboard
-    template. Returns None when no action is available (e.g. read-only
-    viewer, completed season with nothing to review).
+    Two modes:
+      * ``current_round`` is set — round-scoped CTA tied to that
+        specific round's state (close / start / generate). This is the
+        normal cockpit case where the user is viewing one round.
+      * ``current_round`` is None — season-wide fallback, used only
+        for empty/post-season views where no round anchors the page.
+
+    Returns None when no action is available (read-only viewer,
+    history mode round, completed season with nothing to review).
     """
     from heltour.api.shared.models import Round, TeamPairing, LonePlayerPairing
 
@@ -804,6 +822,44 @@ def _primary_action(
             )
         return None
 
+    # Round-scoped path: when the cockpit is anchored to a specific
+    # round, the CTA describes what to do with *that* round.
+    if current_round is not None:
+        if current_round.is_completed:
+            # History — frontend hides the CTA in that mode anyway, but
+            # be explicit so the wire payload doesn't carry a stale CTA.
+            return None
+
+        if current_round.publish_pairings:
+            return CockpitPrimaryActionDTO(
+                kind="close_round",
+                label=f"Close Round {current_round.number}",
+                href=urls.round_transition or urls.league_dashboard,
+            )
+
+        # Unpublished round — generate or start.
+        if season.boards is not None:
+            has_pairings = TeamPairing.objects.filter(round=current_round).exists()
+        else:
+            has_pairings = LonePlayerPairing.objects.filter(round=current_round).exists()
+        if not has_pairings:
+            return CockpitPrimaryActionDTO(
+                kind="generate_pairings",
+                label=f"Generate Pairings · Round {current_round.number}",
+                href=_safe_reverse("admin:generate_pairings", current_round.pk),
+            )
+        return CockpitPrimaryActionDTO(
+            kind="start_round",
+            label=f"Start Round {current_round.number}",
+            href=urls.round_transition or urls.league_dashboard,
+            secondary_kind="pre_round_report",
+            secondary_label="Pre-Round Report",
+            secondary_href=urls.pre_round_report or urls.league_dashboard,
+        )
+
+    # Season-wide fallback: no specific round anchors the view (empty
+    # mode after season_create, etc.). Pick the most pressing round
+    # across the season as a starting point for navigation.
     next_round = (
         Round.objects.filter(season=season, publish_pairings=False, is_completed=False)
         .order_by("number")
@@ -815,8 +871,14 @@ def _primary_action(
         .first()
     )
 
+    if last_round is not None:
+        return CockpitPrimaryActionDTO(
+            kind="close_round",
+            label=f"Close Round {last_round.number}",
+            href=urls.round_transition or urls.league_dashboard,
+        )
+
     if next_round is not None:
-        # Are pairings already generated for this round?
         if season.boards is not None:
             has_pairings = TeamPairing.objects.filter(round=next_round).exists()
         else:
@@ -835,12 +897,6 @@ def _primary_action(
             secondary_kind="pre_round_report",
             secondary_label="Pre-Round Report",
             secondary_href=urls.pre_round_report or urls.league_dashboard,
-        )
-    if last_round is not None:
-        return CockpitPrimaryActionDTO(
-            kind="close_round",
-            label=f"Close Round {last_round.number}",
-            href=urls.round_transition or urls.league_dashboard,
         )
     if not season.is_completed:
         return CockpitPrimaryActionDTO(
@@ -919,7 +975,7 @@ def _build_management_sync(
 
     knockout = _knockout_advancement_dto(season) if is_knockout else None
     can_generate = _can_generate_pairings_sync(user, league)
-    primary = _primary_action(season, league, urls, can_generate, knockout)
+    primary = _primary_action(season, league, urls, can_generate, knockout, current_round)
 
     return CockpitManagementDTO(
         can_view_dashboard=True,
