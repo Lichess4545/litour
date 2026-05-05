@@ -44,13 +44,17 @@ Processes:
 
 - **django** — `invoke runserver` (port 8000)
 - **apiworker** — `invoke runapiworker` (port 8880)
-- **runapi** — `invoke runapi` (FastAPI on port 8001) — see [Live API service](#live-api-service)
-- **celery** — `invoke celery`
+- **runapi** — `invoke runapi` (FastAPI on port 8001) — see [Live API service](#live-api-service); stdout/stderr tee'd to `logs/runapi.log`
+- **celery** — `invoke celery`; tee'd to `logs/celery.log`
+- **celerybeat** — `celery -A heltour beat` (DatabaseScheduler) — fires `CELERY_BEAT_SCHEDULE` entries
 - **watch-games** — `invoke watch-games`
-- **ui** — `bun run dev` in `frontend/ui` (Next.js on port 3000), served at `/v2/*` via Caddy
+- **ui** — `bun run dev` in `frontend/ui` (Next.js on port 3000), served at `/v2/*` via Caddy; tee'd to `logs/ui.log`
 - **api-client-iife-watch** — rebuilds the legacy Django pairings IIFE bundle on every change to `frontend/api-client/src/**`
 - **api-schema-watch** — on changes to `heltour/api/**/*.py`, re-exports `openapi.json` and regenerates `frontend/api-client/src/generated.ts`. Next's HMR (via `transpilePackages: ["@litour/api-client"]`) and the IIFE watcher both pick up the regenerated source directly — no intermediate `dist/` build to race against
 - **caddy** — gateway on port 8080: `/v2/api/*` → FastAPI, `/v2/*` → Next.js, everything else → Django
+
+The `logs/` directory is gitignored; each process truncates on startup
+so `tail -F logs/runapi.log` etc. always reflects the current run.
 
 Stop everything with `Ctrl-C` in the `devenv up` window. Service data persists under `.devenv/state/` between runs.
 
@@ -91,9 +95,16 @@ Then open a pairings page; with `LITOUR_API_BASE_URL` set in `.env` (default poi
 - `GET /v1/leagues/{league_tag}/events/{event_tag}/rounds/{round_number}/matches` — slug-routed round matches (used by the new UI; uniqueness enforced by league)
 - `GET /v1/leagues/{league_tag}/current-round` — convenience for clients
 - `PUT /v1/matches/{match_id}/result` — record a match result (auth-gated)
-- `WebSocket /ws/rounds/{round_id}/matches` — public, no auth; emits `match.result` and `match.game_link` messages
-- `WebSocket /ws/discovery/home` — emits `event.update` / `event.removed` envelopes for the home grid
-- `WebSocket /ws/discovery/events/{slug}` — per-event detail updates (staff session sees draft channel)
+- `GET /v1/cockpit/events/{slug}/rounds/{round_id}` — round-management cockpit DTO (organizer view)
+- `POST /v1/cockpit/events/{slug}/actions/{action}` — cockpit primary actions (generate pairings, close round, …) — enqueues a background job
+- `GET /v1/jobs?event_slug=<slug>` — REST snapshot of background-job state (initial paint for the jobs panel)
+- `WebSocket /ws` — single multiplexed socket; clients send `{"type":"subscribe","channel":"<name>"}` to opt into channels:
+  - `cockpit:event:<slug>:round:<round_id>` — match.update + round.update + management.update fanned in (organizer view)
+  - `matches:round:<round_id>` — public match-result + game-link stream
+  - `discovery:home`, `discovery:event:<slug>` — discovery surface
+  - `jobs:season:<season_id>`, `jobs:league:<league_id>`, `jobs:all` — background-job lifecycle envelopes
+  - `jobs:lag` — Celery queue-depth pulses
+  - The connection negotiates `permessage-deflate` (RFC 7692) so payloads compress on the wire.
 - `GET /docs` — Scalar UI for the OpenAPI schema
 
 ### Frontend workspace (`frontend/`)
@@ -102,9 +113,19 @@ The browser-side code lives in a bun workspace at `frontend/`:
 
 - `frontend/api-client/` — `@litour/api-client`. OpenAPI bindings via `openapi-typescript` + `openapi-fetch`, plus a hand-written `zod` discriminated union for WebSocket messages (`src/ws-messages.ts`). Bundled to a self-contained IIFE that the legacy Django pairings template loads via `{% static %}` and calls as `window.LitourApi.connectMatchStream(...)`.
 - `frontend/ui/` — `litour-ui`. Next.js 15 + shadcn, **Editorial Industrial** theme (Instrument Serif display + Geist body — see [`DESIGN.md`](DESIGN.md)). Pages:
-  - `/v2/` — discovery home grid (server-rendered list + `events:home` WebSocket for live card updates).
-  - `/v2/events/<slug>` — event detail with tabs (server-rendered header + composed pairings + `events:slug:<slug>` WebSocket).
+  - `/v2/` — discovery home grid (server-rendered list, subscribes to `discovery:home` for live card updates).
+  - `/v2/events/<slug>` — event detail with tabs (server-rendered header + composed pairings, subscribes to `discovery:event:<slug>`).
+  - `/v2/events/<slug>/manage` — **round-management cockpit** for organizers (per-round pairings, interventions, primary actions, audit trail; subscribes to `cockpit:event:<slug>:round:<round_id>` and `jobs:season:<id>`).
   - `/v2/<leagueTag>/<eventTag>/round/<n>/matches` — slug-routed pairings page (legacy Django URL shape mirrored because `Season.tag` is unique only within a league). Reused as the embedded "Pairings" tab on the event detail page.
+
+State on the client lives in a small set of Zustand stores
+(`frontend/ui/src/lib/jobsStore.ts`, `lagStore.ts`,
+`components/round_management/cockpit/cockpitStore.ts`,
+`components/round_management/matchesStore.ts`,
+`components/discovery/discoveryStore.ts`). The single multiplex
+provider is mounted in the root layout, so the WebSocket survives
+client-side navigation and stores are kept in sync from the same
+connection.
 
 Terminology in the new API/UI follows `terms.md`: a Django `Season` is exposed as **event**, a `TeamPairing` as **Team Match**, and individual board pairings (both `TeamPlayerPairing` and `LonePlayerPairing`) as **Match**. The old names live on at the model layer for back-compat.
 

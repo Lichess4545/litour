@@ -33,7 +33,7 @@ loose-coupled and own their own DTOs, services, routes, and permissions:
 
 ```
 heltour/api/
-  main.py                # mounts every domain router under /v1
+  main.py                # mounts every domain router under /v1, plus the multiplexed /ws
   middleware.py
   deps.py                # in_thread (sync_to_async helper)
   shared/
@@ -42,6 +42,12 @@ heltour/api/
     pubsub.py            # Redis subscribe helper
     paths.py             # SLUG_PATTERN, SlugPath
     health.py
+    ws_multiplex.py      # the single /ws endpoint + ChannelSpec registry
+    jobs.py              # @background_job decorator + JobContext (Celery-backed)
+    jobs_routes.py       # /v1/jobs REST snapshot
+    jobs_lag.py          # Celery queue-depth pulses (jobs:lag channel)
+    ws_channels_jobs.py  # ChannelSpecs for jobs:* and jobs:lag
+    models.py            # BackgroundJob + per-API helpers
   event_setup/           # Each domain owns:
     routes.py            #   - HTTP routes (thin)
     schemas.py           #   - Pydantic DTOs
@@ -57,7 +63,17 @@ heltour/api/
     dto_builders.py      # DB-instance -> DTO builders
     presence.py
     permissions.py
-    ws.py                # /ws/rounds/{id}/matches websocket
+    ws_channels.py       # ChannelSpecs registered with ws_multiplex
+    cockpit/             # round-management *organizer* surface
+      routes.py          #   - cockpit DTO + primary-action endpoints
+      schemas.py
+      service.py
+      actions.py         #   - primary-action dispatch (generate pairings, close round, …)
+      jobs.py            #   - @background_job-registered cockpit actions
+      attention.py       #   - "needs you" detection
+      mode.py            #   - live / pre_round / history mode resolution
+      ws_channels.py     #   - cockpit:event:<slug>:round:<id> spec
+      tests/
     tests/
       builders.py        # shared test data builders
       test_*.py          # sync-service tests (fast)
@@ -71,9 +87,13 @@ heltour/api/
     schemas.py
     services.py
     permissions.py       # visible_queryset / can_view_season
-    ws.py                # /ws/discovery/home, /ws/discovery/events/{slug}
+    ws_channels.py       # discovery:home, discovery:event:<slug> ChannelSpecs
     tests/
 ```
+
+Cockpit is a sub-domain of `round_management` rather than a top-level
+domain because it's the organizer-facing surface of the same chess
+concept (pairings + presence + interventions on a running round).
 
 Adding a new chess domain is one `include_router(...)` line in
 `main.py`.
@@ -145,7 +165,66 @@ Rules:
 
 Every page connects a websocket so navigation and round-page features
 (results, presence) update without a full reload. The publisher is
-`heltour/tournament/signals_pubsub.py` (Django post_save handlers); the
-forwarder is `heltour/api/round_management/ws.py`. WS payloads are the
-same DTOs as the HTTP responses, so the client can replace state with
-the streamed payload — no diffing, no refetch.
+`heltour/tournament/signals_pubsub.py` (Django post_save handlers). WS
+payloads are the same DTOs as the HTTP responses, so the client can
+replace state with the streamed payload — no diffing, no refetch.
+
+### One socket, many channels
+
+The browser opens **a single multiplexed WebSocket** at `/ws` (see
+`heltour/api/shared/ws_multiplex.py`). Clients send
+`{"type":"subscribe","channel":"<name>"}` envelopes; the server matches
+the name against a registry of `ChannelSpec` regexes that resolves
+backing Redis pubsub channels, authorizes the viewer, and optionally
+runs a sync transform on each envelope before forwarding it. One
+client channel can fan in multiple Redis channels — e.g. the cockpit
+channel composes `match.update`, `round.update`, and
+`management.update` from three publishers into one stream.
+
+The connection negotiates `permessage-deflate` (RFC 7692) so payloads
+compress on the wire. The multiplex provider is mounted in the Next.js
+root layout, which keeps the socket open across client-side navigation
+— each domain registers its `ChannelSpec`s under
+`heltour/api/<domain>/ws_channels.py` (jobs lives in
+`shared/ws_channels_jobs.py`).
+
+## Background jobs
+
+Long-running organizer actions (generate pairings, close round, backfill
+FIDE data, validate tokens, …) run as tracked background jobs, not
+inline HTTP requests. The runtime lives in
+`heltour/api/shared/jobs.py`:
+
+- `@background_job(kind=…, label=…, scope=…, permission=…)` registers
+  a function as a Celery task and gives it `.enqueue(user=…, season=…)`
+- each invocation creates a `BackgroundJob` row (queued → running →
+  ok / warning / failed) and pushes lifecycle envelopes to the
+  `jobs:season:<id>` / `jobs:league:<id>` / `jobs:all` channels
+- `JobContext.progress(pct, msg)` writes incremental progress that
+  fans out as `job.progress` events
+- the FastAPI process disables cacheops globally; the Celery worker
+  bypasses it per-query via `.nocache()` so published envelopes never
+  read a stale row
+
+The cockpit's primary-action endpoints enqueue these jobs and return
+the job id; the UI subscribes to the matching `jobs:*` channel and
+reflects status without polling.
+
+## Frontend state
+
+Client state is held in a small set of Zustand stores so that any
+component reading from a store stays in sync with the WebSocket-driven
+updates without local prop-drilling or refetches:
+
+- `lib/jobsStore.ts` — `bySlug` map of background jobs (the cockpit's
+  jobs button + panel both consume this)
+- `lib/lagStore.ts` — single global Celery queue-lag value
+- `components/round_management/cockpit/cockpitStore.ts` — per-round
+  cockpit DTO snapshots
+- `components/round_management/matchesStore.ts` — public match-stream
+  buckets per round
+- `components/discovery/discoveryStore.ts` — home grid cards + per-slug
+  detail
+
+Each store exposes a `useXSync(...)` hook that owns the HTTP snapshot
+fetch + WebSocket subscribe; consumers just read selectors.
