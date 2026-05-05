@@ -36,9 +36,22 @@ const SOURCE_LABEL: Record<BackgroundJobDTO["source"], string> = {
 
 const TERMINAL: ReadonlySet<BackgroundJobDTO["status"]> = new Set(["ok", "warning", "failed"]);
 
+// Show 3 most-recent terminal jobs in full, then `COMPACT_PAGE` more in
+// a one-line form per page; the user can keep paging back through the
+// in-memory list (we already fetch the most recent 50 on open).
+const FULL_DETAIL_COUNT = 3;
+const COMPACT_PAGE = 7;
+
 export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
   const [jobs, setJobs] = useState<BackgroundJobDTO[]>([]);
   const [openJob, setOpenJob] = useState<BackgroundJobDTO | null>(null);
+  const [compactPages, setCompactPages] = useState(1);
+
+  // Reset paging whenever the panel re-opens so we don't carry "Show older"
+  // expansion across sessions.
+  useEffect(() => {
+    if (open) setCompactPages(1);
+  }, [open]);
 
   // Initial fetch + live subscription. Subscribe lifecycle is bound to
   // the dialog being open so we don't hold a WebSocket open for closed
@@ -81,7 +94,11 @@ export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
   }, [open, apiBaseUrl, eventSlug]);
 
   const active = jobs.filter((j) => !TERMINAL.has(j.status));
-  const recent = jobs.filter((j) => TERMINAL.has(j.status)).slice(0, 25);
+  const recent = jobs.filter((j) => TERMINAL.has(j.status));
+  const recentFull = recent.slice(0, FULL_DETAIL_COUNT);
+  const compactCap = FULL_DETAIL_COUNT + COMPACT_PAGE * compactPages;
+  const recentCompact = recent.slice(FULL_DETAIL_COUNT, compactCap);
+  const hasMore = recent.length > compactCap;
 
   return (
     <>
@@ -103,19 +120,82 @@ export function JobsPanel({ open, onClose, apiBaseUrl, eventSlug }: Props) {
           {recent.length === 0 ? (
             <Empty label="No recent jobs." />
           ) : (
-            <ul className="space-y-2">
-              {recent.map((j) => (
-                <li key={j.id}>
-                  <JobRow job={j} onOpen={() => setOpenJob(j)} />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-2">
+                {recentFull.map((j) => (
+                  <li key={j.id}>
+                    <JobRow job={j} onOpen={() => setOpenJob(j)} />
+                  </li>
+                ))}
+              </ul>
+              {recentCompact.length > 0 ? (
+                <ul className="border-border mt-3 max-h-64 divide-y divide-border overflow-y-auto border-y">
+                  {recentCompact.map((j) => (
+                    <li key={j.id}>
+                      <JobRowCompact job={j} onOpen={() => setOpenJob(j)} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {hasMore ? (
+                <button
+                  type="button"
+                  onClick={() => setCompactPages((n) => n + 1)}
+                  className="text-muted-foreground hover:text-foreground mt-3 text-xs underline-offset-2 hover:underline"
+                >
+                  Show {Math.min(COMPACT_PAGE, recent.length - compactCap)} older
+                </button>
+              ) : null}
+            </>
           )}
         </Section>
       </CockpitDialog>
       {openJob ? <JobDetailDialog job={openJob} onClose={() => setOpenJob(null)} /> : null}
     </>
   );
+}
+
+function JobRowCompact({ job, onOpen }: { job: BackgroundJobDTO; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="hover:bg-accent flex w-full items-center gap-3 px-2 py-1.5 text-left"
+    >
+      <StatusDot status={job.status} />
+      <span className="min-w-0 flex-1 truncate text-sm">{job.title}</span>
+      <span className="text-muted-foreground hidden text-xs sm:inline">{job.kind}</span>
+      <span className="text-muted-foreground w-16 text-right text-xs tabular-nums">
+        {formatRelativeShort(job.completed_at ?? job.created_at)}
+      </span>
+    </button>
+  );
+}
+
+function StatusDot({ status }: { status: BackgroundJobDTO["status"] }) {
+  const tone =
+    status === "ok"
+      ? "bg-status-active"
+      : status === "warning"
+        ? "bg-yellow-500"
+        : status === "failed"
+          ? "bg-destructive"
+          : "bg-muted-foreground";
+  return <span className={cn("inline-block size-2 shrink-0 rounded-full", tone)} aria-hidden />;
+}
+
+function formatRelativeShort(iso: string | null): string {
+  if (!iso) return "";
+  const ms = Date.now() - Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return `${d}d ago`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
