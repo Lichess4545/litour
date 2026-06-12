@@ -872,95 +872,197 @@ function childrenSub(
     return column(node.children.map(childItem), GAP);
   }
 
-  const gated = node.children.some((child) => child.gate !== undefined);
-  if (!gated) {
-    const laid = row(node.children.map(childItem), GAP);
-    const edges: FlowGraphEdge[] = node.children.slice(1).map((_, i) => ({
-      id: `c:${pid}/c${i + 1}->${pid}/c${i + 2}`,
-      source: `${pid}/c${i + 1}`,
-      target: `${pid}/c${i + 2}`,
-      label: "then",
-      fromHandle: "r" as const,
-      toHandle: "l" as const,
-      kind: "chain" as const,
-    }));
+  const sequenceSub = (): Sub => {
+    const gated = node.children.some((child) => child.gate !== undefined);
+    if (!gated) {
+      const laid = row(node.children.map(childItem), GAP);
+      const edges: FlowGraphEdge[] = node.children.slice(1).map((_, i) => ({
+        id: `c:${pid}/c${i + 1}->${pid}/c${i + 2}`,
+        source: `${pid}/c${i + 1}`,
+        target: `${pid}/c${i + 2}`,
+        label: "then",
+        fromHandle: "r" as const,
+        toHandle: "l" as const,
+        kind: "chain" as const,
+      }));
+      return { ...laid, edges: [...laid.edges, ...edges] };
+    }
+
+    // A vertical spine: each leg, then — directly below it — the gate that
+    // decides whether the next leg happens. "yes" drops straight down the
+    // spine; "no" hangs to the right of the gate as a labeled end. The gate
+    // row is padded symmetrically so the gate itself stays on the axis.
+    const items: Sub[] = [];
+    const edges: FlowGraphEdge[] = [];
+    node.children.forEach((child, i) => {
+      const childId = `${pid}/c${i + 1}`;
+      items.push(childItem(child, i));
+      const next = node.children[i + 1];
+      const nextId = `${pid}/c${i + 2}`;
+      if (next === undefined) return;
+      if (next.gate === undefined) {
+        edges.push({
+          id: `c:${childId}->${nextId}`,
+          source: childId,
+          target: nextId,
+          label: "then",
+          fromHandle: "b",
+          toHandle: "t",
+          kind: "chain",
+        });
+        return;
+      }
+      const gateId = `${nextId}/gate`;
+      const exitId = `${nextId}/exit`;
+      const gate = cardSub(
+        gateId,
+        card("gate", next.gate.when, [], { step: true }),
+      );
+      const exit = cardSub(
+        exitId,
+        card("end", next.gate.otherwise, [], { step: true }),
+      );
+      const pad = exit.w + GAP;
+      items.push(
+        merge(
+          [
+            offset(gate, pad, 0),
+            offset(exit, pad + gate.w + GAP, (gate.h - exit.h) / 2),
+          ],
+          pad * 2 + gate.w,
+          Math.max(gate.h, exit.h),
+        ),
+      );
+      edges.push(
+        {
+          id: `c:${childId}->${gateId}`,
+          source: childId,
+          target: gateId,
+          fromHandle: "b",
+          toHandle: "t",
+          kind: "chain",
+        },
+        {
+          id: `c:${gateId}->${exitId}`,
+          source: gateId,
+          target: exitId,
+          label: "no",
+          fromHandle: "r",
+          toHandle: "l",
+          kind: "chain",
+        },
+        {
+          id: `c:${gateId}->${nextId}`,
+          source: gateId,
+          target: nextId,
+          label: "yes",
+          fromHandle: "b",
+          toHandle: "t",
+          kind: "chain",
+        },
+      );
+    });
+    const laid = column(items, GAP, "center");
     return { ...laid, edges: [...laid.edges, ...edges] };
+  };
+
+  // Identical sequential repeats — modulo position and the seat cycle —
+  // fold automatically (the 14 classical games). Parallel children never
+  // fold: boards are positionally distinct and carry their own colors.
+  const strip = (child: ConcreteNode): unknown => ({
+    ...child,
+    role: 0,
+    sides: 0,
+    gate: 0,
+    children: child.children.map(strip),
+  });
+  const first = node.children[0];
+  const last = node.children[node.children.length - 1];
+  const uniform =
+    first !== undefined &&
+    last !== undefined &&
+    node.children.length >= FOLD_AT &&
+    node.children.every(
+      (child, i) =>
+        JSON.stringify(strip(child)) === JSON.stringify(strip(first)) &&
+        (i === 0 ||
+          JSON.stringify(child.gate) ===
+            JSON.stringify(node.children[1]?.gate)),
+    );
+  if (!uniform) return sequenceSub();
+
+  const runId = `${pid}/cs`;
+  const range = `${first.role ?? first.title} … ${last.role ?? last.title}`;
+  if (expanded.has(runId)) {
+    return frameSub(
+      runId,
+      `${range} ×${node.children.length}`,
+      sequenceSub(),
+      true,
+    );
   }
 
-  // A vertical spine: each leg, then — directly below it — the gate that
-  // decides whether the next leg happens. "yes" drops straight down the
-  // spine; "no" hangs to the right of the gate as a labeled end. The gate
-  // row is padded symmetrically so the gate itself stays on the axis.
-  const items: Sub[] = [];
-  const edges: FlowGraphEdge[] = [];
-  node.children.forEach((child, i) => {
-    const childId = `${pid}/c${i + 1}`;
-    items.push(childItem(child, i));
-    const next = node.children[i + 1];
-    const nextId = `${pid}/c${i + 2}`;
-    if (next === undefined) return;
-    if (next.gate === undefined) {
-      edges.push({
-        id: `c:${childId}->${nextId}`,
-        source: childId,
-        target: nextId,
-        label: "then",
-        fromHandle: "b",
-        toHandle: "t",
-        kind: "chain",
-      });
-      return;
-    }
-    const gateId = `${nextId}/gate`;
-    const exitId = `${nextId}/exit`;
-    const gate = cardSub(
-      gateId,
-      card("gate", next.gate.when, [], { step: true }),
-    );
-    const exit = cardSub(
-      exitId,
-      card("end", next.gate.otherwise, [], { step: true }),
-    );
-    const pad = exit.w + GAP;
-    items.push(
-      merge(
-        [
-          offset(gate, pad, 0),
-          offset(exit, pad + gate.w + GAP, (gate.h - exit.h) / 2),
-        ],
-        pad * 2 + gate.w,
-        Math.max(gate.h, exit.h),
-      ),
-    );
-    edges.push(
+  const sameSides = node.children.every(
+    (child) => JSON.stringify(child.sides) === JSON.stringify(first.sides),
+  );
+  const face = cardSub(runId, {
+    ...card(first.kind, first.title, [range, ...first.lines], {
+      badge: first.badge,
+      ...(sameSides && first.sides !== undefined ? { sides: first.sides } : {}),
+      count: node.children.length,
+      drill: true,
+    }),
+  });
+  const gate = node.children[1]?.gate;
+  if (gate === undefined) return face;
+
+  // The gated repeat draws as a cycle: play one, ask the gate, loop on
+  // "yes", exit on "no".
+  const gateSub = cardSub(
+    `${runId}/gate`,
+    card("gate", gate.when, [], { step: true }),
+  );
+  const exitSub = cardSub(
+    `${runId}/exit`,
+    card("end", gate.otherwise, [], { step: true }),
+  );
+  const stack = column([face, gateSub], GAP, "center");
+  const placedExit = offset(
+    exitSub,
+    stack.w + GAP,
+    face.h + GAP + (gateSub.h - exitSub.h) / 2,
+  );
+  const laid = merge([stack, placedExit], stack.w + GAP + exitSub.w, stack.h);
+  return {
+    ...laid,
+    edges: [
+      ...laid.edges,
       {
-        id: `c:${childId}->${gateId}`,
-        source: childId,
-        target: gateId,
-        fromHandle: "b",
-        toHandle: "t",
+        id: `c:${runId}->${runId}/gate`,
+        source: runId,
+        target: `${runId}/gate`,
+        fromHandle: "r",
+        toHandle: "ri",
         kind: "chain",
       },
       {
-        id: `c:${gateId}->${exitId}`,
-        source: gateId,
-        target: exitId,
+        id: `c:${runId}/gate->${runId}`,
+        source: `${runId}/gate`,
+        target: runId,
+        label: "yes",
+        fromHandle: "lo",
+        toHandle: "l",
+        kind: "chain",
+      },
+      {
+        id: `c:${runId}/gate->${runId}/exit`,
+        source: `${runId}/gate`,
+        target: `${runId}/exit`,
         label: "no",
         fromHandle: "r",
         toHandle: "l",
         kind: "chain",
       },
-      {
-        id: `c:${gateId}->${nextId}`,
-        source: gateId,
-        target: nextId,
-        label: "yes",
-        fromHandle: "b",
-        toHandle: "t",
-        kind: "chain",
-      },
-    );
-  });
-  const laid = column(items, GAP, "center");
-  return { ...laid, edges: [...laid.edges, ...edges] };
+    ],
+  };
 }
