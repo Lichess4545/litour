@@ -181,7 +181,10 @@ function naiveSwiss(ctx: PairingContext): PairingResult {
     return undefined;
   };
 
-  const matched = matchUp(queue, false) ?? matchUp(queue, true) ?? [];
+  const matched = matchUp(queue, false) ?? matchUp(queue, true);
+  if (matched === undefined) {
+    return { ok: false, error: "no perfect matching exists for this field" };
+  }
   matched.forEach(([top, opponent], index) => {
     const topBalance = colorBalance(ctx.history.get(top) ?? []);
     const oppBalance = colorBalance(ctx.history.get(opponent) ?? []);
@@ -204,16 +207,25 @@ function naiveSwiss(ctx: PairingContext): PairingResult {
  * Bracket positions for traditional seeding, ported from
  * heltour/tournament_core/knockout.py so seeds 1 and 2 can only meet in the
  * final. Index = traditional pairing number (1vN is pairing 0), value = its
- * position in the bracket.
+ * position in the bracket. Only these verified tables exist — heltour's
+ * recursive fallback put seeds 1 and 2 in the same half for larger fields,
+ * so beyond 32 entrants we refuse rather than mis-seed.
  */
-function bracketPositions(numMatches: number): readonly number[] {
-  if (numMatches <= 2) return numMatches === 2 ? [0, 1] : [0];
-  if (numMatches === 4) return [0, 3, 2, 1];
-  if (numMatches === 8) return [0, 7, 2, 5, 4, 3, 6, 1];
-  if (numMatches === 16)
-    return [0, 8, 2, 10, 4, 12, 6, 14, 15, 7, 13, 5, 11, 3, 9, 1];
-  const half = bracketPositions(numMatches / 2);
-  return [...half, ...half.map((p) => p + numMatches / 2)];
+function bracketPositions(numMatches: number): readonly number[] | undefined {
+  switch (numMatches) {
+    case 1:
+      return [0];
+    case 2:
+      return [0, 1];
+    case 4:
+      return [0, 3, 2, 1];
+    case 8:
+      return [0, 7, 2, 5, 4, 3, 6, 1];
+    case 16:
+      return [0, 8, 2, 10, 4, 12, 6, 14, 15, 7, 13, 5, 11, 3, 9, 1];
+    default:
+      return undefined;
+  }
 }
 
 function knockout(ctx: PairingContext): PairingResult {
@@ -249,11 +261,19 @@ function knockout(ctx: PairingContext): PairingResult {
       if (a !== undefined && b !== undefined) traditional.push(pair(a, b));
     }
     const positions = bracketPositions(half);
-    const ordered: PairingPlan[] = new Array<PairingPlan>(traditional.length);
-    traditional.forEach((p, i) => {
-      const position = positions[i];
-      if (position !== undefined) ordered[position] = p;
-    });
+    if (positions === undefined) {
+      return {
+        ok: false,
+        error: `traditional seeding has no verified bracket table for ${ids.length} entrants (max 32)`,
+      };
+    }
+    const ordered = traditional
+      .map((plan, i) => ({
+        plan,
+        slot: positions[i] ?? Number.POSITIVE_INFINITY,
+      }))
+      .sort((x, y) => x.slot - y.slot)
+      .map(({ plan }) => plan);
     return { ok: true, pairings: ordered };
   }
 
@@ -278,6 +298,12 @@ function knockout(ctx: PairingContext): PairingResult {
     }
   }
 
+  if (winners.length % 2 !== 0) {
+    return {
+      ok: false,
+      error: `cannot pair ${winners.length} advancing competitors (odd bracket)`,
+    };
+  }
   const pairings: PairingPlan[] = [];
   for (let i = 0; i + 1 < winners.length; i += 2) {
     const a = winners[i];
@@ -285,10 +311,16 @@ function knockout(ctx: PairingContext): PairingResult {
     if (a !== undefined && b !== undefined) pairings.push(pair(a, b));
   }
   const isFinal = winners.length === 2;
-  if (isFinal && ctx.options.thirdPlace === true && losers.length === 2) {
+  if (isFinal && ctx.options.thirdPlace === true) {
     const a = losers[0];
     const b = losers[1];
-    if (a !== undefined && b !== undefined) pairings.push(pair(a, b));
+    if (losers.length !== 2 || a === undefined || b === undefined) {
+      return {
+        ok: false,
+        error: "third-place playoff needs exactly the two semifinal losers",
+      };
+    }
+    pairings.push(pair(a, b));
   }
   return { ok: true, pairings };
 }

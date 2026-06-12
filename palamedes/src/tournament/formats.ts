@@ -1,10 +1,12 @@
-import { type EventDef, parseEventDef } from "./def";
+import { type ParsedEventDef, parseEventDef } from "./def";
 
 /**
  * The acceptance table of design/tournament-model.md as executable
  * definitions. Everything here is plain data pushed through `parseEventDef`,
  * exactly the way an arbiter would author an event — if one of these stops
- * validating, the model broke.
+ * validating, the model broke. Several defs are miniaturized (fewer players
+ * or boards, auto-pairable seeding) so the test suite can drive them
+ * end-to-end; each notes its deltas from the published format.
  */
 
 // --- game building blocks (plain data, validated on parse) -----------------
@@ -20,7 +22,7 @@ const armageddon = {
   tie: { kind: "drawOdds", color: "black" },
 };
 /** Two games, colors alternating — the World Cup's basic tiebreak unit. */
-const duel = (game: object) => ({
+const duel = (game: unknown) => ({
   kind: "series",
   legs: [game, game],
   stop: { kind: "all" },
@@ -45,7 +47,7 @@ const seeds = (count: number) =>
 // ---------------------------------------------------------------------------
 
 /** A whole tournament in one armageddon game: white must win, black wins a draw. */
-export const armageddonShowdown: EventDef = parseEventDef({
+export const armageddonShowdown: ParsedEventDef = parseEventDef({
   id: "armageddon-showdown",
   name: "Armageddon showdown",
   competitors: players("Magnus", "Hikaru"),
@@ -62,7 +64,7 @@ export const armageddonShowdown: EventDef = parseEventDef({
  * chain continues: two rapid games, two blitz games, then armageddon. Fresh
  * drawing of colors before each segment.
  */
-export const worldChampionship: EventDef = parseEventDef({
+export const worldChampionship: ParsedEventDef = parseEventDef({
   id: "world-championship",
   name: "World Championship match",
   competitors: players("Ding", "Gukesh"),
@@ -100,7 +102,7 @@ export const worldChampionship: EventDef = parseEventDef({
  * games, then descending rapid/blitz duels, then armageddon — colors redrawn
  * before each segment.
  */
-export const worldCup: EventDef = parseEventDef({
+export const worldCup: ParsedEventDef = parseEventDef({
   id: "world-cup",
   name: "FIDE World Cup (8 players)",
   competitors: players(
@@ -145,7 +147,7 @@ export const worldCup: EventDef = parseEventDef({
 });
 
 /** Individual swiss (LoneWolf): game points, classical tiebreaks, full-point bye. */
-export const loneWolf: EventDef = parseEventDef({
+export const loneWolf: ParsedEventDef = parseEventDef({
   id: "lone-wolf",
   name: "LoneWolf individual swiss",
   competitors: players("Alice", "Bob", "Carol", "Dave", "Erin"),
@@ -179,7 +181,7 @@ export const loneWolf: EventDef = parseEventDef({
  * Olympiad-style team swiss: 4 boards zigzagging from the team color, match
  * points 2/1/0 from board-point comparison, FIDE extended Sonneborn-Berger.
  */
-export const olympiad: EventDef = parseEventDef({
+export const olympiad: ParsedEventDef = parseEventDef({
   id: "olympiad",
   name: "Olympiad team swiss",
   competitors: [
@@ -223,8 +225,8 @@ export const olympiad: EventDef = parseEventDef({
   ],
 });
 
-/** lichess4545-style team swiss: rounds won, games won, then board 1..N points. */
-export const lichess4545: EventDef = parseEventDef({
+/** lichess4545-style team swiss: rounds won, games won, then board points (a 4-board miniature of the 8-board league). */
+export const lichess4545: ParsedEventDef = parseEventDef({
   id: "lichess4545",
   name: "lichess4545 team league",
   competitors: [
@@ -270,7 +272,7 @@ export const lichess4545: EventDef = parseEventDef({
  * Win 3 / armageddon win 1.5 / armageddon loss 1 / loss 0 — path-dependent
  * points via byLeg, while the games themselves stay normally scored.
  */
-export const norwayChess: EventDef = parseEventDef({
+export const norwayChess: ParsedEventDef = parseEventDef({
   id: "norway-chess",
   name: "Norway Chess",
   competitors: players("Magnus", "Fabiano", "Hikaru", "Praggnanandhaa"),
@@ -306,7 +308,7 @@ export const norwayChess: EventDef = parseEventDef({
 });
 
 /** Candidates: double round robin, colors reversed in the second cycle. */
-export const candidates: EventDef = parseEventDef({
+export const candidates: ParsedEventDef = parseEventDef({
   id: "candidates",
   name: "Candidates (double round robin)",
   competitors: players("Ian", "Fabiano", "Gukesh", "Hikaru"),
@@ -384,12 +386,17 @@ const wuccKnockout = (legRelease: "lockstep" | "independent", suffix: string) =>
     ],
   });
 
-/** This repo's live event: two team matches per bracket tie, colors flipped in the return match, arbiter decides aggregate ties. */
-export const wuccKnockoutLockstep: EventDef = wuccKnockout(
+/**
+ * The WUCC 2026 weekend knockout: two team matches per bracket tie, colors
+ * flipped in the return match, arbiter decides aggregate ties. The live
+ * event ran 4 boards with manually seeded brackets; shrunk to 2 boards with
+ * `traditional` seeding here so tests can auto-pair.
+ */
+export const wuccKnockoutLockstep: ParsedEventDef = wuccKnockout(
   "lockstep",
   "lockstep",
 );
-export const wuccKnockoutUpfront: EventDef = wuccKnockout(
+export const wuccKnockoutUpfront: ParsedEventDef = wuccKnockout(
   "independent",
   "upfront",
 );
@@ -399,7 +406,7 @@ export const wuccKnockoutUpfront: EventDef = wuccKnockout(
  * knockout (A1 vs B2, B1 vs A2) with a third-place playoff — the WUCC/FIDE
  * Corporate shape.
  */
-export const miniChampionship: EventDef = parseEventDef({
+export const miniChampionship: ParsedEventDef = parseEventDef({
   id: "mini-championship",
   name: "Groups into knockout with bronze final",
   competitors: players("Anna", "Boris", "Clara", "David", "Elena", "Felix"),
@@ -482,7 +489,7 @@ export const miniChampionship: EventDef = parseEventDef({
  * Scheveningen: two legs of uniform-color team matches; every player meets
  * every opponent via rotated lineups submitted per leg.
  */
-export const scheveningen: EventDef = parseEventDef({
+export const scheveningen: ParsedEventDef = parseEventDef({
   id: "scheveningen",
   name: "Scheveningen team match",
   competitors: [team("ham", "Hammers", 2), team("anv", "Anvils", 2)],
@@ -509,7 +516,7 @@ export const scheveningen: EventDef = parseEventDef({
 });
 
 /** Quads: one stage, parallel round-robin groups of four. */
-export const quads: EventDef = parseEventDef({
+export const quads: ParsedEventDef = parseEventDef({
   id: "quads",
   name: "Quads",
   competitors: players("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"),
@@ -538,7 +545,7 @@ export type FormatExample = {
   readonly slug: string;
   readonly title: string;
   readonly blurb: string;
-  readonly def: EventDef;
+  readonly def: ParsedEventDef;
 };
 
 export const FORMAT_EXAMPLES: readonly FormatExample[] = [

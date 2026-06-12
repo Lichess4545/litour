@@ -1,8 +1,8 @@
 import {
   type CompetitorDef,
-  type EventDef,
   groupRootPath,
   type NodePath,
+  type ParsedEventDef,
   type ParticipantId,
   pathSegments,
 } from "./def";
@@ -12,13 +12,14 @@ import {
   materialize,
   nextActions,
   outcomeAt,
+  pairingsAt,
   proposePairings,
   type ScheduledGame,
   standingsOf,
 } from "./engine";
 import type { GameResultCode, Input, PairingPlan } from "./inputs";
 import type { Outcome } from "./outcome";
-import { metricLabel, type StandingsRow } from "./standings";
+import type { StandingsRow } from "./standings";
 
 /**
  * Fluent test driver mirroring the ergonomics of the old Python
@@ -29,13 +30,13 @@ import { metricLabel, type StandingsRow } from "./standings";
  */
 
 export class EventRun {
-  readonly def: EventDef;
+  readonly def: ParsedEventDef;
   private readonly log: Input[] = [];
   private cache:
     | { readonly length: number; readonly state: EventState }
     | undefined;
 
-  constructor(def: EventDef) {
+  constructor(def: ParsedEventDef) {
     this.def = def;
   }
 
@@ -135,7 +136,7 @@ export class EventRun {
   ): this {
     const pool = options?.pool ?? this.solePoolPath();
     let round = 1;
-    while (this.state().pairings.has(`${pool}#${round}`)) round += 1;
+    while (pairingsAt(this.state(), pool, round) !== undefined) round += 1;
     return this.submit({
       kind: "pairingsSet",
       pool,
@@ -232,7 +233,9 @@ export class EventRun {
       list.push(g);
       byMatch.set(matchPath, list);
     }
-    const matchPath = [...byMatch.keys()].sort()[0];
+    const matchPath = [...byMatch.keys()].sort((x, y) =>
+      x.localeCompare(y, "en", { numeric: true }),
+    )[0];
     if (matchPath === undefined) {
       throw new Error(`no scheduled match between ${teamA} and ${teamB}`);
     }
@@ -308,7 +311,7 @@ export class EventRun {
   }
 }
 
-export const runEvent = (def: EventDef): EventRun => new EventRun(def);
+export const runEvent = (def: ParsedEventDef): EventRun => new EventRun(def);
 
 // ---------------------------------------------------------------------------
 // Assertions
@@ -327,10 +330,12 @@ class StandingsExpect {
   ) {}
 
   competitor(name: string): RowExpect {
-    const id = this.run.def.competitors.find(
+    const competitor = this.run.def.competitors.find(
       (c) => c.name === name || c.id === name,
-    )?.id;
-    const row = this.rows.find((r) => r.competitor === id);
+    );
+    if (competitor === undefined)
+      throw new Error(`no competitor named ${name}`);
+    const row = this.rows.find((r) => r.competitor === competitor.id);
     if (row === undefined) throw new Error(`${name} has no standings row`);
     return new RowExpect(name, row);
   }
@@ -375,5 +380,3 @@ class RowExpect {
     return this.check(label, actual, expected);
   }
 }
-
-export { metricLabel };

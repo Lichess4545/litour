@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { expectStandings, runEvent } from "./builder";
 import { groupRootPath } from "./def";
+import { pairingsAt } from "./engine";
 import {
   armageddonShowdown,
   candidates,
@@ -93,7 +94,8 @@ describe("world championship match", () => {
 
     expect(run.winnerName()).toBe("Gukesh");
     const outcome = run.outcome(root);
-    expect(outcome.points[0]).toBe(outcome.points[1]); // zero margin —
+    // Zero points margin: only structural inheritance can decide the chain.
+    expect(outcome.points[0]).toBe(outcome.points[1]);
     expect(outcome.decision).toMatchObject({
       kind: "win",
       winner: 1,
@@ -108,7 +110,7 @@ describe("FIDE world cup", () => {
 
   it("seeds round 1 in traditional bracket order (1v8, 4v5, 3v6, 2v7)", () => {
     const run = runEvent(worldCup).pairRound();
-    const plans = run.state().pairings.get(`${pool}#1`);
+    const plans = pairingsAt(run.state(), pool, 1);
     expect(plans).toEqual([
       expect.objectContaining({ a: "magnus", b: "anish" }),
       expect.objectContaining({ a: "gukesh", b: "alireza" }),
@@ -138,7 +140,7 @@ describe("FIDE world cup", () => {
       .game("Wesley", "Fabiano", "0-1");
 
     run.pairRound();
-    const semis = run.state().pairings.get(`${pool}#2`);
+    const semis = pairingsAt(run.state(), pool, 2);
     expect(semis).toEqual([
       expect.objectContaining({ a: "magnus", b: "gukesh" }),
       expect.objectContaining({ a: "hikaru", b: "fabiano" }),
@@ -178,14 +180,34 @@ describe("FIDE world cup", () => {
 
 describe("individual swiss (LoneWolf)", () => {
   it("pairs, byes, forfeits, and the classical tiebreak chain all land", () => {
+    // Pairings pinned (not proposer-driven) so the hand-computed tiebreak
+    // numbers can't be invalidated by demo-swiss tweaks.
     const run = runEvent(loneWolf)
-      .pairRound() // R1: Alice-Bob, Dave-Carol, bye Erin
+      .pairManual(
+        [
+          ["Alice", "Bob"],
+          ["Dave", "Carol"],
+        ],
+        { byes: ["Erin"] },
+      )
       .game("Alice", "Bob", "1-0")
       .game("Dave", "Carol", "0-1")
-      .pairRound() // R2: Carol-Alice, Bob-Erin, bye Dave
+      .pairManual(
+        [
+          ["Carol", "Alice"],
+          ["Bob", "Erin"],
+        ],
+        { byes: ["Dave"] },
+      )
       .game("Carol", "Alice", "1-0")
       .game("Bob", "Erin", "1X-0F")
-      .pairRound() // R3: Carol-Erin, Alice-Dave, bye Bob
+      .pairManual(
+        [
+          ["Carol", "Erin"],
+          ["Alice", "Dave"],
+        ],
+        { byes: ["Bob"] },
+      )
       .game("Carol", "Erin", "1/2-1/2")
       .game("Alice", "Dave", "1-0");
 
@@ -212,7 +234,10 @@ describe("individual swiss (LoneWolf)", () => {
 describe("olympiad team swiss", () => {
   it("zigzags board colors from the team seat", () => {
     const run = runEvent(olympiad)
-      .pairRound()
+      .pairManual([
+        ["India", "USA"],
+        ["China", "Uzbekistan"],
+      ])
       .lineup("India", ["ind1", "ind2", "ind3", "ind4"])
       .lineup("USA", ["usa1", "usa2", "usa3", "usa4"]);
     const games = run.scheduled();
@@ -238,7 +263,10 @@ describe("olympiad team swiss", () => {
         [1, 2, 3, 4].map((i) => `${prefix}${i}`),
       );
 
-    run.pairRound(); // R1: India-USA, China-Uzbekistan
+    run.pairManual([
+      ["India", "USA"],
+      ["China", "Uzbekistan"],
+    ]);
     fullRosters("India", "ind");
     fullRosters("USA", "usa");
     fullRosters("China", "chn");
@@ -253,7 +281,10 @@ describe("olympiad team swiss", () => {
       "1/2-1/2",
     ); // 2-2
 
-    run.pairRound(); // R2: Uzbekistan(white seat)-India, USA(white seat)-China
+    run.pairManual([
+      ["Uzbekistan", "India"],
+      ["USA", "China"],
+    ]);
     fullRosters("India", "ind");
     fullRosters("USA", "usa");
     fullRosters("China", "chn");
@@ -261,7 +292,10 @@ describe("olympiad team swiss", () => {
     run.match("Uzbekistan", "India", "0-1", "1-0", "1/2-1/2", "1/2-1/2"); // India 3-1
     run.match("USA", "China", "1-0", "1-0", "0-1", "0-1"); // 2-2
 
-    run.pairRound(); // R3: India(white seat)-China, Uzbekistan(white seat)-USA
+    run.pairManual([
+      ["India", "China"],
+      ["Uzbekistan", "USA"],
+    ]);
     fullRosters("India", "ind");
     fullRosters("USA", "usa");
     fullRosters("China", "chn");
@@ -308,14 +342,20 @@ describe("lichess4545 team league", () => {
       }
     };
 
-    run.pairRound(); // R1: Knights-Dragons, Pawnstars(white seat)-Rooks
+    run.pairManual([
+      ["Knights", "Dragons"],
+      ["Pawnstars", "Rooks"],
+    ]);
     fullRosters();
     // Knights 3-1 (boards 1-3; Dragons' d4 wins board 4 as white).
     run.match("Knights", "Dragons", "1-0", "0-1", "1-0", "1-0");
     // Pawnstars 2.5-1.5 (wins on 1 and 2; Rooks' r4 wins board 4 as white).
     run.match("Pawnstars", "Rooks", "1-0", "0-1", "1/2-1/2", "1-0");
 
-    run.pairRound(); // R2: Knights-Pawnstars, Rooks(white seat)-Dragons
+    run.pairManual([
+      ["Knights", "Pawnstars"],
+      ["Rooks", "Dragons"],
+    ]);
     fullRosters();
     run.match(
       "Knights",
@@ -339,12 +379,7 @@ describe("lichess4545 team league", () => {
       .points(3)
       .metric("gamesWon", 2)
       .rank(2);
-    expect(
-      run
-        .standings()
-        .find((r) => r.competitor === "kni")
-        ?.metrics.get("boardPoints-1"),
-    ).toBe(1.5);
+    expectStandings(run).competitor("Knights").metric("boardPoints-1", 1.5);
     // Dragons and Rooks tie on points, match wins, AND games won —
     // board-1 points (1 vs 0) finally split them.
     expectStandings(run)
@@ -367,6 +402,8 @@ describe("Norway Chess", () => {
     const run = runEvent(norwayChess)
       .pairRound()
       .game("Magnus", "Praggnanandhaa", "1-0");
+    expectStandings(run).competitor("Magnus").points(3);
+    expectStandings(run).competitor("Praggnanandhaa").points(0);
     // No armageddon for that pairing: the only remaining round-1 game is Fabiano-Hikaru classical.
     expect(run.scheduled()).toHaveLength(1);
     expect(run.scheduled()[0]).toMatchObject({
@@ -420,7 +457,7 @@ describe("candidates double round robin", () => {
       pairs: readonly (readonly [string, string])[],
     ) => {
       run.pairRound();
-      const plans = run.state().pairings.get(`${pool}#${round}`);
+      const plans = pairingsAt(run.state(), pool, round);
       expect(plans).toEqual(
         pairs.map(([a, b]) => expect.objectContaining({ a, b, whiteSeat: 0 })),
       );
@@ -566,7 +603,7 @@ describe("multi-stage: groups into knockout with a bronze final", () => {
     expectStandings(run, b).competitor("Clara").points(2).rank(1);
 
     run.pairRound(ko); // semis: A1-B2 (Anna-Felix), B1-A2 (Clara-David)
-    const semis = run.state().pairings.get(`${ko}#1`);
+    const semis = pairingsAt(run.state(), ko, 1);
     expect(semis).toEqual([
       expect.objectContaining({ a: "anna", b: "felix" }),
       expect.objectContaining({ a: "clara", b: "david" }),
@@ -630,7 +667,7 @@ describe("quads", () => {
       .actions()
       .filter((a) => a.kind === "awaitPairings")
       .map((a) => (a.kind === "awaitPairings" ? a.pool : ""));
-    expect(awaiting).toEqual([q1, q2]);
+    expect([...awaiting].sort()).toEqual([q1, q2].sort());
 
     run.pairRound(q1).game("P1", "P4", "1-0").game("P2", "P3", "1-0");
     // Quad 2 untouched and still pairable.

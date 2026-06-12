@@ -14,6 +14,7 @@ import {
  * (drawing of lots) enters as recorded `colorDraw` inputs, never ambiently.
  */
 
+// TRF-style codes: X = forfeit win, F = forfeit loss, Z = unplayed scheduled draw.
 export const GAME_RESULT_CODES = [
   "1-0",
   "0-1",

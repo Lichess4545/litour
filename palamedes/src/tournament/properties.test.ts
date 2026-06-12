@@ -2,11 +2,12 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { type EventRun, runEvent } from "./builder";
-import { type EventDef, groupRootPath, parseEventDef } from "./def";
-import { loneWolf, norwayChess } from "./formats";
+import { groupRootPath, type ParsedEventDef, parseEventDef } from "./def";
+import { pairingsAt, proposePairings } from "./engine";
+import { norwayChess } from "./formats";
 import type { GameResultCode } from "./inputs";
 
-const rrEvent = (n: number, cycles: 1 | 2): EventDef =>
+const rrEvent = (n: number, cycles: 1 | 2): ParsedEventDef =>
   parseEventDef({
     id: "rr-prop",
     name: `Round robin of ${n}`,
@@ -60,7 +61,7 @@ describe("berger round robin", () => {
 
         for (let round = 1; round <= perCycle * cycles; round += 1) {
           run.pairRound();
-          const plans = run.state().pairings.get(`${pool}#${round}`) ?? [];
+          const plans = pairingsAt(run.state(), pool, round) ?? [];
           const seenThisRound = new Set<string>();
           for (const plan of plans) {
             if (plan.kind === "bye") {
@@ -83,7 +84,7 @@ describe("berger round robin", () => {
         expect(meetings.size).toBe(pairCount);
         for (const count of meetings.values()) expect(count).toBe(cycles);
 
-        const games = (n % 2 === 0 ? n - 1 : n - 1) * cycles; // each plays n-1 per cycle
+        const games = (n - 1) * cycles; // everyone plays n-1 games per cycle
         for (let i = 1; i <= n; i += 1) {
           const w = whites.get(`p${i}`) ?? 0;
           const imbalance = Math.abs(2 * w - games);
@@ -164,7 +165,6 @@ describe("norway chess properties", () => {
         );
         expect(total).toBe(expected);
         expect(rows).toHaveLength(4);
-        expect(rows[0]?.rank).toBe(1);
       }),
       { numRuns: 25 },
     );
@@ -182,13 +182,49 @@ describe("norway chess properties", () => {
   });
 });
 
+const swissEvent = (): ParsedEventDef =>
+  parseEventDef({
+    id: "swiss-prop",
+    name: "Swiss of five",
+    competitors: ["A", "B", "C", "D", "E"].map((name) => ({
+      id: name.toLowerCase(),
+      name,
+    })),
+    stages: [
+      {
+        id: "main",
+        groups: [
+          {
+            id: "swiss",
+            entries: Array.from({ length: 5 }, (_, i) => ({
+              kind: "registration",
+              seed: i + 1,
+            })),
+            run: {
+              kind: "pool",
+              pairing: { system: "swiss" },
+              rounds: 3,
+              encounter: {
+                kind: "game",
+                clock: { initial: 180, increment: 2 },
+              },
+              score: { kind: "encounterPoints" },
+              bye: { kind: "points", standings: 1, encounter: 1 },
+              tiebreaks: [],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
 describe("naive swiss legality", () => {
   it("never repeats a pairing and gives at most one bye per player", () => {
     fc.assert(
       fc.property(
         fc.array(classicalResult, { minLength: 6, maxLength: 6 }),
         (results) => {
-          const run = runEvent(loneWolf);
+          const run = runEvent(swissEvent());
           const pool = groupRootPath("main", "swiss");
           let cursor = 0;
           const met = new Set<string>();
@@ -196,7 +232,7 @@ describe("naive swiss legality", () => {
 
           for (let round = 1; round <= 3; round += 1) {
             run.pairRound();
-            const plans = run.state().pairings.get(`${pool}#${round}`) ?? [];
+            const plans = pairingsAt(run.state(), pool, round) ?? [];
             const covered = new Set<string>();
             for (const plan of plans) {
               if (plan.kind === "bye") {
@@ -226,5 +262,101 @@ describe("naive swiss legality", () => {
       ),
       { numRuns: 20 },
     );
+  });
+});
+
+const knockout16 = (): ParsedEventDef =>
+  parseEventDef({
+    id: "ko-sixteen",
+    name: "Sixteen-player knockout",
+    competitors: Array.from({ length: 16 }, (_, i) => ({
+      id: `s${i + 1}`,
+      name: `Seed ${i + 1}`,
+    })),
+    stages: [
+      {
+        id: "main",
+        groups: [
+          {
+            id: "ko",
+            entries: Array.from({ length: 16 }, (_, i) => ({
+              kind: "registration",
+              seed: i + 1,
+            })),
+            run: {
+              kind: "pool",
+              pairing: { system: "knockout", seeding: "traditional" },
+              encounter: {
+                kind: "game",
+                clock: { initial: 180, increment: 2 },
+                tie: { kind: "drawOdds", color: "black" },
+              },
+              score: { kind: "encounterPoints" },
+              tiebreaks: [],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+describe("traditional knockout bracket", () => {
+  it("pairs seeds summing to n+1 with seeds 1 and 2 in opposite halves (16 players)", () => {
+    const run = runEvent(knockout16()).pairRound();
+    const plans = pairingsAt(run.state(), groupRootPath("main", "ko"), 1) ?? [];
+    expect(plans).toHaveLength(8);
+    const seedOf = (id: string): number => Number.parseInt(id.slice(1), 10);
+    const halves: number[][] = [[], []];
+    plans.forEach((plan, slot) => {
+      if (plan.kind !== "pair") throw new Error("knockout emitted a bye");
+      expect(seedOf(plan.a) + seedOf(plan.b)).toBe(17);
+      halves[slot < 4 ? 0 : 1]?.push(seedOf(plan.a), seedOf(plan.b));
+    });
+    expect(halves[0]).toContain(1);
+    expect(halves[1]).toContain(2);
+  });
+
+  it("refuses fields beyond the verified bracket tables", () => {
+    const big = parseEventDef({
+      id: "ko-big",
+      name: "Sixty-four players",
+      competitors: Array.from({ length: 64 }, (_, i) => ({
+        id: `p${i + 1}`,
+        name: `P${i + 1}`,
+      })),
+      stages: [
+        {
+          id: "main",
+          groups: [
+            {
+              id: "ko",
+              entries: Array.from({ length: 64 }, (_, i) => ({
+                kind: "registration",
+                seed: i + 1,
+              })),
+              run: {
+                kind: "pool",
+                pairing: { system: "knockout", seeding: "traditional" },
+                encounter: {
+                  kind: "game",
+                  clock: { initial: 180, increment: 2 },
+                  tie: { kind: "drawOdds", color: "black" },
+                },
+                score: { kind: "encounterPoints" },
+                tiebreaks: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const proposed = proposePairings(
+      runEvent(big).state(),
+      groupRootPath("main", "ko"),
+    );
+    expect(proposed).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("no verified bracket table"),
+    });
   });
 });

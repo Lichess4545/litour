@@ -119,8 +119,7 @@ type PoolDef = {
   bye?: { kind: "points"; standings: number; encounter: number }   // never synthetic games
       | { kind: "advance" };                                       // knockout free pass
   legRelease?: "independent" | "lockstep";   // scheduling of series legs across sibling pairs; never affects scoring
-  tiebreaks: MetricRef[];
-  rank?: "points" | "progression";  // knockout pools rank by elimination depth
+  tiebreaks: MetricRef[];          // knockout pools automatically rank by elimination depth instead of points
 };
 
 type ScoreRule =
@@ -144,11 +143,15 @@ type EventDef = {
 ```
 
 zod refinements enforce, among others: unique ids; knockout groups sized to a
-power of two; `rounds` present exactly where required; `firstTo` targets
-reachable from the legs' point schedules; `byLeg` length matching the series;
-`drawOdds` only on games; root-encounter groups having exactly two entries;
-rosters at least as long as the deepest `boards` when the encounter contains
-a match.
+power of two; knockout encounters guaranteed to produce a winner (a manual
+tie rule, draw odds, or an untilDecisive series ending in armageddon);
+`rounds` present exactly where required; `firstTo` targets reachable from the
+legs' point schedules; `byLeg` length matching the series; `drawOdds` only on
+games; root-encounter groups having exactly two entries; rosters at least as
+long as the deepest `boards` when the encounter contains a match; point
+values on quarter-point boundaries (sums are compared exactly). `parseEventDef`
+brands its output — the engine only accepts a `ParsedEventDef`, so unvalidated
+literals cannot reach it.
 
 ## Outcome semantics: aggregate → decide → emit
 
@@ -159,7 +162,7 @@ type Decision =
   | { kind: "pending" }
   | { kind: "draw" }
   | { kind: "doubleLoss" }          // 0F-0F: distinct from draw so match points map it to a loss for both
-  | { kind: "win"; winner: Side; by: "points" | "drawOdds" | "forfeit" | "manual" | "bye"; leg?: number };
+  | { kind: "win"; winner: Side; by: "points" | "drawOdds" | "forfeit" | "manual"; leg?: number };
 
 type Outcome = { points: [number, number]; decision: Decision };  // points in definition-side order
 ```
@@ -175,7 +178,8 @@ type Outcome = { points: [number, number]; decision: Decision };  // points in d
     sums; equal sums go to the `TieRule` (`manual` → pending until an arbiter
     `manualDecision`).
   - *series `firstTo(p)`*: a side reaching p wins immediately — later legs
-    never materialize. All legs exhausted below p → **draw**, which is exactly
+    never materialize. Exhausting every leg below p decides by total points;
+    an equal total goes to the tie rule — default **draw**, which is exactly
     the signal an enclosing chain needs to continue.
   - *series `untilDecisive`*: legs materialize lazily; the first leg whose own
     decision is a win decides the series, which **inherits that winner
@@ -222,8 +226,8 @@ fold is replayable.
 - A pool bye is a `{ kind: "bye" }` pairing entry. Its points come from the
   pool's `bye` config: `{standings: 1, encounter: 2}` is an Olympiad-style
   draw-equivalent team bye; `{standings: 1, encounter: 1}` a full-point
-  individual bye; `advance` a knockout free pass (a win `by: "bye"`, no
-  points).
+  individual bye; `advance` a knockout free pass (the competitor advances in the bracket; a
+  bye never materializes an encounter node, and earns no points).
 - Game forfeits are result codes (`1X-0F`, `0F-1X`, `0F-0F`, `1/2Z-1/2Z`)
   scoring per the game's schedule, flagged so pairing history (and TRF
   export) can mark them unplayed.
@@ -243,11 +247,12 @@ type Input =
   | { kind: "encounterForfeit"; node: NodePath; winner: Side };
 
 materialize(def, inputs)            → EventState        // validates each input; rejects with reasons; results are last-write-wins
-outcome(state, path)                → Outcome
-standings(state, poolPath)          → StandingsRow[]    // points + tiebreak columns + rank (or knockout progression)
-nextActions(state)                  → Action[]          // createGame | awaitPairings | awaitLineup
-                                                        // | awaitManualDecision | awaitColorDraw | eventComplete
-proposePairings(state, poolPath)    → pairingsSet Input // closes the loop for auto-accept workflows and tests
+outcomeAt(state, path)              → Outcome           // throws on unresolvable paths (reads are strict; the fold is not)
+standingsOf(state, poolPath)        → StandingsRow[]    // points + tiebreak columns + rank (or knockout progression)
+nextActions(state)                  → Action[]          // createGame | awaitPairings | awaitLineup | awaitManualDecision
+                                                        // | awaitColorDraw | awaitSeeding | eventComplete
+proposePairings(state, poolPath)    → ProposeResult     // ok: a ready-to-record pairingsSet input — closes the loop
+                                                        // for auto-accept workflows and tests
 ```
 
 `NodePath` is a stable, serializable address:
@@ -258,6 +263,13 @@ Pairings are **inputs, not engine calls**. The real workflow is generate →
 review → maybe regenerate, and JavaFo runs out of process — so the fold stays
 total and replayable regardless of plugin behavior, and manual pairing is the
 degenerate case (the arbiter authors `PairingPlan[]` directly).
+
+Three protections keep last-write-wins honest: a `colorDraw` is rejected once
+results exist under its node (results are white-relative — a re-draw would
+flip them); lineups lock once their match has a result; and after every fold
+the engine re-checks each accepted pairing round against the *final* entrant
+resolution, flagging pairings orphaned by corrections in their seeding source
+(`state.errors`).
 
 Game creation gates, in order: pairings exist for the round → both lineups
 submitted (team matches) → the leg is released (stop rule; plus pool
@@ -282,7 +294,7 @@ type PairingSystem = (ctx: PairingContext) => { ok: true; pairings: PairingPlan[
 standings points, per-competitor history (opponent, color, points, forfeit
 and bye flags per round), round / total rounds, and the previous round's
 pairings + winners (knockouts). This is exactly the information heltour
-serializes into a JavaFo TRF file (`pairinggen.py:550-616`) — a real
+serializes into a JavaFo TRF file (`generate_trf_content` in `heltour/tournament/pairinggen.py`) — a real
 bbpPairings/JavaFo adapter is a host-side async function against the same
 context; it is out of scope here.
 
@@ -294,13 +306,16 @@ Included systems (a plain object map — no registries):
 - **swiss** — a deliberately *naive* demo: fold score groups, avoid
   rematches greedily, alternate due colors, bye to the lowest-scored player
   without one.
-- **knockout** — round 1 from seeding (`traditional` uses the bracket-order
-  tables ported from `heltour/tournament_core/knockout.py` so 1 and 2 can
-  only meet in the final; `adjacent` pairs 1v2, 3v4; `manual` expects the
-  arbiter to submit round 1). Round k+1 pairs the decided winners in bracket
-  order — pull-based and lazy, so pairings always reference concrete
-  competitors (no "winner of slot 3" futures in the core). `thirdPlace`
-  emits a bronze pairing between the semifinal losers alongside the final.
+- **knockout** — round 1 from seeding (`traditional` uses the verified
+  bracket-order tables ported from `heltour/tournament_core/knockout.py` so 1
+  and 2 can only meet in the final — fields beyond 32 entrants are refused
+  until a verified table exists, because heltour's recursive fallback
+  mis-seeded them; `adjacent` pairs 1v2, 3v4; `manual` expects the arbiter to
+  submit round 1). Round k+1 pairs the decided winners in bracket order —
+  pull-based and lazy, so pairings always reference concrete competitors (no
+  "winner of slot 3" futures in the core). `thirdPlace` emits a bronze
+  pairing after the final; the last round must list the final as pair 1 and
+  the bronze as pair 2 (the order the proposer emits).
 - **manual** — no proposer; pairings are authored inputs.
 
 ## Tiebreak metrics
@@ -331,13 +346,13 @@ bronze winner/loser or tied semifinalists, then by elimination round).
 | Mini-match (best-of-N) | `series({ legs: repeat(game(tc), n), stop: all, colors: alternate })` |
 | FIDE World Cup | knockout pool; encounter = `series({ legs: [duel(classical), duel(rapid25), duel(rapid10), duel(blitz5), game(armageddon)], stop: untilDecisive, colors: redraw })` where `duel(tc)` is a 2-game `alternate` series |
 | World Championship match | root encounter: `series({ legs: [series({ legs: repeat(game(classical), 14), stop: firstTo(7.5), colors: alternate }), duel(rapid), duel(blitz), game(armageddon)], stop: untilDecisive, colors: redraw })` — 7–7 makes the classical leg a *draw*, so the chain continues; 7.5 stops everything |
-| Individual swiss (LoneWolf) | swiss pool; encounter = `game(classical)`; `score: encounterPoints`; `bye: {standings: 1, encounter: 1}`; tiebreaks `[sonnebornBerger, buchholz(cut 1), headToHead]` |
+| Individual swiss (LoneWolf) | swiss pool; encounter = `game(classical)`; `score: encounterPoints`; `bye: {standings: 1, encounter: 1}`; tiebreaks `[sonnebornBerger, buchholz, headToHead]` (a `cut` parameter drops the lowest opponents) |
 | Team swiss (Olympiad) | swiss pool; encounter = `match({ boards: 4, board: game(classical), colors: zigzag })`; `score: perEncounter(2,1,0)`; `bye: {standings: 1, encounter: 2}`; tiebreaks `[extendedSB(gp,gp), encounterPoints, gamesWon]` |
 | lichess4545 | as Olympiad with 8 boards and tiebreaks `[matchWins, gamesWon, boardPoints(1..4)]` |
 | Board-points-primary league (Bundesliga style) | same encounter; `score: encounterPoints`; match points relegated to a tiebreak |
 | Norway Chess | round-robin pool; encounter = `series({ legs: [game(classical), game(armageddon)], stop: untilDecisive, colors: fixed })`; `score: byLeg([{win 3, loss 0}, {win 1.5, loss 1}])` |
 | Candidates (double RR) | `roundRobin(cycles: 2)` pool over `game(classical)` |
-| WUCC weekend knockout (this repo's live event) | knockout pool (manual seeding); encounter = `series({ legs: [match(4 boards, zigzag), match(4 boards, zigzag)], stop: all, colors: alternate, tie: manual })`; `legRelease` lockstep or independent; aggregate board points decide; a tie awaits the arbiter's `manualDecision` |
+| WUCC 2026 weekend knockout (this repo's live event) | knockout pool (manual seeding); encounter = `series({ legs: [match(4 boards, zigzag), match(4 boards, zigzag)], stop: all, colors: alternate, tie: manual })`; `legRelease` lockstep or independent; aggregate board points decide; a tie awaits the arbiter's `manualDecision` |
 | WUCC full event / FIDE Corporate | stages: swiss qualifier pool(s) → knockout seeded by `rank(...)` → four double-RR groups in parallel → `knockout({ thirdPlace: true })` seeded A1, B2, C1, … |
 | Scheveningen | `series({ legs: repeat(match({ colors: uniform }), k), stop: all, colors: alternate })` — lineups rotate via inputs |
 | Quads | one stage, parallel 4-player round-robin groups |

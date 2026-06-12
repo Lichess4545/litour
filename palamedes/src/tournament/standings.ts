@@ -11,7 +11,7 @@ import {
   type ScoreRule,
   type Side,
 } from "./def";
-import { classifyResult, type PairingPlan, resultUnplayed } from "./inputs";
+import { type PairingPlan, resultUnplayed } from "./inputs";
 import {
   type Decision,
   type EngineIndexes,
@@ -43,7 +43,7 @@ export type PlayedLine = {
   readonly gamesWon: number;
   /** My points per board (index b-1 = board b); empty for non-match encounters. */
   readonly boardPoints: readonly number[];
-  /** Decided without play (forfeit walkover) — what pairing engines mark unplayed. */
+  /** Decided without play (forfeits, scheduling draws) — what pairing engines mark unplayed. */
   readonly unplayed: boolean;
 };
 
@@ -128,32 +128,28 @@ function byLegPoints(
     case "draw":
       return rule.draw ?? 0;
     case "win": {
-      const leg = rule.legs[d.leg ?? rule.legs.length - 1];
+      // Wins without a deciding leg (forfeits, manual decisions) pay the
+      // FIRST leg's schedule — a Norway no-show concedes the full 3, not the
+      // armageddon consolation.
+      const leg = rule.legs[d.leg ?? 0];
       if (leg === undefined) return 0;
       return d.winner === side ? leg.win : leg.loss;
     }
   }
 }
 
-/** Leaf games actually won by `side` (forfeit wins count; drawOdds decisions don't). */
-export function countGameWins(
-  indexes: EngineIndexes,
-  node: EvalNode,
-  side: Side,
-): number {
+/**
+ * Leaf games won by `side`: played wins, forfeit and adjudicated wins count;
+ * drawOdds decisions don't (the game itself was drawn). A whole-encounter
+ * forfeit materializes no games, so it contributes none.
+ */
+export function countGameWins(node: EvalNode, side: Side): number {
   if (node.ctx.def.kind === "game") {
-    const result = indexes.results.get(node.ctx.path);
-    if (result === undefined || node.ctx.whiteSeat === undefined) return 0;
-    const cls = classifyResult(result);
-    if (cls.kind !== "win") return 0;
-    const winner =
-      cls.color === "white"
-        ? node.ctx.whiteSeat
-        : otherSide(node.ctx.whiteSeat);
-    return winner === side ? 1 : 0;
+    const d = node.outcome.decision;
+    return d.kind === "win" && d.winner === side && d.by !== "drawOdds" ? 1 : 0;
   }
   return node.children.reduce(
-    (sum, child) => sum + countGameWins(indexes, child, side),
+    (sum, child) => sum + countGameWins(child, side),
     0,
   );
 }
@@ -186,6 +182,22 @@ function lineUnplayed(indexes: EngineIndexes, node: EvalNode): boolean {
 }
 
 export type PoolRoundPlans = ReadonlyMap<number, readonly PairingPlan[]>;
+
+/** The one way a pairing plan addresses and seats its encounter tree. */
+export function evalPair(
+  indexes: EngineIndexes,
+  pool: PoolDef,
+  poolPath: NodePath,
+  round: number,
+  index: number,
+  plan: Extract<PairingPlan, { kind: "pair" }>,
+): EvalNode {
+  return evalEncounter(indexes, {
+    def: pool.encounter,
+    path: pairPath(poolPath, round, index + 1),
+    whiteSeat: plan.whiteSeat,
+  });
+}
 
 type RowDraft = {
   readonly competitor: CompetitorId;
@@ -233,17 +245,15 @@ function buildRowDrafts(
         return;
       }
 
-      const path = pairPath(poolPath, round, index + 1);
-      const node = evalEncounter(indexes, {
-        def: pool.encounter,
-        path,
-        whiteSeat: plan.whiteSeat,
-      });
+      const node = evalPair(indexes, pool, poolPath, round, index, plan);
       const sides: readonly (readonly [CompetitorId, Side])[] = [
         [plan.a, 0],
         [plan.b, 1],
       ];
       for (const [competitor, side] of sides) {
+        // A plan can reference a competitor no longer in the entrant set
+        // after a rank-source correction; materialize() flags that in
+        // state.errors, so here it is only skipped, not swallowed.
         const draft = drafts.get(competitor);
         if (draft === undefined) continue;
         const standingsPoints = scoreRulePoints(pool.score, node.outcome, side);
@@ -258,7 +268,7 @@ function buildRowDrafts(
           standingsPoints,
           encounterPoints,
           opponentEncounterPoints: node.outcome.points[otherSide(side)],
-          gamesWon: countGameWins(indexes, node, side),
+          gamesWon: countGameWins(node, side),
           boardPoints: boardPointsFor(node, side),
           unplayed: lineUnplayed(indexes, node),
         });
@@ -357,10 +367,10 @@ function computeMetric(
       return sum;
     }
     case "headToHead": {
+      // FIDE direct encounter applies to everyone on equal SCORE (standings
+      // points); secondary channels stay out of the tie key.
       const tied = [...all.values()].filter(
-        (row) =>
-          row.standingsPoints === draft.standingsPoints &&
-          row.encounterPoints === draft.encounterPoints,
+        (row) => row.standingsPoints === draft.standingsPoints,
       );
       if (tied.length < 2) return 0;
       const tiedIds = new Set(tied.map((row) => row.competitor));
@@ -406,9 +416,23 @@ function competitionRanks(
 const keysEqual = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((value, i) => value === b[i]);
 
+// Sentinels above any reachable "rounds survived" key; relative order encodes
+// the podium, with .5 marking "pair still undecided" midpoints.
+const PODIUM = 1_000_000;
+const FINAL_KEYS = {
+  champion: PODIUM + 4,
+  finalist: PODIUM + 3.5,
+  runnerUp: PODIUM + 3,
+  bronzeWinner: PODIUM + 2,
+  bronze: PODIUM + 1.5,
+  bronzeLoser: PODIUM + 1,
+} as const;
+
 /**
  * Knockout progression key: champion, runner-up, bronze winner/loser (or tied
- * semifinalists), then by rounds survived. Larger is better.
+ * semifinalists), then by rounds survived. Larger is better. Assumes the last
+ * round lists the final as pair 1 and the bronze playoff (if any) as pair 2 —
+ * the order `proposePairings` emits and manual pairings must follow.
  */
 function progressionKeys(
   drafts: ReadonlyMap<CompetitorId, RowDraft>,
@@ -420,92 +444,62 @@ function progressionKeys(
 ): Map<CompetitorId, number> {
   const keys = new Map<CompetitorId, number>();
   for (const competitor of drafts.keys()) keys.set(competitor, 0);
+  const raise = (competitor: CompetitorId, key: number): void => {
+    keys.set(competitor, Math.max(keys.get(competitor) ?? 0, key));
+  };
 
   for (const [round, plans] of rounds) {
     plans.forEach((plan, index) => {
       if (plan.kind === "bye") {
-        keys.set(
-          plan.competitor,
-          Math.max(keys.get(plan.competitor) ?? 0, round),
-        );
+        raise(plan.competitor, round);
         return;
       }
-      const node = evalEncounter(indexes, {
-        def: pool.encounter,
-        path: pairPath(poolPath, round, index + 1),
-        whiteSeat: plan.whiteSeat,
-      });
+      const node = evalPair(indexes, pool, poolPath, round, index, plan);
       const d = node.outcome.decision;
-      const isFinalRound = round === totalRounds;
       const winner =
         d.kind === "win" ? (d.winner === 0 ? plan.a : plan.b) : undefined;
-      const loser =
-        d.kind === "win" ? (d.winner === 0 ? plan.b : plan.a) : undefined;
-      if (isFinalRound && index === 0) {
-        // The final: fix the top two ranks outright.
-        keys.set(
-          plan.a,
-          winner === plan.a
-            ? FINAL_KEYS.champion
-            : winner === undefined
-              ? FINAL_KEYS.finalist
-              : FINAL_KEYS.runnerUp,
-        );
-        keys.set(
-          plan.b,
-          winner === plan.b
-            ? FINAL_KEYS.champion
-            : winner === undefined
-              ? FINAL_KEYS.finalist
-              : FINAL_KEYS.runnerUp,
+
+      const podium = (top: number, undecided: number, low: number): void => {
+        for (const side of [plan.a, plan.b]) {
+          keys.set(
+            side,
+            winner === undefined ? undecided : winner === side ? top : low,
+          );
+        }
+      };
+      if (round === totalRounds && index === 0) {
+        podium(FINAL_KEYS.champion, FINAL_KEYS.finalist, FINAL_KEYS.runnerUp);
+        return;
+      }
+      if (round === totalRounds && index === 1) {
+        podium(
+          FINAL_KEYS.bronzeWinner,
+          FINAL_KEYS.bronze,
+          FINAL_KEYS.bronzeLoser,
         );
         return;
       }
-      if (isFinalRound && index === 1) {
-        // Third-place playoff.
-        keys.set(
-          plan.a,
-          winner === plan.a
-            ? FINAL_KEYS.bronzeWinner
-            : winner === undefined
-              ? FINAL_KEYS.bronze
-              : FINAL_KEYS.bronzeLoser,
-        );
-        keys.set(
-          plan.b,
-          winner === plan.b
-            ? FINAL_KEYS.bronzeWinner
-            : winner === undefined
-              ? FINAL_KEYS.bronze
-              : FINAL_KEYS.bronzeLoser,
-        );
-        return;
-      }
-      if (winner !== undefined && loser !== undefined) {
-        keys.set(winner, Math.max(keys.get(winner) ?? 0, round));
-        keys.set(loser, Math.max(keys.get(loser) ?? 0, round - 1 + 0.5));
+      if (winner !== undefined) {
+        raise(winner, round);
+        raise(plan.a === winner ? plan.b : plan.a, round - 1 + 0.5);
       } else {
         // Undecided: both sides have survived up to this round so far.
-        keys.set(plan.a, Math.max(keys.get(plan.a) ?? 0, round - 1 + 0.5));
-        keys.set(plan.b, Math.max(keys.get(plan.b) ?? 0, round - 1 + 0.5));
+        raise(plan.a, round - 1 + 0.5);
+        raise(plan.b, round - 1 + 0.5);
       }
     });
   }
   return keys;
 }
 
-const FINAL_KEYS = {
-  champion: 1_000_000,
-  finalist: 999_998.5,
-  runnerUp: 999_998,
-  bronzeWinner: 999_997,
-  bronze: 999_996.5,
-  bronzeLoser: 999_996,
-} as const;
-
 // ---------------------------------------------------------------------------
 // Public entry point
 
+/**
+ * Live standings for one pool. `rounds` may be partial (mid-event tables are
+ * fine); `totalRounds` is the full schedule — progression ranking needs it to
+ * recognize the final round.
+ */
 export function poolStandings(
   indexes: EngineIndexes,
   pool: PoolDef,

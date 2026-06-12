@@ -7,13 +7,14 @@ import {
   type GroupDef,
   groupRootPath,
   type NodePath,
-  nodePathSchema,
   otherSide,
+  type ParsedEventDef,
   type ParticipantId,
   type PathSegment,
   type PlayerId,
   type PoolDef,
   pairPath,
+  pathPrefix,
   pathSegments,
   poolTotalRounds,
   type Side,
@@ -38,6 +39,7 @@ import {
   pairingSystems,
 } from "./pairing";
 import {
+  evalPair,
   type PoolRoundPlans,
   poolStandings,
   type StandingsRow,
@@ -57,19 +59,28 @@ export type InputError = {
 };
 
 export type EventState = EngineIndexes & {
-  readonly def: EventDef;
+  readonly def: ParsedEventDef;
   /** Every submitted input, in order (rejected ones included for audit). */
   readonly inputs: readonly Input[];
   readonly errors: readonly InputError[];
-  /** Accepted pairings keyed `${poolPath}#${round}`. */
+  /** Accepted pairings keyed by `pairingsKey` — read them via `pairingsAt`. */
   readonly pairings: ReadonlyMap<string, readonly PairingPlan[]>;
 };
 
-const pairingsKey = (pool: NodePath, round: number): string =>
+export const pairingsKey = (pool: NodePath, round: number): string =>
   `${pool}#${round}`;
 
+/** The accepted pairings of one pool round, if any. */
+export function pairingsAt(
+  state: Pick<EventState, "pairings">,
+  pool: NodePath,
+  round: number,
+): readonly PairingPlan[] | undefined {
+  return state.pairings.get(pairingsKey(pool, round));
+}
+
 type MutableState = {
-  readonly def: EventDef;
+  readonly def: ParsedEventDef;
   readonly results: Map<string, GameResultCode>;
   readonly lineups: Map<string, readonly PlayerId[]>;
   readonly decisions: Map<string, Side>;
@@ -78,8 +89,14 @@ type MutableState = {
   readonly pairings: Map<string, readonly PairingPlan[]>;
 };
 
+/**
+ * Fold the input log, in order, into an EventState. Invalid inputs are
+ * recorded in `errors` with reasons and skipped — never thrown. A later input
+ * overwrites an earlier one at the same node (corrections are
+ * last-write-wins); every derived view recomputes from the surviving log.
+ */
 export function materialize(
-  def: EventDef,
+  def: ParsedEventDef,
   inputs: readonly Input[],
 ): EventState {
   const state: MutableState = {
@@ -92,11 +109,52 @@ export function materialize(
     pairings: new Map(),
   };
   const errors: InputError[] = [];
+  const pairingsIndexByKey = new Map<string, number>();
   inputs.forEach((input, index) => {
     const reason = applyInput(state, input);
     if (reason !== undefined) errors.push({ index, input, reason });
+    else if (input.kind === "pairingsSet") {
+      pairingsIndexByKey.set(pairingsKey(input.pool, input.round), index);
+    }
   });
-  return { ...state, inputs, errors };
+  const finished = { ...state, inputs, errors };
+  // A correction in a rank-source group can re-seed a later stage AFTER its
+  // pairings were accepted; surface the orphaned pairings instead of letting
+  // standings silently skip them.
+  for (const [key, index] of pairingsIndexByKey) {
+    const input = inputs[index];
+    if (input?.kind !== "pairingsSet") continue;
+    const orphan = staleEntrant(finished, input);
+    if (orphan !== undefined) {
+      errors.push({
+        index,
+        input,
+        reason: `${orphan} is no longer an entrant of ${input.pool} after later corrections — re-pair round ${input.round} (key ${key})`,
+      });
+    }
+  }
+  return finished;
+}
+
+function staleEntrant(
+  state: EventState,
+  input: PairingsSetInput,
+): CompetitorId | undefined {
+  const segments = pathSegments(input.pool);
+  const [stageSeg, groupSeg] = segments;
+  if (stageSeg?.kind !== "stage" || groupSeg?.kind !== "group")
+    return undefined;
+  const ref = findGroup(state.def, stageSeg.id, groupSeg.id);
+  if (ref === undefined) return undefined;
+  const entrants = resolveEntrants(state, ref);
+  if (entrants === undefined) return undefined;
+  const entrantSet = new Set<string>(entrants);
+  for (const plan of input.pairings) {
+    const ids = plan.kind === "pair" ? [plan.a, plan.b] : [plan.competitor];
+    const orphan = ids.find((id) => !entrantSet.has(id));
+    if (orphan !== undefined) return orphan;
+  }
+  return undefined;
 }
 
 /** Append one input and re-derive (the fold is cheap at chess scale). */
@@ -206,8 +264,13 @@ export function groupRanking(
   if (sides === undefined) return undefined;
   const node = evalRoot(view, ref.group.run, ref.path);
   const d = node.outcome.decision;
-  if (d.kind !== "win") return undefined;
-  return d.winner === 0 ? [sides[0], sides[1]] : [sides[1], sides[0]];
+  if (d.kind === "pending") return undefined;
+  if (d.kind === "win") {
+    return d.winner === 0 ? [sides[0], sides[1]] : [sides[1], sides[0]];
+  }
+  // A drawn root encounter is finished, just shared: entry order, so the
+  // event can complete (eventWinner reports no champion for it).
+  return sides;
 }
 
 const rootSides = (
@@ -240,11 +303,7 @@ function roundComplete(
 ): boolean {
   return plans.every((plan, index) => {
     if (plan.kind === "bye") return true;
-    const node = evalEncounter(view, {
-      def: pool.encounter,
-      path: pairPath(poolPath, round, index + 1),
-      whiteSeat: plan.whiteSeat,
-    });
+    const node = evalPair(view, pool, poolPath, round, index, plan);
     return node.outcome.decision.kind !== "pending";
   });
 }
@@ -380,14 +439,22 @@ function missingLineups(view: StateView, path: NodePath): string | undefined {
   const segments = pathSegments(path);
   for (let i = 0; i < segments.length; i += 1) {
     if (segments[i]?.kind !== "board") continue;
-    const matchPath = path.split("/").slice(0, i).join("/");
+    const matchPath = pathPrefix(path, i);
     for (const side of [0, 1] as const) {
-      if (!view.lineups.has(`${matchPath}#${side}`)) {
+      if (!view.lineups.has(lineupKey(matchPath, side))) {
         return `lineup for side ${side} of ${matchPath} is not submitted`;
       }
     }
   }
   return undefined;
+}
+
+/** True when any game at or under `path` already has a recorded result. */
+function resultsUnder(view: StateView, path: NodePath): boolean {
+  for (const key of view.results.keys()) {
+    if (key === path || key.startsWith(`${path}/`)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +486,9 @@ function applyInput(state: MutableState, input: Input): string | undefined {
       const outsider = input.players.find((p) => !roster.has(p));
       if (outsider !== undefined) {
         return `${outsider} is not on the roster of ${competitor.name}`;
+      }
+      if (resultsUnder(state, input.match)) {
+        return `${input.match} already has results; lineups are locked`;
       }
       state.lineups.set(lineupKey(input.match, input.side), input.players);
       return undefined;
@@ -461,12 +531,15 @@ function applyColorDraw(
   path: NodePath,
   whiteSeat: Side,
 ): string | undefined {
+  // Results are recorded white-relative; redrawing the seat under them would
+  // silently flip who won. The fold rejects that instead.
+  if (resultsUnder(state, path)) {
+    return `colors at ${path} are fixed: results are already recorded under it`;
+  }
   const segments = pathSegments(path);
   const last = segments[segments.length - 1];
   if (last?.kind === "leg") {
-    const parentPath = nodePathSchema.parse(
-      path.split("/").slice(0, -1).join("/"),
-    );
+    const parentPath = pathPrefix(path, segments.length - 1);
     const resolved = resolveEncounterNode(state, parentPath);
     if (!resolved.ok) return resolved.reason;
     const def = resolved.node.ctx.def;
@@ -596,6 +669,11 @@ export type Action =
       readonly winner: CompetitorId | undefined;
     };
 
+/**
+ * Idempotent snapshot of everything the host should do right now. The host
+ * diffs it against work it has already started; the engine never retracts a
+ * created game. Gating and ordering: design/tournament-model.md § "The engine".
+ */
 export function nextActions(state: EventState): readonly Action[] {
   const actions: Action[] = [];
   let allComplete = true;
@@ -644,6 +722,11 @@ function eventWinner(state: EventState): CompetitorId | undefined {
   if (lastStage === undefined || onlyGroup === undefined) return undefined;
   const ref = findGroup(state.def, lastStage.id, onlyGroup.id);
   if (ref === undefined) return undefined;
+  if (ref.group.run.kind !== "pool") {
+    // A drawn deciding match has no champion even though the event is over.
+    const d = evalRoot(state, ref.group.run, ref.path).outcome.decision;
+    if (d.kind !== "win") return undefined;
+  }
   return groupRanking(state, ref)?.[0];
 }
 
@@ -688,11 +771,7 @@ function collectPoolActions(
     const legLimit = lockstepLegLimit(state, pool, ref.path, round, plans);
     plans.forEach((plan, index) => {
       if (plan.kind === "bye") return;
-      const node = evalEncounter(state, {
-        def: pool.encounter,
-        path: pairPath(ref.path, round, index + 1),
-        whiteSeat: plan.whiteSeat,
-      });
+      const node = evalPair(state, pool, ref.path, round, index, plan);
       collectEncounterActions(
         state,
         node,
@@ -705,11 +784,7 @@ function collectPoolActions(
   }
 }
 
-/**
- * With `legRelease: "lockstep"`, leg N+1 of a round's series encounters is
- * schedulable only once every pair has resolved leg N (heltour's "lockstep"
- * multi-match generation). Returns the exclusive leg-index limit.
- */
+/** Exclusive leg-index limit for the round's series encounters. See PoolDef.legRelease. */
 function lockstepLegLimit(
   state: EventState,
   pool: PoolDef,
@@ -722,11 +797,7 @@ function lockstepLegLimit(
   let minResolved = Number.POSITIVE_INFINITY;
   plans.forEach((plan, index) => {
     if (plan.kind === "bye") return;
-    const node = evalEncounter(state, {
-      def: pool.encounter,
-      path: pairPath(poolPath, round, index + 1),
-      whiteSeat: plan.whiteSeat,
-    });
+    const node = evalPair(state, pool, poolPath, round, index, plan);
     const resolved = node.children.filter(
       (leg) => leg.outcome.decision.kind !== "pending",
     ).length;
@@ -794,9 +865,9 @@ function collectEncounterActions(
       return;
     }
     case "match": {
-      const lineups: (readonly PlayerId[] | undefined)[] = [0, 1].map((side) =>
-        state.lineups.get(`${node.ctx.path}#${side}`),
-      );
+      const lineups: (readonly PlayerId[] | undefined)[] = (
+        [0, 1] as const
+      ).map((side) => state.lineups.get(lineupKey(node.ctx.path, side)));
       ([0, 1] as const).forEach((side) => {
         if (lineups[side] === undefined) {
           actions.push({
@@ -884,11 +955,14 @@ function buildPairingContext(
           pairings: previousPlans,
           winners: previousPlans.map((plan, index): CompetitorId | null => {
             if (plan.kind === "bye") return plan.competitor;
-            const node = evalEncounter(state, {
-              def: pool.encounter,
-              path: pairPath(ref.path, round - 1, index + 1),
-              whiteSeat: plan.whiteSeat,
-            });
+            const node = evalPair(
+              state,
+              pool,
+              ref.path,
+              round - 1,
+              index,
+              plan,
+            );
             const d = node.outcome.decision;
             if (d.kind !== "win") return null;
             return d.winner === 0 ? plan.a : plan.b;
@@ -944,12 +1018,14 @@ export function proposePairings(
 // ---------------------------------------------------------------------------
 // Public reads
 
+/** Outcome at a materialized node. Throws when the path doesn't resolve (reads are strict; the input fold is not). */
 export function outcomeAt(state: EventState, path: NodePath): Outcome {
   const resolved = resolveEncounterNode(state, path);
   if (!resolved.ok) throw new Error(resolved.reason);
   return resolved.node.outcome;
 }
 
+/** Live standings of a pool group. Throws when the path is not a ready pool (reads are strict; the input fold is not). */
 export function standingsOf(
   state: EventState,
   poolPath: NodePath,

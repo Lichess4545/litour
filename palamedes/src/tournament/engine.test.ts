@@ -3,24 +3,27 @@ import { describe, expect, it } from "vitest";
 import { runEvent } from "./builder";
 import {
   competitorId,
-  type EventDef,
   groupRootPath,
   nodePathSchema,
+  type ParsedEventDef,
+  parseEventDef,
   playerId,
 } from "./def";
-import { materialize, withInput } from "./engine";
+import { materialize, proposePairings, withInput } from "./engine";
 import {
   armageddonShowdown,
   lichess4545,
   loneWolf,
+  miniChampionship,
   norwayChess,
+  scheveningen,
   worldChampionship,
 } from "./formats";
 import type { Input } from "./inputs";
 
 const path = (raw: string) => nodePathSchema.parse(raw);
 
-const errorsOf = (def: EventDef, inputs: Input[]) =>
+const errorsOf = (def: ParsedEventDef, inputs: Input[]) =>
   materialize(def, inputs).errors.map((e) => e.reason);
 
 describe("input validation", () => {
@@ -155,18 +158,9 @@ describe("input validation", () => {
 describe("corrections (last write wins, everything re-derives)", () => {
   it("flips the armageddon winner when the result is corrected", () => {
     const node = groupRootPath("main", "duel");
-    const first = runEvent(armageddonShowdown).game("Magnus", "Hikaru", "1-0");
-    expect(first.winnerName()).toBe("Magnus");
-
-    const corrected = withInput(first.state(), {
-      kind: "gameResult",
-      game: node,
-      result: "1/2-1/2",
-    });
-    expect(corrected.errors).toHaveLength(0);
-    const run = runEvent(armageddonShowdown)
-      .game("Magnus", "Hikaru", "1-0")
-      .submit({ kind: "gameResult", game: node, result: "1/2-1/2" });
+    const run = runEvent(armageddonShowdown).game("Magnus", "Hikaru", "1-0");
+    expect(run.winnerName()).toBe("Magnus");
+    run.submit({ kind: "gameResult", game: node, result: "1/2-1/2" });
     expect(run.winnerName()).toBe("Hikaru");
   });
 
@@ -200,5 +194,153 @@ describe("audit trail", () => {
     expect(state.inputs).toHaveLength(2);
     expect(state.errors).toHaveLength(1);
     expect(state.errors[0]?.index).toBe(0);
+  });
+});
+
+describe("review-driven regressions", () => {
+  it("rejects a color redraw once results exist under the node", () => {
+    const run = runEvent(worldChampionship)
+      .drawColors("Ding")
+      .game("Ding", "Gukesh", "1-0");
+    const state = withInput(run.state(), {
+      kind: "colorDraw",
+      node: path("stage-match/group-title/leg-1"),
+      whiteSeat: 1,
+    });
+    expect(state.errors.map((e) => e.reason)).toEqual([
+      expect.stringContaining("results are already recorded"),
+    ]);
+  });
+
+  it("locks lineups once the match has results", () => {
+    const run = runEvent(lichess4545).pairManual([
+      ["Knights", "Dragons"],
+      ["Pawnstars", "Rooks"],
+    ]);
+    for (const [team, prefix] of [
+      ["Knights", "kni"],
+      ["Dragons", "dra"],
+    ] as const) {
+      run.lineup(
+        team,
+        [1, 2, 3, 4].map((i) => `${prefix}${i}`),
+      );
+    }
+    run.game("kni1", "dra1", "1-0");
+    const awaiting = run
+      .actions()
+      .find((a) => a.kind === "awaitLineup" && a.competitor === "kni");
+    expect(awaiting).toBeUndefined(); // already submitted
+    const state = withInput(run.state(), {
+      kind: "lineupSet",
+      match: path("stage-season/group-league/round-1/pair-1"),
+      side: 0,
+      players: ["kni4", "kni3", "kni2", "kni1"].map(playerId),
+    });
+    expect(state.errors.map((e) => e.reason)).toEqual([
+      expect.stringContaining("lineups are locked"),
+    ]);
+  });
+
+  it("refuses to pair a knockout round with an odd number of advancers", () => {
+    const def = parseEventDef({
+      id: "odd-ko",
+      name: "Knockout with byes",
+      competitors: ["W", "X", "Y", "Z"].map((name) => ({
+        id: name.toLowerCase(),
+        name,
+      })),
+      stages: [
+        {
+          id: "main",
+          groups: [
+            {
+              id: "ko",
+              entries: [1, 2, 3, 4].map((seed) => ({
+                kind: "registration",
+                seed,
+              })),
+              run: {
+                kind: "pool",
+                pairing: { system: "knockout", seeding: "manual" },
+                encounter: {
+                  kind: "game",
+                  clock: { initial: 300, increment: 2 },
+                  tie: { kind: "drawOdds", color: "black" },
+                },
+                score: { kind: "encounterPoints" },
+                tiebreaks: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const ko = groupRootPath("main", "ko");
+    const run = runEvent(def)
+      .submit({
+        kind: "pairingsSet",
+        pool: ko,
+        round: 1,
+        pairings: [
+          {
+            kind: "pair",
+            a: competitorId("w"),
+            b: competitorId("x"),
+            whiteSeat: 0,
+          },
+          { kind: "bye", competitor: competitorId("y") },
+          { kind: "bye", competitor: competitorId("z") },
+        ],
+      })
+      .game("W", "X", "1-0");
+    const proposed = proposePairings(run.state(), ko);
+    expect(proposed).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("odd bracket"),
+    });
+  });
+
+  it("surfaces knockout pairings orphaned by a correction in their seeding source", () => {
+    const run = runEvent(miniChampionship);
+    const a = groupRootPath("groups", "a");
+    const b = groupRootPath("groups", "b");
+    const ko = groupRootPath("finals", "ko");
+    run.pairRound(a).game("David", "Elena", "1-0");
+    run.pairRound(a).game("Anna", "David", "1-0");
+    run.pairRound(a).game("Elena", "Anna", "0-1");
+    run.pairRound(b).game("Clara", "Felix", "1-0");
+    run.pairRound(b).game("Boris", "Clara", "0-1");
+    run.pairRound(b).game("Felix", "Boris", "1-0");
+    run.pairRound(ko); // semis seeded with David as A2
+
+    // Correction: Elena actually beat David in round 1 — she overtakes him.
+    const corrected = withInput(run.state(), {
+      kind: "gameResult",
+      game: path("stage-groups/group-a/round-1/pair-2"),
+      result: "0-1",
+    });
+    expect(corrected.errors.map((e) => e.reason)).toEqual([
+      expect.stringContaining("no longer an entrant"),
+    ]);
+  });
+
+  it("a drawn deciding match completes the event with no champion", () => {
+    const run = runEvent(scheveningen);
+    run.lineup("Hammers", ["ham1", "ham2"]);
+    run.lineup("Anvils", ["anv1", "anv2"]);
+    run.game("ham1", "anv1", "1-0").game("ham2", "anv2", "0-1");
+    run.lineup("Hammers", ["ham1", "ham2"]);
+    run.lineup("Anvils", ["anv1", "anv2"]);
+    run.game("anv1", "ham1", "1/2-1/2").game("anv2", "ham2", "1/2-1/2");
+
+    expect(run.outcome(groupRootPath("match", "tie")).decision).toEqual({
+      kind: "draw",
+    });
+    expect(run.actions()).toContainEqual({
+      kind: "eventComplete",
+      winner: undefined,
+    });
+    expect(run.winnerName()).toBeUndefined();
   });
 });

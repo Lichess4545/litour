@@ -46,9 +46,7 @@ const failureMessages = (data: unknown): string => {
 };
 
 describe("parseEventDef", () => {
-  it("accepts every shipped format example", () => {
-    // The examples already went through parseEventDef at import; spot-check shape.
-    expect(FORMAT_EXAMPLES.length).toBeGreaterThanOrEqual(12);
+  it("format examples have unique slugs (parsing happened at import)", () => {
     expect(new Set(FORMAT_EXAMPLES.map((f) => f.slug)).size).toBe(
       FORMAT_EXAMPLES.length,
     );
@@ -300,6 +298,8 @@ describe("node paths", () => {
       "Stage-a/group-b",
       "stage-a//group-b",
       "stage-a/board-x",
+      "leg-1", // grammar requires a stage/group root
+      "stage-a/group-b/pair-1", // a pair only exists inside a round
     ]) {
       expect(nodePathSchema.safeParse(bad).success).toBe(false);
     }

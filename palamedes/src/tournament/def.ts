@@ -40,16 +40,20 @@ export type Color = "white" | "black";
 
 export const otherSide = (side: Side): Side => (side === 0 ? 1 : 0);
 
-const SEGMENT_PATTERN =
-  "(?:stage|group)-[a-z0-9][a-z0-9-]*|(?:round|pair|leg|board)-[1-9][0-9]*";
+const PATH_ID = "[a-z0-9][a-z0-9-]*";
+const PATH_N = "[1-9][0-9]*";
+// The full address grammar, not just segment syntax: every path starts at a
+// group, optionally descends into a pool round/pair, then encounter legs and
+// boards. (The lone round-without-pair form is pairPath's intermediate step.)
 const NODE_PATH_REGEX = new RegExp(
-  `^(?:${SEGMENT_PATTERN})(?:/(?:${SEGMENT_PATTERN}))*$`,
+  `^stage-${PATH_ID}/group-${PATH_ID}(?:/round-${PATH_N}(?:/pair-${PATH_N})?)?(?:/(?:leg|board)-${PATH_N})*$`,
 );
 
 /**
  * Stable, serializable address of a materialized node:
  * `stage-<id>/group-<id>[/round-<n>/pair-<n>][/leg-<n>|/board-<n>...]`.
- * Construct only via the path helpers below.
+ * The schema enforces the grammar above; whether a path resolves to a live
+ * node is checked when it is used. Construct via the path helpers below.
  */
 export const nodePathSchema = z
   .string()
@@ -92,6 +96,10 @@ export const pairPath = (
     kind: "pair",
     n: pair,
   });
+
+/** The path's first `length` segments (e.g. a board's enclosing match). */
+export const pathPrefix = (path: NodePath, length: number): NodePath =>
+  nodePathSchema.parse(path.split("/").slice(0, length).join("/"));
 
 export function pathSegments(path: NodePath): readonly PathSegment[] {
   return path.split("/").map((raw): PathSegment => {
@@ -245,8 +253,6 @@ export type PoolDef = {
   /** `lockstep` holds series leg N+1 until every pair in the round finished leg N. Scheduling only. */
   readonly legRelease?: "independent" | "lockstep" | undefined;
   readonly tiebreaks: readonly MetricRef[];
-  /** Defaults to `progression` for knockout pools and `points` otherwise. */
-  readonly rank?: "points" | "progression" | undefined;
 };
 
 export type RunDef = PoolDef | EncounterDef;
@@ -334,9 +340,30 @@ export function defaultedByeRule(pool: PoolDef): ByeRule | undefined {
   return pool.pairing.system === "knockout" ? { kind: "advance" } : undefined;
 }
 
+/** Knockouts rank by elimination depth; every other pool ranks by points. */
 export function defaultedRank(pool: PoolDef): "points" | "progression" {
-  if (pool.rank !== undefined) return pool.rank;
   return pool.pairing.system === "knockout" ? "progression" : "points";
+}
+
+/**
+ * True when this encounter can never end undecided: its tie rule is
+ * drawOdds/manual, or it is an untilDecisive series whose last leg cannot
+ * tie. Knockout pools require this — a drawn tie would block advancement.
+ */
+export function decisivenessGuaranteed(def: EncounterDef): boolean {
+  switch (def.kind) {
+    case "game":
+      return def.tie?.kind === "drawOdds" || def.tie?.kind === "manual";
+    case "series":
+      if (def.tie?.kind === "manual") return true;
+      if (def.stop.kind === "untilDecisive") {
+        const last = def.legs[def.legs.length - 1];
+        return last !== undefined && decisivenessGuaranteed(last);
+      }
+      return false;
+    case "match":
+      return def.tie?.kind === "manual";
+  }
 }
 
 export const isPowerOfTwo = (n: number): boolean =>
@@ -364,7 +391,9 @@ const idSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase alphanumeric with dashes");
 
-const finitePoints = z.number().finite().nonnegative();
+// Quarter-point granularity: decisions compare point sums exactly, so the
+// schedule values must be float-exact (every quarter is, in binary).
+const finitePoints = z.number().finite().nonnegative().multipleOf(0.25);
 
 const pointScheduleSchema = z.object({
   win: finitePoints,
@@ -498,7 +527,6 @@ const poolDefSchema = z.object({
   bye: byeRuleSchema.optional(),
   legRelease: z.enum(["independent", "lockstep"]).optional(),
   tiebreaks: z.array(metricRefSchema),
-  rank: z.enum(["points", "progression"]).optional(),
 }) satisfies z.ZodType<PoolDef>;
 
 export const runDefSchema: z.ZodType<RunDef> = z.lazy(() =>
@@ -619,10 +647,15 @@ function validatePool(
       path: [...path],
     });
   }
-  if (pool.rank === "progression" && pool.pairing.system !== "knockout") {
+  if (
+    pool.pairing.system === "knockout" &&
+    !decisivenessGuaranteed(pool.encounter)
+  ) {
     issues.push({
-      message: "progression ranking is only defined for knockout pools",
-      path: [...path, "rank"],
+      message:
+        "knockout encounters must always produce a winner: give the top node a manual tie rule, " +
+        "draw odds, or end an untilDecisive series with an armageddon",
+      path: [...path, "encounter"],
     });
   }
   if (pool.score.kind === "byLeg") {
@@ -787,8 +820,8 @@ function validateEvent(event: EventDef): readonly Issue[] {
   return issues;
 }
 
-export const eventDefSchema: z.ZodType<EventDef> =
-  eventDefBaseSchema.superRefine((event, ctx) => {
+export const eventDefSchema = eventDefBaseSchema
+  .superRefine((event, ctx) => {
     for (const issue of validateEvent(event)) {
       ctx.addIssue({
         code: "custom",
@@ -796,12 +829,22 @@ export const eventDefSchema: z.ZodType<EventDef> =
         path: [...issue.path],
       });
     }
-  });
+  })
+  .brand<"ParsedEventDef">();
 
-export function parseEventDef(data: unknown): EventDef {
+/**
+ * An EventDef that has passed every cross-cutting refinement. The engine only
+ * accepts this brand, so an unparsed literal can't reach it carrying broken
+ * invariants (non-power-of-two knockouts, missing swiss rounds, ...).
+ */
+export type ParsedEventDef = z.infer<typeof eventDefSchema>;
+
+/** Parse and fully validate an event definition; throws listing every issue. */
+export function parseEventDef(data: unknown): ParsedEventDef {
   return eventDefSchema.parse(data);
 }
 
+/** Like `parseEventDef` but returns the issues instead of throwing. */
 export function safeParseEventDef(data: unknown) {
   return eventDefSchema.safeParse(data);
 }

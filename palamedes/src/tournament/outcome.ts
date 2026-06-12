@@ -34,7 +34,7 @@ export type EngineIndexes = {
 export const lineupKey = (matchPath: NodePath, side: Side): string =>
   `${matchPath}#${side}`;
 
-export type DecisionBy = "points" | "drawOdds" | "forfeit" | "manual" | "bye";
+export type DecisionBy = "points" | "drawOdds" | "forfeit" | "manual";
 
 export type Decision =
   | { readonly kind: "pending" }
