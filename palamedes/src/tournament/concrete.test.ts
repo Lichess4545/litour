@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   armageddonShowdown,
   clubRoundRobin,
+  grandChessTour,
   lichess4545,
   lichess4545Season,
   miniChampionship,
@@ -11,6 +12,7 @@ import {
 } from "@/chess/formats";
 import { chessRegistry } from "@/chess/registry";
 import { concretify } from "./concrete";
+import { competitorIdSchema } from "./core";
 
 describe("concretify — sizes are explicit", () => {
   it("open entries with declared rounds: all rounds known, pairings open with exemplars", () => {
@@ -138,6 +140,73 @@ describe("concretify — sizes are explicit", () => {
         round.pairings.open ? "open" : round.pairings.items.length,
       ),
     ).toEqual([2, 2]); // semifinals, then final + bronze
+  });
+});
+
+describe("the Grand Chess Tour — terminology and tour standings", () => {
+  it("every word on the cards comes from the definition", () => {
+    const event = concretify(grandChessTour, chessRegistry);
+    expect(event.stages.map((s) => s.card.title)).toEqual([
+      "Superbet Chess Classic",
+      "SuperUnited Zagreb Rapid & Blitz",
+      "SuperUnited Warsaw Rapid & Blitz",
+      "Saint Louis Rapid & Blitz",
+      "Sinquefield Cup",
+      "GCT Finals São Paulo",
+    ]);
+    const finals = event.stages[5]?.groups[0];
+    // The tour aggregation links the finals back to all five events.
+    expect(finals?.seededFrom).toHaveLength(5);
+    const run = finals?.run;
+    if (run?.kind !== "rounds") throw new Error("expected a rounds run");
+    const semis = run.rounds.items[0];
+    if (semis?.pairings.open !== false)
+      throw new Error("expected known pairings");
+    expect(semis.pairings.items.map((p) => p.label)).toEqual([
+      "match 1",
+      "match 2",
+    ]);
+    const match = semis.pairings.items[0]?.node;
+    expect(match?.title).toBe("Finals match");
+    expect(match?.children[0]?.role).toBe("game 1");
+    expect(match?.children[0]?.title).toBe("Classical");
+    // A Rapid & Blitz stop: 27 rounds, scoring describing its phases.
+    const zagreb = event.stages[1]?.groups[0]?.run;
+    if (zagreb?.kind !== "rounds") throw new Error("expected a rounds run");
+    expect(zagreb.rounds.open).toBe(false);
+    expect(zagreb.rounds.items).toHaveLength(27);
+    expect(zagreb.scoring.title).toBe("Phased points");
+  });
+
+  it("placements aggregate rankings through a points table", () => {
+    const placements = chessRegistry.seeds.get("placements");
+    const [a, b, c] = ["a", "b", "c"].map((x) => competitorIdSchema.parse(x));
+    if (a === undefined || b === undefined || c === undefined) {
+      throw new Error("ids");
+    }
+    const rankings = new Map([
+      ["e1/field", [a, b, c]],
+      ["e2/field", [a, c, b]],
+    ]);
+    const resolve = (rank: number) =>
+      placements?.resolve(
+        {
+          kind: "placements",
+          sources: [
+            { stage: "e1", group: "field" },
+            { stage: "e2", group: "field" },
+          ],
+          points: [3, 1, 0],
+          rank,
+        },
+        {
+          competitors: [],
+          ranking: (stage, group) => rankings.get(`${stage}/${group}`),
+        },
+      );
+    // a sweeps both; b and c tie on points and best placement — source
+    // order breaks the tie deterministically.
+    expect([resolve(1), resolve(2), resolve(3)]).toEqual([a, b, c]);
   });
 });
 

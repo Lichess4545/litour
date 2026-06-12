@@ -346,8 +346,8 @@ export type SeedKind = {
     ctx: SeedValidateContext,
     issue: Issue,
   ) => void;
-  /** Declares the earlier stage/group this seed draws from (cross-stage UI edges). */
-  readonly origin?: (ref: SeedRef) => SeedOrigin | undefined;
+  /** The earlier groups this seed draws from (cross-stage UI edges) — possibly several (tour aggregations). */
+  readonly origins?: (ref: SeedRef) => readonly SeedOrigin[];
 };
 
 // ---------------------------------------------------------------------------
@@ -573,13 +573,13 @@ export type SeedKindSpec<S> = {
   readonly schema: z.ZodType<S>;
   resolve(ref: S, ctx: SeedContext): CompetitorId | undefined;
   validate?(ref: S, ctx: SeedValidateContext, issue: Issue): void;
-  origin?(ref: S): SeedOrigin | undefined;
+  origins?(ref: S): readonly SeedOrigin[];
 };
 
 export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
   const decode = memoDecode(spec.schema);
   const validate = spec.validate;
-  const origin = spec.origin;
+  const origins = spec.origins;
   return {
     kind: spec.kind,
     schema: spec.schema,
@@ -590,9 +590,9 @@ export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
           validate: (ref: SeedRef, ctx: SeedValidateContext, issue: Issue) =>
             validate(decode(ref), ctx, issue),
         }),
-    ...(origin === undefined
+    ...(origins === undefined
       ? {}
-      : { origin: (ref: SeedRef) => origin(decode(ref)) }),
+      : { origins: (ref: SeedRef) => origins(decode(ref)) }),
   };
 }
 
@@ -797,10 +797,17 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
     bye: byeRuleSchema.optional(),
     legRelease: z.enum(["independent", "lockstep"]).optional(),
     tiebreaks: z.array(z.looseObject({ metric: z.string() })),
+    terms: z
+      .object({
+        round: z.string().min(1).optional(),
+        pairing: z.string().min(1).optional(),
+      })
+      .optional(),
   });
 
   const groupSchema = z.object({
     id: idSchema,
+    name: z.string().min(1).optional(),
     entries: z.union([
       z.array(z.looseObject({ kind: z.string() })).min(1),
       z.object({ open: z.literal(true) }),
@@ -822,7 +829,13 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
         }),
       ),
       stages: z
-        .array(z.object({ id: idSchema, groups: z.array(groupSchema).min(1) }))
+        .array(
+          z.object({
+            id: idSchema,
+            name: z.string().min(1).optional(),
+            groups: z.array(groupSchema).min(1),
+          }),
+        )
         .min(1),
     })
     .superRefine((event, ctx) => {

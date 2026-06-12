@@ -33,7 +33,7 @@ export const roundRobinPairing: PairingKind = definePairingKind({
   system: "roundRobin",
   schema: z.object({
     system: z.literal("roundRobin"),
-    cycles: z.union([z.literal(1), z.literal(2)]),
+    cycles: z.number().int().min(1),
   }),
   totalRounds: (options, entrants) =>
     (entrants % 2 === 0 ? entrants - 1 : entrants) * options.cycles,

@@ -903,6 +903,162 @@ export const worldCorporateChampionship: ParsedEventDef = parseEventDef({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// The Grand Chess Tour: five whole tournaments rolled up into tour standings
+
+/** Tour points by event placement (1st → 13, 2nd → 10, …). */
+const GCT_POINTS = [13, 10, 8, 7, 6, 5, 4, 3, 2, 1];
+
+const GCT_EVENTS = [
+  { id: "superbet-classic", name: "Superbet Chess Classic", kind: "classical" },
+  { id: "zagreb", name: "SuperUnited Zagreb Rapid & Blitz", kind: "rb" },
+  { id: "warsaw", name: "SuperUnited Warsaw Rapid & Blitz", kind: "rb" },
+  { id: "saint-louis", name: "Saint Louis Rapid & Blitz", kind: "rb" },
+  { id: "sinquefield", name: "Sinquefield Cup", kind: "classical" },
+] as const;
+
+/** A classical tour stop: 10-player single round robin. */
+const gctClassical = {
+  kind: "pool",
+  pairing: { system: "roundRobin", cycles: 1 },
+  encounter: {
+    kind: "game",
+    name: "Classical",
+    clock: { initial: 7200, increment: 30 },
+  },
+  score: gamePoints,
+  tiebreaks: [{ metric: "sonnebornBerger" }, { metric: "headToHead" }],
+};
+
+/**
+ * A Rapid & Blitz stop: one rapid round robin (rounds 1–9, scored 2/1/0)
+ * straight into a double blitz round robin (rounds 10–27, scored 1/½/0) —
+ * one combined standings via phased scoring. (The per-phase clock change is
+ * host scheduling; the model varies the points.)
+ */
+const gctRapidBlitz = {
+  kind: "pool",
+  pairing: { system: "roundRobin", cycles: 3 },
+  encounter: {
+    kind: "game",
+    name: "Rapid / Blitz",
+    clock: { initial: 1500, increment: 10 },
+  },
+  score: {
+    kind: "phased",
+    phases: [
+      { rounds: 9, win: 2, draw: 1, loss: 0 },
+      { rounds: 18, win: 1, draw: 0.5, loss: 0 },
+    ],
+  },
+  tiebreaks: [{ metric: "sonnebornBerger" }],
+};
+
+/**
+ * A finals match: two classical games worth 6/3, two rapid worth 4/2, two
+ * blitz worth 2/1, and armageddon if the weighted points are still level —
+ * the weighting is just per-game point schedules summing up the series.
+ */
+const gctFinalsMatch = {
+  kind: "series",
+  name: "Finals match",
+  legName: "game",
+  legs: [
+    ...Array.from({ length: 2 }, () => ({
+      kind: "game",
+      name: "Classical",
+      clock: { initial: 5400, increment: 30 },
+      points: { win: 6, draw: 3, loss: 0 },
+    })),
+    ...Array.from({ length: 2 }, () => ({
+      kind: "game",
+      name: "Rapid",
+      clock: { initial: 1500, increment: 10 },
+      points: { win: 4, draw: 2, loss: 0 },
+    })),
+    ...Array.from({ length: 2 }, () => ({
+      kind: "game",
+      name: "Blitz",
+      clock: { initial: 300, increment: 3 },
+      points: { win: 2, draw: 1, loss: 0 },
+    })),
+    armageddon,
+  ],
+  stop: untilDecided,
+  seats: alternate,
+};
+
+/**
+ * The Grand Chess Tour: five complete tournaments — two classical round
+ * robins and three Rapid & Blitz events — whose placements convert to tour
+ * points (13/10/8/…); the top four on tour points meet in the São Paulo
+ * finals over weighted classical/rapid/blitz matches with a bronze final.
+ * Every word on the cards comes from the definition: stage names, "match"
+ * for the finals pairings, "game" for the legs.
+ */
+export const grandChessTour: ParsedEventDef = parseEventDef({
+  id: "grand-chess-tour",
+  name: "Grand Chess Tour",
+  competitors: players(
+    "Caruana",
+    "Praggnanandhaa",
+    "Gukesh",
+    "Abdusattorov",
+    "Firouzja",
+    "So",
+    "Vachier-Lagrave",
+    "Aronian",
+    "Giri",
+    "Duda",
+  ),
+  stages: [
+    ...GCT_EVENTS.map((event) => ({
+      id: event.id,
+      name: event.name,
+      groups: [
+        {
+          id: "field",
+          name: event.name,
+          entries: seeds(10),
+          run: event.kind === "classical" ? gctClassical : gctRapidBlitz,
+        },
+      ],
+    })),
+    {
+      id: "finals",
+      name: "GCT Finals São Paulo",
+      groups: [
+        {
+          id: "playoff",
+          name: "Finals — top 4 on tour points",
+          entries: Array.from({ length: 4 }, (_, i) => ({
+            kind: "placements",
+            sources: GCT_EVENTS.map((event) => ({
+              stage: event.id,
+              group: "field",
+            })),
+            points: GCT_POINTS,
+            rank: i + 1,
+          })),
+          run: {
+            kind: "pool",
+            pairing: {
+              system: "knockout",
+              seeding: "traditional",
+              thirdPlace: true,
+            },
+            terms: { pairing: "match" },
+            encounter: gctFinalsMatch,
+            score: gamePoints,
+            bye: { kind: "advance" },
+            tiebreaks: [],
+          },
+        },
+      ],
+    },
+  ],
+});
+
 export type FormatExample = {
   readonly slug: string;
   readonly title: string;
@@ -965,6 +1121,13 @@ export const FORMAT_EXAMPLES: readonly FormatExample[] = [
     title: "Candidates",
     blurb: "Double round robin with reversed colors in the second cycle.",
     def: candidates,
+  },
+  {
+    slug: "grand-chess-tour",
+    title: "Grand Chess Tour",
+    blurb:
+      "Five whole tournaments; placements become tour points; the top four meet in weighted-match finals.",
+    def: grandChessTour,
   },
   {
     slug: "world-university",

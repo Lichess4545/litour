@@ -83,6 +83,8 @@ const sumPoints = (
 
 type GameDef = {
   kind: "game";
+  /** Display name override ("Armageddon", "Blitz tiebreak"). */
+  name?: string | undefined;
   clock: Clock;
   points?: PointSchedule | undefined;
   tie?: TieRef | undefined;
@@ -93,6 +95,7 @@ export const gameKind: EncounterKind = defineEncounterKind<GameDef>({
   schema: (deps) =>
     z.object({
       kind: z.literal("game"),
+      name: z.string().min(1).optional(),
       clock: clockSchema,
       points: pointScheduleSchema.optional(),
       tie: deps.tie.optional(),
@@ -184,7 +187,7 @@ export const gameKind: EncounterKind = defineEncounterKind<GameDef>({
     }
     if (def.tie?.kind === "manual") lines.push("ties: arbiter decides");
     return {
-      title: oddsColor === undefined ? "Game" : "Armageddon",
+      title: def.name ?? (oddsColor === undefined ? "Game" : "Armageddon"),
       ...(oddsColor === undefined ? {} : { badge: `${oddsColor} wins draws` }),
       lines,
     };
@@ -202,6 +205,10 @@ type StopRule = {
 
 type SeriesDef = {
   kind: "series";
+  /** Display name override ("Tiebreak chain"). */
+  name?: string | undefined;
+  /** What a leg is called here ("game", "set"). */
+  legName?: string | undefined;
   legs: AnyEncounterDef[];
   stop?: StopRule | undefined;
   seats: SeatRule;
@@ -266,6 +273,8 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
   schema: (deps) =>
     z.object({
       kind: z.literal("series"),
+      name: z.string().min(1).optional(),
+      legName: z.string().min(1).optional(),
       legs: z.array(deps.encounter).min(1),
       stop: stopSchema.optional(),
       seats: seatRuleSchema,
@@ -345,7 +354,7 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
             : undefined;
     return def.legs.map((leg, i) => ({
       def: leg,
-      role: `leg ${i + 1}`,
+      role: `${def.legName ?? "leg"} ${i + 1}`,
       seat:
         def.seats.source === "draw"
           ? "draw"
@@ -382,7 +391,7 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
             ? "until decided"
             : `all ${def.legs.length} legs`;
     return {
-      title: "Series",
+      title: def.name ?? "Series",
       badge,
       lines: def.seats.source === "draw" ? ["colors drawn per leg"] : [],
     };
@@ -394,6 +403,10 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
 
 type MatchDef = {
   kind: "match";
+  /** Display name override ("Olympiad match"). */
+  name?: string | undefined;
+  /** What a board is called here. */
+  boardName?: string | undefined;
   boards: number;
   board: AnyEncounterDef;
   seats: { cycle: z.infer<typeof seatCycleSchema> };
@@ -405,6 +418,8 @@ export const matchKind: EncounterKind = defineEncounterKind<MatchDef>({
   schema: (deps) =>
     z.object({
       kind: z.literal("match"),
+      name: z.string().min(1).optional(),
+      boardName: z.string().min(1).optional(),
       boards: z.number().int().min(1),
       board: deps.encounter,
       seats: z.object({ cycle: seatCycleSchema }),
@@ -451,7 +466,7 @@ export const matchKind: EncounterKind = defineEncounterKind<MatchDef>({
   structure: (def) =>
     Array.from({ length: def.boards }, (_, i) => ({
       def: def.board,
-      role: `board ${i + 1}`,
+      role: `${def.boardName ?? "board"} ${i + 1}`,
       seat: def.seats.cycle[i % def.seats.cycle.length] ?? "keep",
     })),
   nominalPoints: (def, ops) => {
@@ -462,7 +477,7 @@ export const matchKind: EncounterKind = defineEncounterKind<MatchDef>({
   arrangement: () => "parallel",
   rosterNeed: (def, ops) => Math.max(def.boards, ops.rosterNeed(def.board)),
   card: (def) => ({
-    title: "Team match",
+    title: def.name ?? "Team match",
     badge: `${def.boards} boards`,
     lines: [],
   }),

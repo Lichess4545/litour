@@ -399,6 +399,13 @@ export type PoolDef = {
   /** `lockstep` holds child slot N+1 until every pair in the round resolved slot N. Scheduling only. */
   readonly legRelease?: "independent" | "lockstep" | undefined;
   readonly tiebreaks: readonly MetricRef[];
+  /** What this pool calls its schedule units ("Round"/"pairing" by default). */
+  readonly terms?:
+    | {
+        readonly round?: string | undefined;
+        readonly pairing?: string | undefined;
+      }
+    | undefined;
 };
 
 export type RunDef = PoolDef | AnyEncounterDef;
@@ -416,12 +423,16 @@ export const isOpenEntries = (entries: EntriesDef): entries is OpenEntries =>
 
 export type GroupDef = {
   readonly id: string;
+  /** Display name; the id stays the structural key. */
+  readonly name?: string | undefined;
   readonly entries: EntriesDef;
   readonly run: RunDef;
 };
 
 export type StageDef = {
   readonly id: string;
+  /** Display name; the id stays the structural key. */
+  readonly name?: string | undefined;
   readonly groups: readonly GroupDef[];
 };
 

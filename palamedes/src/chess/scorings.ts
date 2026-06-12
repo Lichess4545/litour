@@ -76,7 +76,67 @@ export const tableScoring: ScoringKind = defineScoringKind<TableRule>({
   }),
 });
 
+type PhasedRule = {
+  kind: "phased";
+  /** Consecutive round blocks, each with its own win/draw/loss values. */
+  phases: { rounds: number; win: number; draw: number; loss: number }[];
+};
+
+/**
+ * Round-dependent scoring: consecutive blocks of rounds score differently
+ * (Grand Chess Tour Rapid & Blitz: 9 rapid rounds at 2/1/0, then 18 blitz
+ * rounds at 1/½/0). The competitor's chronological history says which round
+ * this line is.
+ */
+export const phasedScoring: ScoringKind = defineScoringKind<PhasedRule>({
+  kind: "phased",
+  schema: z.object({
+    kind: z.literal("phased"),
+    phases: z
+      .array(
+        z.object({
+          rounds: z.number().int().min(1),
+          win: finitePoints,
+          draw: finitePoints,
+          loss: finitePoints,
+        }),
+      )
+      .min(1),
+  }),
+  points: (rule, line, history) => {
+    let round = history.length + 1;
+    let phase = rule.phases[rule.phases.length - 1];
+    for (const candidate of rule.phases) {
+      if (round <= candidate.rounds) {
+        phase = candidate;
+        break;
+      }
+      round -= candidate.rounds;
+    }
+    if (phase === undefined) return 0;
+    const d = line.outcome.decision;
+    switch (d.kind) {
+      case "pending":
+        return 0;
+      case "draw":
+        return phase.draw;
+      case "doubleLoss":
+        return phase.loss;
+      case "win":
+        return d.winner === line.side ? phase.win : phase.loss;
+    }
+  },
+  card: (rule) => ({
+    title: "Phased points",
+    lines: rule.phases.map(
+      (phase, i) =>
+        `phase ${i + 1} (${phase.rounds} rounds): ${phase.win}/${phase.draw}/${phase.loss}`,
+    ),
+  }),
+});
+
 export const builtinScorings: readonly ScoringKind[] = [
   passThroughScoring,
   tableScoring,
+  phasedScoring,
 ];

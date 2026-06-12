@@ -64,6 +64,11 @@ src/chess/        THE STANDARD LIBRARY — built outside the system, using it
   list (the field is known) or `{ open: true }` — registration-bound, so the
   definition assumes no count; open groups stay unresolved (awaitSeeding, no
   pairings) until entries are bound, and entrant-count validation waits.
+- **Terminology belongs to the definition.** Stages and groups carry display
+  `name`s; pools carry `terms` ("Round"/"pairing" by default — the GCT
+  finals call their pairings "match"); encounter kinds accept their own
+  vocabulary in their defs (`name`, `legName`, `boardName` on the builtins).
+  The system mints structure, never nouns.
 
 ## The typeclasses (what `registry.ts` opens)
 
@@ -172,6 +177,13 @@ the cascade round — an 8-round team swiss whose every round is two
 color-swapped rapid team games (match points only), then a full-team blitz
 with drawn colors, then a one-board armageddon: pure composition, including
 the per-leg "random color" (singleton series wrappers with drawn seats).
+The Grand Chess Tour rolls five whole tournaments into tour standings with
+two more registered instances and zero engine changes: a `placements` seed
+kind (rankings across many groups through a points table — the finals seed
+from it, and its plural origins draw the flows from every event) and a
+`phased` scoring kind (rapid rounds score 2/1/0, blitz 1/½/0, one combined
+standings); the finals' weighted classical/rapid/blitz matches are just
+per-game point schedules summing up an until-decided series.
 
 ## The concrete domain (`concrete.ts`) and the viewer (`/tournaments`)
 

@@ -252,7 +252,7 @@ function entryName(
   if (id !== undefined) {
     return def.competitors.find((c) => c.id === id)?.name ?? id;
   }
-  const origin = seedKind?.origin?.(entry);
+  const [origin] = seedKind?.origins?.(entry) ?? [];
   if (origin !== undefined) {
     return origin.rank === undefined
       ? `from ${origin.group}`
@@ -267,6 +267,8 @@ function concretifyPool(
   registry: ModelRegistry,
 ): ConcreteRoundsRun {
   const pairing = registry.pairings.get(pool.pairing.system);
+  const roundWord = pool.terms?.round ?? "Round";
+  const pairWord = pool.terms?.pairing ?? "pairing";
 
   const pairingsOf = (round: number): Many<ConcretePairing> => {
     const node = concretifyNode(
@@ -276,10 +278,10 @@ function concretifyPool(
     );
     if (entrants === "open") {
       const items = Array.from({ length: OPEN_EXAMPLES }, (_, i) => ({
-        label: `pairing ${i + 1}`,
+        label: `${pairWord} ${i + 1}`,
         node,
       }));
-      return { open: true, items, more: { label: "… pairing n", node } };
+      return { open: true, items, more: { label: `… ${pairWord} n`, node } };
     }
     const count =
       pairing?.pairsInRound?.(pool.pairing, entrants, round) ??
@@ -287,7 +289,7 @@ function concretifyPool(
     return {
       open: false,
       items: Array.from({ length: count }, (_, i) => ({
-        label: `pairing ${i + 1}`,
+        label: `${pairWord} ${i + 1}`,
         node,
       })),
     };
@@ -312,7 +314,7 @@ function concretifyPool(
   };
   const repair: ConcreteCard = {
     kind: pool.pairing.system,
-    title: "Pair next round",
+    title: `Pair next ${roundWord.toLowerCase()}`,
     badge: undefined,
     lines: ["from these standings"],
   };
@@ -332,14 +334,14 @@ function concretifyPool(
       ? {
           open: true,
           items: Array.from({ length: OPEN_EXAMPLES }, (_, i) =>
-            roundOf(i + 1, `Round ${i + 1}`),
+            roundOf(i + 1, `${roundWord} ${i + 1}`),
           ),
-          more: roundOf(OPEN_EXAMPLES + 1, "… Round n"),
+          more: roundOf(OPEN_EXAMPLES + 1, `… ${roundWord} n`),
         }
       : {
           open: false,
           items: Array.from({ length: roundCount }, (_, i) =>
-            roundOf(i + 1, `Round ${i + 1}`),
+            roundOf(i + 1, `${roundWord} ${i + 1}`),
           ),
         };
 
@@ -372,16 +374,17 @@ export function concretify(
         >();
         if (!open) {
           for (const entry of group.entries) {
-            const origin = registry.seeds.get(entry.kind)?.origin?.(entry);
-            if (origin === undefined) continue;
-            const sourceKey = `${origin.stage}/${origin.group}`;
-            const links = bySource.get(sourceKey) ?? {
-              stage: origin.stage,
-              group: origin.group,
-              ranks: [],
-            };
-            links.ranks.push(origin.rank);
-            bySource.set(sourceKey, links);
+            const all = registry.seeds.get(entry.kind)?.origins?.(entry) ?? [];
+            for (const origin of all) {
+              const sourceKey = `${origin.stage}/${origin.group}`;
+              const links = bySource.get(sourceKey) ?? {
+                stage: origin.stage,
+                group: origin.group,
+                ranks: [],
+              };
+              links.ranks.push(origin.rank);
+              bySource.set(sourceKey, links);
+            }
           }
         }
         const seededFrom = [...bySource.values()].map(
@@ -409,10 +412,26 @@ export function concretify(
             };
           },
         );
+        // Name the source by its group — or by its stage when several
+        // sources share a group id (the tour's five "field" groups).
+        const groupUses = new Map<string, number>();
+        for (const link of seededFrom) {
+          groupUses.set(link.group, (groupUses.get(link.group) ?? 0) + 1);
+        }
+        const sourceName = (link: ConcreteSeedLink): string => {
+          const sourceStage = def.stages.find((s) => s.id === link.stage);
+          if ((groupUses.get(link.group) ?? 0) > 1) {
+            return sourceStage?.name ?? link.stage;
+          }
+          const sourceGroup = sourceStage?.groups.find(
+            (g) => g.id === link.group,
+          );
+          return sourceGroup?.name ?? link.group;
+        };
         const inflowLines = seededFrom.map((link) =>
           link.label === undefined
-            ? `from ${link.group}`
-            : `${link.label} from ${link.group}`,
+            ? `from ${sourceName(link)}`
+            : `${link.label} from ${sourceName(link)}`,
         );
         const run = group.run;
         if (isPool(run)) {
@@ -425,7 +444,7 @@ export function concretify(
             entrants,
             header: {
               kind: "group",
-              title: group.id,
+              title: group.name ?? group.id,
               badge: `${concrete.system} · ${roundsLabel} rounds`,
               lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
             },
@@ -447,7 +466,7 @@ export function concretify(
           entrants,
           header: {
             kind: "group",
-            title: group.id,
+            title: group.name ?? group.id,
             badge: undefined,
             lines: [entrantsLine, ...inflowLines],
           },
@@ -483,7 +502,7 @@ export function concretify(
         id: stage.id,
         card: {
           kind: "stage",
-          title: stage.id,
+          title: stage.name ?? stage.id,
           badge: groups.length > 1 ? `${groups.length} groups` : undefined,
           lines: groups.map(
             (group) =>

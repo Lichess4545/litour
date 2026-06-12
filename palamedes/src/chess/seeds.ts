@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { competitorIdSchema, idSchema } from "@/tournament/core";
+import {
+  type CompetitorId,
+  competitorIdSchema,
+  idSchema,
+} from "@/tournament/core";
 import { defineSeedKind, type SeedKind } from "@/tournament/registry";
 
 /**
@@ -45,7 +49,7 @@ export const rankSeed: SeedKind = defineSeedKind({
     rank: z.number().int().min(1),
   }),
   resolve: (ref, ctx) => ctx.ranking(ref.stage, ref.group)?.[ref.rank - 1],
-  origin: (ref) => ({ stage: ref.stage, group: ref.group, rank: ref.rank }),
+  origins: (ref) => [{ stage: ref.stage, group: ref.group, rank: ref.rank }],
   validate: (ref, ctx, issue) => {
     const sourceIndex = ctx.stages.findIndex((s) => s.id === ref.stage);
     if (sourceIndex === -1 || sourceIndex >= ctx.stageIndex) {
@@ -67,8 +71,69 @@ export const rankSeed: SeedKind = defineSeedKind({
   },
 });
 
+/**
+ * Tour aggregation: placements across several completed groups convert to
+ * points through a table (Grand Chess Tour: 13/10/8/…), and the seed
+ * resolves rank N of the combined standings. Ties break by total, then by
+ * best single placement, then by source order — deterministic, and an
+ * arbiter can always override with fixed seeds.
+ */
+export const placementsSeed: SeedKind = defineSeedKind({
+  kind: "placements",
+  schema: z.object({
+    kind: z.literal("placements"),
+    sources: z.array(z.object({ stage: idSchema, group: idSchema })).min(1),
+    points: z.array(z.number().finite().nonnegative()).min(1),
+    rank: z.number().int().min(1),
+  }),
+  resolve: (ref, ctx) => {
+    const totals = new Map<CompetitorId, { total: number; best: number }>();
+    for (const source of ref.sources) {
+      const ranking = ctx.ranking(source.stage, source.group);
+      if (ranking === undefined) return undefined; // every source must finish
+      ranking.forEach((competitor, index) => {
+        const award = ref.points[index] ?? 0;
+        const entry = totals.get(competitor) ?? {
+          total: 0,
+          best: Number.POSITIVE_INFINITY,
+        };
+        totals.set(competitor, {
+          total: entry.total + award,
+          best: Math.min(entry.best, index),
+        });
+      });
+    }
+    const order = [...totals.entries()].sort(
+      ([, a], [, b]) => b.total - a.total || a.best - b.best,
+    );
+    return order[ref.rank - 1]?.[0];
+  },
+  origins: (ref) =>
+    ref.sources.map((source) => ({ stage: source.stage, group: source.group })),
+  validate: (ref, ctx, issue) => {
+    ref.sources.forEach((source, i) => {
+      const sourceIndex = ctx.stages.findIndex((s) => s.id === source.stage);
+      if (sourceIndex === -1 || sourceIndex >= ctx.stageIndex) {
+        issue(
+          `placements source must reference an earlier stage; ${source.stage} is not one`,
+          ["sources", i, "stage"],
+        );
+        return;
+      }
+      if (ctx.stages[sourceIndex]?.groupSizes.get(source.group) === undefined) {
+        issue(`unknown group ${source.group} in stage ${source.stage}`, [
+          "sources",
+          i,
+          "group",
+        ]);
+      }
+    });
+  },
+});
+
 export const builtinSeeds: readonly SeedKind[] = [
   registrationSeed,
   fixedSeed,
   rankSeed,
+  placementsSeed,
 ];
