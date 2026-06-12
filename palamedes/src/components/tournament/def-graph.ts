@@ -245,12 +245,16 @@ function row(items: readonly Sub[], gap: number): Sub {
   return merge(placed, Math.max(0, x - gap), h);
 }
 
-/** Top-to-bottom, left aligned. */
-function column(items: readonly Sub[], gap: number): Sub {
+/** Top-to-bottom; centered alignment keeps a straight vertical spine. */
+function column(
+  items: readonly Sub[],
+  gap: number,
+  align: "left" | "center" = "left",
+): Sub {
   const w = items.reduce((max, item) => Math.max(max, item.w), 0);
   let y = 0;
   const placed = items.map((item) => {
-    const sub = offset(item, 0, y);
+    const sub = offset(item, align === "center" ? (w - item.w) / 2 : 0, y);
     y += item.h + gap;
     return sub;
   });
@@ -589,63 +593,80 @@ function childrenSub(
     return { ...laid, edges: [...laid.edges, ...edges] };
   }
 
-  const rows: Sub[] = [];
+  // A vertical spine: each leg, then — directly below it — the gate that
+  // decides whether the next leg happens. "yes" drops straight down the
+  // spine; "no" hangs to the right of the gate as a labeled end. The gate
+  // row is padded symmetrically so the gate itself stays on the axis.
+  const items: Sub[] = [];
   const edges: FlowGraphEdge[] = [];
   node.children.forEach((child, i) => {
     const childId = `${pid}/c${i + 1}`;
-    const pieces: Sub[] = [childItem(child, i)];
+    items.push(childItem(child, i));
     const next = node.children[i + 1];
     const nextId = `${pid}/c${i + 2}`;
-    if (next !== undefined) {
-      if (next.gate !== undefined) {
-        const gateId = `${nextId}/gate`;
-        const exitId = `${nextId}/exit`;
-        pieces.push(
-          cardSub(gateId, card("gate", next.gate.when, [], { step: true })),
-          cardSub(exitId, card("end", next.gate.otherwise, [], { step: true })),
-        );
-        edges.push(
-          {
-            id: `c:${childId}->${gateId}`,
-            source: childId,
-            target: gateId,
-            fromHandle: "r",
-            toHandle: "l",
-            kind: "chain",
-          },
-          {
-            id: `c:${gateId}->${exitId}`,
-            source: gateId,
-            target: exitId,
-            label: "no",
-            fromHandle: "r",
-            toHandle: "l",
-            kind: "chain",
-          },
-          {
-            id: `c:${gateId}->${nextId}`,
-            source: gateId,
-            target: nextId,
-            label: "yes",
-            fromHandle: "b",
-            toHandle: "t",
-            kind: "chain",
-          },
-        );
-      } else {
-        edges.push({
-          id: `c:${childId}->${nextId}`,
-          source: childId,
-          target: nextId,
-          label: "then",
-          fromHandle: "b",
-          toHandle: "t",
-          kind: "chain",
-        });
-      }
+    if (next === undefined) return;
+    if (next.gate === undefined) {
+      edges.push({
+        id: `c:${childId}->${nextId}`,
+        source: childId,
+        target: nextId,
+        label: "then",
+        fromHandle: "b",
+        toHandle: "t",
+        kind: "chain",
+      });
+      return;
     }
-    rows.push(row(pieces, GAP));
+    const gateId = `${nextId}/gate`;
+    const exitId = `${nextId}/exit`;
+    const gate = cardSub(
+      gateId,
+      card("gate", next.gate.when, [], { step: true }),
+    );
+    const exit = cardSub(
+      exitId,
+      card("end", next.gate.otherwise, [], { step: true }),
+    );
+    const pad = exit.w + GAP;
+    items.push(
+      merge(
+        [
+          offset(gate, pad, 0),
+          offset(exit, pad + gate.w + GAP, (gate.h - exit.h) / 2),
+        ],
+        pad * 2 + gate.w,
+        Math.max(gate.h, exit.h),
+      ),
+    );
+    edges.push(
+      {
+        id: `c:${childId}->${gateId}`,
+        source: childId,
+        target: gateId,
+        fromHandle: "b",
+        toHandle: "t",
+        kind: "chain",
+      },
+      {
+        id: `c:${gateId}->${exitId}`,
+        source: gateId,
+        target: exitId,
+        label: "no",
+        fromHandle: "r",
+        toHandle: "l",
+        kind: "chain",
+      },
+      {
+        id: `c:${gateId}->${nextId}`,
+        source: gateId,
+        target: nextId,
+        label: "yes",
+        fromHandle: "b",
+        toHandle: "t",
+        kind: "chain",
+      },
+    );
   });
-  const laid = column(rows, GAP * 1.5);
+  const laid = column(items, GAP, "center");
   return { ...laid, edges: [...laid.edges, ...edges] };
 }
