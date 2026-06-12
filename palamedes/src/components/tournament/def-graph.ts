@@ -413,26 +413,49 @@ export function buildGraph(
 
   const edges: FlowGraphEdge[] = [...laid.edges];
   for (const stage of event.stages) {
-    for (const intake of stage.intakes) {
-      intake.from.forEach((source, si) => {
+    // An open stage exposes its group lanes: intakes connect straight to
+    // the group they feed instead of the frame border.
+    const stageOpen = force || expanded.has(`s:${stage.id}`);
+    // An open SOURCE stage exposes its standings outputs: flows originate
+    // from the group's lane end instead of the frame border.
+    const sourceFor = (source: {
+      readonly stage: string;
+      readonly group: string;
+    }): string => {
+      if (!(force || expanded.has(`s:${source.stage}`))) {
+        return `s:${source.stage}`;
+      }
+      const sourceStage = event.stages.find((x) => x.id === source.stage);
+      const sourceGroup = sourceStage?.groups.find(
+        (g) => g.id === source.group,
+      );
+      if (sourceGroup === undefined) return `s:${source.stage}`;
+      return sourceGroup.run.kind === "encounter"
+        ? `s:${source.stage}/${source.group}/run`
+        : `s:${source.stage}/${source.group}/out`;
+    };
+    for (const group of stage.groups) {
+      for (const intake of group.intakes) {
+        intake.from.forEach((source, si) => {
+          edges.push({
+            id: `seed:in:${intake.id}:${si}`,
+            source: sourceFor(source),
+            target: `in:${intake.id}`,
+            fromHandle: "r",
+            toHandle: "l",
+            kind: "seed",
+          });
+        });
         edges.push({
-          id: `seed:in:${intake.id}:${si}`,
-          source: `s:${source.stage}`,
-          target: `in:${intake.id}`,
+          id: `seed:in:${intake.id}->${stage.id}/${group.id}`,
+          source: `in:${intake.id}`,
+          target: stageOpen ? `s:${stage.id}/${group.id}/hdr` : `s:${stage.id}`,
+          label: intake.take,
           fromHandle: "r",
           toHandle: "l",
           kind: "seed",
         });
-      });
-      edges.push({
-        id: `seed:in:${intake.id}->s:${stage.id}`,
-        source: `in:${intake.id}`,
-        target: `s:${stage.id}`,
-        label: intake.take,
-        fromHandle: "r",
-        toHandle: "l",
-        kind: "seed",
-      });
+      }
     }
   }
 
@@ -540,7 +563,7 @@ function laneSub(
       const lastRound = rounds[rounds.length - 1];
       const runId = `${pid}/rs`;
       const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
-      const finalId = `${pid}/afterlast`;
+      const finalId = `${pid}/out`;
       if (!expanded.has(runId)) {
         // The cycle, drawn as one: rounds above, standings·pair below,
         // joined right and left into a circle; ×N rides the return arc.
@@ -660,7 +683,7 @@ function laneSub(
         const last = i === rounds.length - 1;
         const nextBracket = rounds[i + 1]?.item.inflows !== undefined;
         if (last || !nextBracket) {
-          const processId = `${pid}/after${i + 1}`;
+          const processId = last ? `${pid}/out` : `${pid}/after${i + 1}`;
           items.push(processIcon(last, processId));
           connect(processId);
         }
