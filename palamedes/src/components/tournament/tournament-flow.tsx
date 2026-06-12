@@ -151,6 +151,19 @@ function CardHandles() {
         position={Position.Bottom}
         className="!bg-border"
       />
+      {/* Cycle hookups: into the right side, out of the left side. */}
+      <Handle
+        type="target"
+        id="ri"
+        position={Position.Right}
+        className="!bg-border"
+      />
+      <Handle
+        type="source"
+        id="lo"
+        position={Position.Left}
+        className="!bg-border"
+      />
     </>
   );
 }

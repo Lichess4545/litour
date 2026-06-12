@@ -90,10 +90,10 @@ export type FlowGraphEdge = {
   readonly source: string;
   readonly target: string;
   readonly label?: string | undefined;
-  /** Which side the edge leaves from (right or bottom). */
-  readonly fromHandle: "r" | "b";
-  /** Which side the edge arrives at (left or top). */
-  readonly toHandle: "l" | "t";
+  /** Which side the edge leaves from (right, bottom, or left for cycles). */
+  readonly fromHandle: "r" | "b" | "lo";
+  /** Which side the edge arrives at (left, top, or right for cycles). */
+  readonly toHandle: "l" | "t" | "ri";
   readonly kind: "chain" | "seed";
 };
 
@@ -539,26 +539,54 @@ function laneSub(
       const lastRound = rounds[rounds.length - 1];
       const runId = `${pid}/rs`;
       const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
+      const finalId = `${pid}/afterlast`;
       if (!expanded.has(runId)) {
-        ids.push(runId);
-        items.push(
-          cardSub(runId, {
-            ...card("round", range, [], { drill: true, step: true }),
-            count: rounds.length,
-          }),
-        );
+        // The cycle, drawn as one: rounds above, standings·pair below,
+        // joined right and left into a circle; ×N rides the return arc.
         const betweenId = `${pid}/between`;
-        ids.push(betweenId);
-        items.push(processIcon(false, betweenId));
-        loops.push({
-          id: `c:${betweenId}->${runId}`,
-          source: betweenId,
-          target: runId,
-          label: "next round",
-          fromHandle: "b",
-          toHandle: "t",
-          kind: "chain",
-        });
+        const stack = column(
+          [
+            cardSub(
+              runId,
+              card("round", range, [], { drill: true, step: true }),
+            ),
+            processIcon(false, betweenId),
+          ],
+          GAP,
+          "center",
+        );
+        ids.push(runId);
+        items.push(stack);
+        loops.push(
+          {
+            id: `c:${runId}->${betweenId}`,
+            source: runId,
+            target: betweenId,
+            fromHandle: "r",
+            toHandle: "ri",
+            kind: "chain",
+          },
+          {
+            id: `c:${betweenId}->${runId}`,
+            source: betweenId,
+            target: runId,
+            label: `×${rounds.length}`,
+            fromHandle: "lo",
+            toHandle: "l",
+            kind: "chain",
+          },
+          {
+            id: `c:${betweenId}->${finalId}`,
+            source: betweenId,
+            target: finalId,
+            fromHandle: "r",
+            toHandle: "l",
+            kind: "chain",
+          },
+        );
+        // The final standings sit after the cycle (no chain edge via ids —
+        // the exit edge above is the connection).
+        items.push(processIcon(true, finalId));
       } else {
         ids.push(runId);
         items.push(
@@ -593,10 +621,9 @@ function laneSub(
             true,
           ),
         );
+        ids.push(finalId);
+        items.push(processIcon(true, finalId));
       }
-      const finalId = `${pid}/afterlast`;
-      ids.push(finalId);
-      items.push(processIcon(true, finalId));
     } else {
       rounds.forEach(({ item: round, ghost }, i) => {
         ids.push(`${pid}/r${i + 1}`);
