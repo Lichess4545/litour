@@ -69,6 +69,9 @@ export type FlowGraphNode =
       readonly type: "card";
       readonly position: { readonly x: number; readonly y: number };
       readonly data: FlowCardData;
+      /** Estimated footprint (layout + minimap); the DOM may differ slightly. */
+      readonly width: number;
+      readonly height: number;
       readonly parentId?: string | undefined;
     }
   | {
@@ -188,13 +191,24 @@ const cardH = (data: FlowCardData): number =>
       (data.drill ? 20 : 0);
 
 function cardSub(id: string, data: FlowCardData): Sub {
+  const w = data.step ? STEP_W : CARD_W;
+  const h = cardH(data);
   return {
-    nodes: [{ id, type: "card", position: { x: 0, y: 0 }, data }],
+    nodes: [
+      {
+        id,
+        type: "card",
+        position: { x: 0, y: 0 },
+        data,
+        width: w,
+        height: h,
+      },
+    ],
     edges: [],
     expandables: data.drill ? new Set([id]) : new Set(),
     collapsibles: new Set(),
-    w: data.step ? STEP_W : CARD_W,
-    h: cardH(data),
+    w,
+    h,
   };
 }
 

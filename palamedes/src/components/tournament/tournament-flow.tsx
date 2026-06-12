@@ -11,9 +11,10 @@ import {
   type NodeTypes,
   Position,
   ReactFlow,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { chessRegistry } from "@/chess/registry";
 import { concretify } from "@/tournament/concrete";
 import type { ParsedEventDef } from "@/tournament/registry";
@@ -189,6 +190,11 @@ function Frame(props: NodeProps<FrameNode>) {
 const nodeTypes: NodeTypes = { card: FlowCard, frame: Frame };
 
 export function TournamentFlow({ def }: { def: ParsedEventDef }) {
+  // The canvas depends on measured container size; rendering it on the
+  // server only produces hydration mismatches. Mount-gate it.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // The definition → concrete conversion happens once; everything below
   // (including every expansion) iterates the resulting structure.
   const concrete = useMemo(() => concretify(def, chessRegistry), [def]);
@@ -201,6 +207,30 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     [concrete, expanded],
   );
 
+  // After an expand/collapse the layout reflows; bring the camera to the
+  // node that changed (or refit everything after "collapse all") so the
+  // content never vanishes off-viewport.
+  const [flow, setFlow] = useState<ReactFlowInstance<AppNode, Edge> | null>(
+    null,
+  );
+  const focusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const focus = focusRef.current;
+    focusRef.current = null;
+    if (flow === null || focus === null) return;
+    const frame = requestAnimationFrame(() => {
+      void (focus === "*"
+        ? flow.fitView({ padding: 0.15, duration: 400 })
+        : flow.fitView({
+            nodes: [{ id: focus }],
+            padding: 0.4,
+            duration: 400,
+            maxZoom: 1,
+          }));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, graph]);
+
   const nodes = useMemo<AppNode[]>(
     () =>
       graph.nodes.map((node): AppNode => {
@@ -211,7 +241,8 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
             position: node.position,
             data: node.data,
             ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
-            style: { width: node.width, height: node.height },
+            width: node.width,
+            height: node.height,
             draggable: false,
             connectable: false,
           };
@@ -222,6 +253,9 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
           position: node.position,
           data: node.data,
           ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
+          // Estimates feed the minimap; the DOM measurement refines them.
+          initialWidth: node.width,
+          initialHeight: node.height,
           draggable: false,
           connectable: false,
         };
@@ -244,13 +278,18 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     [graph],
   );
 
+  if (!mounted) return <div className="h-full min-h-0" />;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-2">
         {expanded.size > 0 && (
           <button
             type="button"
-            onClick={() => setExpanded(new Set())}
+            onClick={() => {
+              focusRef.current = "*";
+              setExpanded(new Set());
+            }}
             className="rounded border px-2 py-0.5 text-muted-foreground text-xs hover:text-foreground"
           >
             collapse all
@@ -265,18 +304,21 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onInit={setFlow}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           minZoom={0.05}
           nodesConnectable={false}
           onNodeClick={(_, node) => {
             if (graph.collapsibles.has(node.id)) {
+              focusRef.current = node.id;
               setExpanded((prev) => {
                 const next = new Set(prev);
                 next.delete(node.id);
                 return next;
               });
             } else if (graph.expandables.has(node.id)) {
+              focusRef.current = node.id;
               setExpanded((prev) => new Set(prev).add(node.id));
             }
           }}
@@ -284,7 +326,19 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
         >
           <Background gap={24} />
           <Controls showInteractive={false} />
-          <MiniMap pannable zoomable />
+          <MiniMap
+            pannable
+            zoomable
+            className="!h-44 !w-64 rounded-lg border"
+            nodeStrokeWidth={4}
+            nodeColor={(node) =>
+              node.type === "frame" ? "rgba(99, 102, 241, 0.10)" : "#94a3b8"
+            }
+            nodeStrokeColor={(node) =>
+              node.type === "frame" ? "#818cf8" : "#64748b"
+            }
+            maskColor="rgba(148, 163, 184, 0.25)"
+          />
         </ReactFlow>
       </div>
     </div>
