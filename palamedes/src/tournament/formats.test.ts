@@ -721,3 +721,35 @@ describe("the cascade round (two rapid games, blitz tiebreak, board armageddon)"
     expectStandings(run).competitor("Bolts").metric("matchWins", 1);
   });
 });
+
+describe("definition structure (what the viewer renders)", () => {
+  it("knockout pairsInRound halves the field and seats the bronze beside the final", () => {
+    const ko = chessRegistry.pairings.get("knockout");
+    const bronze = {
+      system: "knockout",
+      seeding: "traditional",
+      thirdPlace: true,
+    };
+    expect(ko?.pairsInRound?.(bronze, 8, 1)).toBe(4);
+    expect(ko?.pairsInRound?.(bronze, 8, 2)).toBe(2);
+    expect(ko?.pairsInRound?.(bronze, 8, 3)).toBe(2);
+    expect(
+      ko?.pairsInRound?.({ system: "knockout", seeding: "traditional" }, 8, 3),
+    ).toBe(1);
+  });
+
+  it("match structure lists each board with its zigzag seat", () => {
+    const children = chessRegistry.ops.structure({
+      kind: "match",
+      boards: 4,
+      board: { kind: "game", clock: { initial: 2700, increment: 45 } },
+      seats: { cycle: ["keep", "flip"] },
+    });
+    expect(children.map((c) => [c.role, c.seat])).toEqual([
+      ["board 1", "keep"],
+      ["board 2", "flip"],
+      ["board 3", "keep"],
+      ["board 4", "flip"],
+    ]);
+  });
+});

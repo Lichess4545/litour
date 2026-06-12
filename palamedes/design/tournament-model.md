@@ -78,7 +78,8 @@ parse, never a cast.
 - **`PairingKind`** — `propose(options, ctx)` over a context that carries
   everything a JavaFo TRF encodes (seeds, scores, per-round
   opponent/color/unplayed history, previous round winners); optional
-  `totalRounds`, `progression` (rank by survival), `defaultBye`, `validate`.
+  `totalRounds`, `pairsInRound` (eliminative systems shrink),
+  `progression` (rank by survival), `defaultBye`, `validate`.
   Proposals only take effect as recorded `pairingsSet` inputs, so external
   engines (bbpPairings) and manual arbiters use the same door; an
   *unregistered* system is even allowed in a def (rounds then required) —
@@ -170,13 +171,20 @@ the per-leg "random color" (singleton series wrappers with drawn seats).
 
 ## The viewer (`/tournaments`)
 
-Two altitudes. The **overview** is stage-oriented: stages → groups → each
-pool's rounds as a chain of steps (the cascade event shows exactly its 8
-rounds), with dashed seed edges between stages. Clicking any round — or a
-deciding match — **zooms into the encounter view**: the recursive definition
-of what that round's pairings play, one card per node rendered through each
-kind's registry `card`, identical siblings compressed with a ×N badge, and
-click-to-fold on any composite. A breadcrumb returns to the stages.
+One level of resolution per view — the recursion is navigated, not drawn as
+a tree. The first level is the event's own: a left-to-right **timeline** of
+stage frames (there is no "event node"; the page is the event), each frame
+holding its groups as parallel lanes, each pool lane running its rounds as a
+chain of steps (the cascade event shows exactly its 8 rounds), dashed seed
+edges carrying competitors between stages. Each level below shows real
+multiplicity, one card per thing: a **round** is its pairings (one encounter
+card each — `pairsInRound` lets knockouts shrink and seats the bronze final
+beside the final); an **encounter** is its immediate children — every board
+and leg its own card, sequenced left-to-right with "then" edges or stacked
+side by side (the registry's `arrangement` capability), each carrying its
+color derivation from the seat algebra ("board 2 — white side takes black").
+All rendering goes through each kind's registry `card`; composites drill
+again, leaves are the games themselves. A breadcrumb walks back up.
 
 ## Out of scope (unchanged)
 

@@ -15,29 +15,30 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useMemo, useState } from "react";
 import { chessRegistry } from "@/chess/registry";
-import type { AnyEncounterDef, EventDef } from "@/tournament/core";
+import type { ParsedEventDef } from "@/tournament/registry";
 import {
-  buildEncounterGraph,
+  buildLevelGraph,
   buildOverviewGraph,
-  FLOW_NODE_WIDTH,
+  CARD_W,
+  type DrillTarget,
   type FlowCardData,
   type FlowGraph,
+  type FrameData,
   flowCardDataSchema,
+  frameDataSchema,
+  STEP_W,
 } from "./def-graph";
 
 /**
- * Two-altitude view of a tournament definition. The overview shows the
- * staging spine — stages, groups, and each pool's rounds as steps. Clicking
- * a round (or a deciding match) zooms into the ENCOUNTER view: the recursive
- * definition of what that round's pairings play, where clicking any
- * composite folds/unfolds its recursion.
+ * One level of resolution per view — that is the recursion, navigated.
+ * The first level is the event itself: a timeline of stage frames, group
+ * lanes, round steps. Drilling into a round (or any composite) replaces the
+ * canvas with that node's immediate children; the breadcrumb walks back up.
  */
 
 const CHIP_STYLES: Record<string, string> = {
-  event: "bg-foreground text-background",
   stage: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
   group: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
-  pool: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   round: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   series: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   match: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
@@ -46,95 +47,150 @@ const CHIP_STYLES: Record<string, string> = {
 const DEFAULT_CHIP = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
 
 type CardNode = Node<FlowCardData, "card">;
+type FrameNode = Node<FrameData, "frame">;
+type AppNode = CardNode | FrameNode;
 
 function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
+  const horizontal = data.flow === "right";
   return (
     <div
-      className={`rounded-lg border bg-card p-3 text-card-foreground shadow-sm ${
-        data.drill ? "border-dashed hover:border-foreground/40" : ""
-      }`}
-      style={{ width: FLOW_NODE_WIDTH }}
+      className={`rounded-lg border bg-card text-card-foreground shadow-sm ${
+        data.step ? "px-3 py-2" : "p-3"
+      } ${data.drill ? "border-dashed hover:border-foreground/40" : ""}`}
+      style={{ width: data.step ? STEP_W : CARD_W }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-border" />
-      <div className="flex items-center gap-2">
-        <span
-          className={`rounded px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
-        >
-          {data.chip}
-        </span>
-        {data.count !== undefined && (
-          <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground">
-            ×{data.count}
-          </span>
-        )}
-        {data.expandable && (
-          <span className="ml-auto text-muted-foreground text-xs">
-            {data.collapsed ? "▸" : "▾"}
-          </span>
-        )}
-        {data.drill && (
-          <span className="ml-auto text-muted-foreground text-xs">⤵</span>
-        )}
-      </div>
-      <div className="mt-1.5 font-semibold text-sm leading-tight">
-        {data.title}
-      </div>
-      {data.badge !== undefined && (
-        <div className="mt-0.5 text-foreground/80 text-xs italic">
-          {data.badge}
-        </div>
-      )}
-      <div className="mt-1 space-y-0.5">
-        {data.lines.map((line, i) => (
-          <div
-            // Static per data object — replaced wholesale, never reordered.
-            // biome-ignore lint/suspicious/noArrayIndexKey: see above
-            key={i}
-            className="text-muted-foreground text-xs leading-snug"
+      <Handle
+        type="target"
+        position={horizontal ? Position.Left : Position.Top}
+        className="!bg-border"
+      />
+      {data.step ? (
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`rounded px-1 py-0.5 font-medium text-[9px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
           >
-            {line}
+            {data.chip}
+          </span>
+          <span className="font-semibold text-xs">{data.title}</span>
+          <button
+            type="button"
+            aria-label={`Zoom into ${data.title}`}
+            className="ml-auto text-muted-foreground text-xs"
+          >
+            ⤵
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
+            >
+              {data.chip}
+            </span>
+            {data.count !== undefined && (
+              <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground">
+                ×{data.count}
+              </span>
+            )}
+            {data.drill && (
+              <span className="ml-auto text-muted-foreground text-xs">⤵</span>
+            )}
           </div>
-        ))}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-border" />
+          <div className="mt-1.5 font-semibold text-sm leading-tight">
+            {data.title}
+          </div>
+          {data.badge !== undefined && (
+            <div className="mt-0.5 text-foreground/80 text-xs italic">
+              {data.badge}
+            </div>
+          )}
+          <div className="mt-1 space-y-0.5">
+            {data.lines.map((line, i) => (
+              <div
+                // Static per data object — replaced wholesale, never reordered.
+                // biome-ignore lint/suspicious/noArrayIndexKey: see above
+                key={i}
+                className="text-muted-foreground text-xs leading-snug"
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+          {data.drill && (
+            <button
+              type="button"
+              aria-label={`Zoom into ${data.title}`}
+              className="mt-1 text-muted-foreground text-xs"
+            >
+              click to zoom in
+            </button>
+          )}
+        </>
+      )}
+      <Handle
+        type="source"
+        position={horizontal ? Position.Right : Position.Bottom}
+        className="!bg-border"
+      />
     </div>
   );
 }
 
-const nodeTypes: NodeTypes = { card: FlowCard };
+function StageFrame(props: NodeProps<FrameNode>) {
+  const data = frameDataSchema.parse(props.data);
+  return (
+    <div className="h-full w-full rounded-xl border border-dashed bg-muted/20">
+      <div className="px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        stage · {data.title}
+      </div>
+    </div>
+  );
+}
 
-type View =
-  | { readonly mode: "overview" }
-  | {
-      readonly mode: "encounter";
-      readonly title: string;
-      readonly def: AnyEncounterDef;
-    };
+const nodeTypes: NodeTypes = { card: FlowCard, frame: StageFrame };
 
-export function TournamentFlow({ def }: { def: EventDef }) {
-  const [view, setView] = useState<View>({ mode: "overview" });
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+export function TournamentFlow({ def }: { def: ParsedEventDef }) {
+  // The drill stack: empty = the event's own level (the stage timeline).
+  const [stack, setStack] = useState<readonly DrillTarget[]>([]);
+  const top = stack[stack.length - 1];
 
   const graph: FlowGraph = useMemo(
     () =>
-      view.mode === "overview"
+      top === undefined
         ? buildOverviewGraph(def, chessRegistry)
-        : buildEncounterGraph(view.def, chessRegistry, collapsed),
-    [def, view, collapsed],
+        : buildLevelGraph(top, chessRegistry),
+    [def, top],
   );
 
-  const nodes = useMemo<CardNode[]>(
+  const nodes = useMemo<AppNode[]>(
     () =>
-      graph.nodes.map((node) => ({
-        id: node.id,
-        type: "card",
-        position: node.position,
-        data: node.data,
-        draggable: false,
-        connectable: false,
-      })),
+      graph.nodes.map((node): AppNode => {
+        if (node.type === "frame") {
+          return {
+            id: node.id,
+            type: "frame",
+            position: node.position,
+            data: node.data,
+            style: { width: node.width, height: node.height },
+            draggable: false,
+            selectable: false,
+            connectable: false,
+            zIndex: -1,
+          };
+        }
+        return {
+          id: node.id,
+          type: "card",
+          position: node.position,
+          data: node.data,
+          ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
+          draggable: false,
+          connectable: false,
+        };
+      }),
     [graph],
   );
 
@@ -145,69 +201,64 @@ export function TournamentFlow({ def }: { def: EventDef }) {
         source: edge.source,
         target: edge.target,
         ...(edge.label === undefined ? {} : { label: edge.label }),
+        labelStyle: { fontSize: 10 },
         ...(edge.kind === "seed"
-          ? {
-              animated: true,
-              style: { strokeDasharray: "6 3" },
-              labelStyle: { fontSize: 10 },
-            }
-          : { labelStyle: { fontSize: 10 } }),
+          ? { animated: true, style: { strokeDasharray: "6 3" } }
+          : {}),
       })),
     [graph],
   );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-3 border-b px-4 py-2">
-        {view.mode === "encounter" ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setView({ mode: "overview" })}
-              className="rounded border px-2 py-0.5 text-muted-foreground text-xs hover:text-foreground"
-            >
-              ← stages
-            </button>
-            <span className="text-muted-foreground text-xs">{view.title}</span>
-          </>
-        ) : (
-          <span className="text-muted-foreground text-xs">
-            Stage overview — click a round to zoom into its recursive
-            definition.
+      <div className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2">
+        <button
+          type="button"
+          onClick={() => setStack([])}
+          className={`rounded border px-2 py-0.5 text-xs ${
+            stack.length === 0
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          stages
+        </button>
+        {stack.map((frame, depth) => (
+          <button
+            key={`${depth}:${frame.title}`}
+            type="button"
+            onClick={() => setStack(stack.slice(0, depth + 1))}
+            className={`whitespace-nowrap rounded border px-2 py-0.5 text-xs ${
+              depth === stack.length - 1
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {frame.title}
+          </button>
+        ))}
+        {top === undefined && (
+          <span className="ml-auto whitespace-nowrap text-muted-foreground text-xs">
+            click a dashed card to zoom in
           </span>
         )}
       </div>
       <div className="min-h-0 flex-1">
         <ReactFlow
-          // Remount per view so fitView re-frames the new graph.
-          key={view.mode === "overview" ? "overview" : `enc:${view.title}`}
+          // Remount per level so fitView re-frames the new graph. Distinct
+          // because every navigation op changes the stack depth — if a
+          // replace-top op is ever added, key on a real path identity.
+          key={`${stack.length}:${top?.title ?? "overview"}`}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.12 }}
+          fitViewOptions={{ padding: 0.15 }}
           minZoom={0.15}
           nodesConnectable={false}
           onNodeClick={(_, node) => {
-            if (view.mode === "overview") {
-              const drill = graph.drills.get(node.id);
-              if (drill !== undefined) {
-                setCollapsed(new Set());
-                setView({
-                  mode: "encounter",
-                  title: drill.title,
-                  def: drill.def,
-                });
-              }
-              return;
-            }
-            if (!node.data.expandable) return;
-            setCollapsed((current) => {
-              const next = new Set(current);
-              if (next.has(node.id)) next.delete(node.id);
-              else next.add(node.id);
-              return next;
-            });
+            const drill = graph.drills.get(node.id);
+            if (drill !== undefined) setStack([...stack, drill]);
           }}
           proOptions={{ hideAttribution: false }}
         >

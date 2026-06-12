@@ -207,6 +207,10 @@ export const knockoutPairing: PairingKind = definePairingKind({
     thirdPlace: z.boolean().optional(),
   }),
   totalRounds: (_options, entrants) => Math.round(Math.log2(entrants)),
+  pairsInRound: (options, entrants, round) => {
+    const pairs = Math.max(1, Math.floor(entrants / 2 ** round));
+    return pairs === 1 && options.thirdPlace === true ? 2 : pairs;
+  },
   progression: true,
   defaultBye: { kind: "advance" },
   validate: (_options, entrants, encounter, ops, _ties, issue) => {

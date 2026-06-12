@@ -45,6 +45,7 @@ export const rankSeed: SeedKind = defineSeedKind({
     rank: z.number().int().min(1),
   }),
   resolve: (ref, ctx) => ctx.ranking(ref.stage, ref.group)?.[ref.rank - 1],
+  origin: (ref) => ({ stage: ref.stage, group: ref.group, rank: ref.rank }),
   validate: (ref, ctx, issue) => {
     const sourceIndex = ctx.stages.findIndex((s) => s.id === ref.stage);
     if (sourceIndex === -1 || sourceIndex >= ctx.stageIndex) {

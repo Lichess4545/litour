@@ -55,16 +55,21 @@ export type CardInfo = {
 
 export type StructureChild = {
   readonly def: AnyEncounterDef;
-  /** Display label for the relationship (e.g. "per board", "leg 2"). */
+  /** Display label for the relationship (e.g. "board 1", "leg 2"). */
   readonly role: string;
-  /** This child stands for N identical siblings (match boards). */
+  /** This child stands for N identical siblings. */
   readonly count?: number | undefined;
+  /** How this child derives its white-ish seat from the parent. */
+  readonly seat?: "keep" | "flip" | "draw" | undefined;
 };
 
 export type Issue = (
   message: string,
   path?: readonly (string | number)[],
 ) => void;
+
+/** How a kind's children relate: in time (sequence) or side by side (parallel). */
+export type Arrangement = "sequence" | "parallel";
 
 /** Registry-bound recursion over encounter children, handed to instances. */
 export type EncounterOps = {
@@ -77,6 +82,7 @@ export type EncounterOps = {
   readonly alwaysDecisive: (def: AnyEncounterDef) => boolean;
   readonly rosterNeed: (def: AnyEncounterDef) => number;
   readonly card: (def: AnyEncounterDef) => CardInfo;
+  readonly arrangement: (def: AnyEncounterDef) => Arrangement;
 };
 
 export type TieDecision = {
@@ -234,6 +240,8 @@ export type BoundEncounterKind = {
   ): boolean;
   rosterNeed(def: AnyEncounterDef, ops: EncounterOps): number;
   card(def: AnyEncounterDef, ops: EncounterOps): CardInfo;
+  /** How this kind's children relate: in time (sequence) or side by side (parallel). */
+  arrangement(def: AnyEncounterDef): Arrangement;
 };
 
 export type EncounterKind = {
@@ -246,6 +254,15 @@ export type PairingKind = {
   readonly schema: z.ZodType<unknown>;
   /** Derive the schedule length; absent means defs must declare `rounds`. */
   readonly totalRounds?: (options: PairingRef, entrants: number) => number;
+  /**
+   * How many pairings a given round produces (eliminative systems shrink);
+   * absent means every round pairs the whole field (⌊entrants/2⌋).
+   */
+  readonly pairsInRound?: (
+    options: PairingRef,
+    entrants: number,
+    round: number,
+  ) => number;
   /** Eliminative systems rank by survival depth instead of points. */
   readonly progression?: true;
   /** Bye rule applied when the def doesn't configure one. */
@@ -300,6 +317,13 @@ export type TieKind = {
   decisive(rule: TieRef): boolean;
 };
 
+/** Where a seed pulls its competitor from, for kinds that carry one. */
+export type SeedOrigin = {
+  readonly stage: string;
+  readonly group: string;
+  readonly rank?: number | undefined;
+};
+
 export type SeedKind = {
   readonly kind: string;
   readonly schema: z.ZodType<unknown>;
@@ -309,6 +333,8 @@ export type SeedKind = {
     ctx: SeedValidateContext,
     issue: Issue,
   ) => void;
+  /** Declares the earlier stage/group this seed draws from (cross-stage UI edges). */
+  readonly origin?: (ref: SeedRef) => SeedOrigin | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -350,6 +376,7 @@ export type EncounterKindSpec<D> = {
   alwaysDecisive(def: D, ops: EncounterOps, ties: BoundTies): boolean;
   rosterNeed?(def: D, ops: EncounterOps): number;
   card?(def: D, ops: EncounterOps): CardInfo;
+  arrangement?(def: D): Arrangement;
 };
 
 export function defineEncounterKind<D>(
@@ -379,6 +406,7 @@ export function defineEncounterKind<D>(
         rosterNeed: (def, ops) => spec.rosterNeed?.(decode(def), ops) ?? 0,
         card: (def, ops) =>
           spec.card?.(decode(def), ops) ?? { title: spec.kind, lines: [] },
+        arrangement: (def) => spec.arrangement?.(decode(def)) ?? "sequence",
       };
     },
   };
@@ -390,6 +418,7 @@ export type PairingKindSpec<O> = {
   readonly progression?: true;
   readonly defaultBye?: ByeRule;
   totalRounds?(options: O, entrants: number): number;
+  pairsInRound?(options: O, entrants: number, round: number): number;
   propose(options: O, ctx: PairingContext): PairingResult;
   validate?(
     options: O,
@@ -404,6 +433,7 @@ export type PairingKindSpec<O> = {
 export function definePairingKind<O>(spec: PairingKindSpec<O>): PairingKind {
   const decode = memoDecode(spec.schema);
   const totalRounds = spec.totalRounds;
+  const pairsInRound = spec.pairsInRound;
   const validate = spec.validate;
   return {
     system: spec.system,
@@ -418,6 +448,15 @@ export function definePairingKind<O>(spec: PairingKindSpec<O>): PairingKind {
       : {
           totalRounds: (options: PairingRef, entrants: number) =>
             totalRounds(decode(options), entrants),
+        }),
+    ...(pairsInRound === undefined
+      ? {}
+      : {
+          pairsInRound: (
+            options: PairingRef,
+            entrants: number,
+            round: number,
+          ) => pairsInRound(decode(options), entrants, round),
         }),
     ...(validate === undefined
       ? {}
@@ -516,11 +555,13 @@ export type SeedKindSpec<S> = {
   readonly schema: z.ZodType<S>;
   resolve(ref: S, ctx: SeedContext): CompetitorId | undefined;
   validate?(ref: S, ctx: SeedValidateContext, issue: Issue): void;
+  origin?(ref: S): SeedOrigin | undefined;
 };
 
 export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
   const decode = memoDecode(spec.schema);
   const validate = spec.validate;
+  const origin = spec.origin;
   return {
     kind: spec.kind,
     schema: spec.schema,
@@ -531,6 +572,9 @@ export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
           validate: (ref: SeedRef, ctx: SeedValidateContext, issue: Issue) =>
             validate(decode(ref), ctx, issue),
         }),
+    ...(origin === undefined
+      ? {}
+      : { origin: (ref: SeedRef) => origin(decode(ref)) }),
   };
 }
 
@@ -648,6 +692,7 @@ export function buildRegistry(spec: RegistrySpec): ModelRegistry {
     alwaysDecisive: (def) => opFor(def).alwaysDecisive(def, ops, ties),
     rosterNeed: (def) => opFor(def).rosterNeed(def, ops),
     card: (def) => opFor(def).card(def, ops),
+    arrangement: (def) => opFor(def).arrangement(def),
   };
 
   const core = {

@@ -328,7 +328,14 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
     });
   },
   structure: (def) =>
-    def.legs.map((leg, i) => ({ def: leg, role: `leg ${i + 1}` })),
+    def.legs.map((leg, i) => ({
+      def: leg,
+      role: `leg ${i + 1}`,
+      seat:
+        def.seats.source === "draw"
+          ? "draw"
+          : (def.seats.cycle[i % def.seats.cycle.length] ?? "keep"),
+    })),
   nominalPoints: (def, ops) =>
     def.legs.reduce(
       (acc, leg) => {
@@ -426,14 +433,18 @@ export const matchKind: EncounterKind = defineEncounterKind<MatchDef>({
       issue(message, ["board", ...path]),
     );
   },
-  structure: (def) => [
-    { def: def.board, role: "per board", count: def.boards },
-  ],
+  structure: (def) =>
+    Array.from({ length: def.boards }, (_, i) => ({
+      def: def.board,
+      role: `board ${i + 1}`,
+      seat: def.seats.cycle[i % def.seats.cycle.length] ?? "keep",
+    })),
   nominalPoints: (def, ops) => {
     const per = ops.nominalPoints(def.board);
     return { win: per.win * def.boards, loss: per.loss * def.boards };
   },
   alwaysDecisive: (def, _ops, ties) => ties.decisive(def.tie),
+  arrangement: () => "parallel",
   rosterNeed: (def, ops) => Math.max(def.boards, ops.rosterNeed(def.board)),
   card: (def) => ({
     title: "Team match",
