@@ -1059,6 +1059,238 @@ export const grandChessTour: ParsedEventDef = parseEventDef({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// Sectioned events: parallel divisions, contemporaneous, separately scored
+
+/** A LoneWolf-style swiss section (registration decides who enters which). */
+const loneWolfSection = {
+  kind: "pool",
+  pairing: { system: "swiss" },
+  rounds: 11,
+  encounter: rapid(2700, 45),
+  score: gamePoints,
+  bye: { kind: "points", standings: 1, encounter: 1 },
+  tiebreaks: [
+    { metric: "sonnebornBerger" },
+    { metric: "buchholz" },
+    { metric: "headToHead" },
+  ],
+};
+
+/**
+ * Sections: one event, two divisions running contemporaneously — separate
+ * registration, separate standings. The rating cap is registration policy
+ * (host-side), not structure.
+ */
+export const loneWolfSections: ParsedEventDef = parseEventDef({
+  id: "lonewolf-sections",
+  name: "LoneWolf — Open & U1800",
+  competitors: [],
+  stages: [
+    {
+      id: "season",
+      name: "Season",
+      groups: [
+        {
+          id: "open",
+          name: "Open",
+          entries: { open: true },
+          run: loneWolfSection,
+        },
+        {
+          id: "u1800",
+          name: "U1800",
+          entries: { open: true },
+          run: loneWolfSection,
+        },
+      ],
+    },
+  ],
+});
+
+const candidatesPool = {
+  kind: "pool",
+  pairing: { system: "roundRobin", cycles: 2 },
+  encounter: classical,
+  score: gamePoints,
+  tiebreaks: [
+    { metric: "headToHead" },
+    { metric: "gamesWon" },
+    { metric: "sonnebornBerger" },
+  ],
+};
+
+/** Both Candidates tournaments share the venue and the schedule. */
+export const candidatesBoth: ParsedEventDef = parseEventDef({
+  id: "candidates-both",
+  name: "FIDE Candidates — open & women",
+  competitors: players(
+    "Nepomniachtchi",
+    "Caruana",
+    "Gukesh",
+    "Praggnanandhaa",
+    "Vidit",
+    "Firouzja",
+    "Nakamura",
+    "Abasov",
+    "Tan Zhongyi",
+    "Goryachkina",
+    "Lei Tingjie",
+    "Vaishali",
+    "Humpy",
+    "Salimova",
+    "Lagno",
+    "Muzychuk",
+  ),
+  stages: [
+    {
+      id: "candidates",
+      name: "Candidates Toronto",
+      groups: [
+        {
+          id: "open",
+          name: "Candidates",
+          entries: seeds(8),
+          run: candidatesPool,
+        },
+        {
+          id: "women",
+          name: "Women's Candidates",
+          entries: Array.from({ length: 8 }, (_, i) => ({
+            kind: "registration",
+            seed: 9 + i,
+          })),
+          run: candidatesPool,
+        },
+      ],
+    },
+  ],
+});
+
+/**
+ * GRENKE: an elite double round robin and a huge open swiss — completely
+ * different formats — under one roof, at the same time.
+ */
+export const grenke: ParsedEventDef = parseEventDef({
+  id: "grenke",
+  name: "GRENKE Chess Classic & Open",
+  competitors: players(
+    "Carlsen",
+    "Caruana",
+    "Vachier-Lagrave",
+    "Keymer",
+    "Ding",
+    "Rapport",
+  ),
+  stages: [
+    {
+      id: "grenke",
+      name: "GRENKE Karlsruhe",
+      groups: [
+        {
+          id: "classic",
+          name: "GRENKE Classic",
+          entries: seeds(6),
+          run: {
+            kind: "pool",
+            pairing: { system: "roundRobin", cycles: 2 },
+            encounter: classical,
+            score: gamePoints,
+            tiebreaks: [{ metric: "sonnebornBerger" }],
+          },
+        },
+        {
+          id: "open",
+          name: "GRENKE Open",
+          entries: { open: true },
+          run: {
+            kind: "pool",
+            pairing: { system: "swiss" },
+            rounds: 9,
+            encounter: classical,
+            score: gamePoints,
+            bye: { kind: "points", standings: 0.5, encounter: 0.5 },
+            tiebreaks: [{ metric: "buchholz" }, { metric: "sonnebornBerger" }],
+          },
+        },
+      ],
+    },
+  ],
+});
+
+/**
+ * Tata Steel Wijk aan Zee: Masters and Challengers round robins beside an
+ * open amateur swiss, all contemporaneous. (Each field miniaturized to 6;
+ * the Challengers→Masters promotion crosses editions, outside one event.)
+ */
+export const tataSteel: ParsedEventDef = parseEventDef({
+  id: "tata-steel",
+  name: "Tata Steel Wijk aan Zee",
+  competitors: players(
+    "Gukesh",
+    "Abdusattorov",
+    "Giri",
+    "Wei Yi",
+    "Fedoseev",
+    "Warmerdam",
+    "Erdogmus",
+    "Divya",
+    "Sindarov",
+    "Suleymanli",
+    "Beerdsen",
+    "Maurizzi",
+  ),
+  stages: [
+    {
+      id: "wijk",
+      name: "Wijk aan Zee",
+      groups: [
+        {
+          id: "masters",
+          name: "Masters",
+          entries: seeds(6),
+          run: {
+            kind: "pool",
+            pairing: { system: "roundRobin", cycles: 1 },
+            encounter: classical,
+            score: gamePoints,
+            tiebreaks: [{ metric: "sonnebornBerger" }],
+          },
+        },
+        {
+          id: "challengers",
+          name: "Challengers",
+          entries: Array.from({ length: 6 }, (_, i) => ({
+            kind: "registration",
+            seed: 7 + i,
+          })),
+          run: {
+            kind: "pool",
+            pairing: { system: "roundRobin", cycles: 1 },
+            encounter: classical,
+            score: gamePoints,
+            tiebreaks: [{ metric: "sonnebornBerger" }],
+          },
+        },
+        {
+          id: "amateurs",
+          name: "Amateurs",
+          entries: { open: true },
+          run: {
+            kind: "pool",
+            pairing: { system: "swiss" },
+            rounds: 9,
+            encounter: rapid(2700, 30),
+            score: gamePoints,
+            bye: { kind: "points", standings: 0.5, encounter: 0.5 },
+            tiebreaks: [{ metric: "buchholz" }],
+          },
+        },
+      ],
+    },
+  ],
+});
+
 export type FormatExample = {
   readonly slug: string;
   readonly title: string;
@@ -1118,9 +1350,30 @@ export const FORMAT_EXAMPLES: readonly FormatExample[] = [
   },
   {
     slug: "candidates",
-    title: "Candidates",
-    blurb: "Double round robin with reversed colors in the second cycle.",
-    def: candidates,
+    title: "FIDE Candidates — open & women",
+    blurb:
+      "Two double round robins sharing the venue: separate fields, separate standings.",
+    def: candidatesBoth,
+  },
+  {
+    slug: "lonewolf-sections",
+    title: "LoneWolf — Open & U1800",
+    blurb:
+      "Two swiss sections, contemporaneous: registration and standings per section.",
+    def: loneWolfSections,
+  },
+  {
+    slug: "grenke",
+    title: "GRENKE Classic & Open",
+    blurb:
+      "An elite double round robin beside a huge open swiss — different formats, one event.",
+    def: grenke,
+  },
+  {
+    slug: "tata-steel",
+    title: "Tata Steel Wijk aan Zee",
+    blurb: "Masters and Challengers round robins beside an open amateur swiss.",
+    def: tataSteel,
   },
   {
     slug: "grand-chess-tour",

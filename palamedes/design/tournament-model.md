@@ -177,6 +177,10 @@ the cascade round — an 8-round team swiss whose every round is two
 color-swapped rapid team games (match points only), then a full-team blitz
 with drawn colors, then a one-board armageddon: pure composition, including
 the per-leg "random color" (singleton series wrappers with drawn seats).
+Sectioned events are parallel groups in one stage — contemporaneous,
+separately registered, separately scored: LoneWolf's Open and U1800, both
+Candidates tournaments, GRENKE's elite round robin beside its huge open
+swiss, Tata Steel's Masters/Challengers/Amateurs.
 The Grand Chess Tour rolls five whole tournaments into tour standings with
 two more registered instances and zero engine changes: a `placements` seed
 kind (rankings across many groups through a points table — the finals seed

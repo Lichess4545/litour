@@ -4,6 +4,7 @@ import {
   armageddonShowdown,
   clubRoundRobin,
   grandChessTour,
+  grenke,
   lichess4545,
   lichess4545Season,
   miniChampionship,
@@ -149,6 +150,28 @@ describe("concretify — sizes are explicit", () => {
         round.pairings.open ? "open" : round.pairings.items.length,
       ),
     ).toEqual([2, 2]); // semifinals, then final + bronze
+  });
+});
+
+describe("sectioned events — parallel divisions in one stage", () => {
+  it("sections register and score separately, in one contemporaneous stage", () => {
+    const event = concretify(grenke, chessRegistry);
+    expect(event.stages).toHaveLength(1);
+    const groups = event.stages[0]?.groups ?? [];
+    expect(groups.map((g) => g.header.title)).toEqual([
+      "GRENKE Classic",
+      "GRENKE Open",
+    ]);
+    // Completely different formats side by side.
+    expect(
+      groups.map((g) => (g.run.kind === "rounds" ? g.run.system : "—")),
+    ).toEqual(["roundRobin", "swiss"]);
+    // Each section has its own participant source.
+    expect(groups.map((g) => g.intakes[0]?.card.kind)).toEqual([
+      "registration",
+      "registration",
+    ]);
+    expect(groups.map((g) => g.entrants)).toEqual([6, "open"]);
   });
 });
 
