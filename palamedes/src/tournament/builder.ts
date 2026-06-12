@@ -1,7 +1,6 @@
 import {
   type CompetitorDef,
   type GameResultCode,
-  groupRootPath,
   type Input,
   type NodePath,
   type Outcome,
@@ -11,6 +10,7 @@ import {
 } from "./core";
 import {
   type Action,
+  allLeaves,
   type EventState,
   materialize,
   nextActions,
@@ -104,12 +104,9 @@ export class EventRun {
   }
 
   private solePoolPath(): NodePath {
-    const pools: NodePath[] = [];
-    for (const stage of this.def.stages) {
-      for (const group of stage.groups) {
-        if (isPool(group.run)) pools.push(groupRootPath(stage.id, group.id));
-      }
-    }
+    const pools = allLeaves(this.def)
+      .filter((ref) => isPool(ref.comp.run))
+      .map((ref) => ref.path);
     const sole = pools[0];
     if (sole === undefined) throw new Error("event has no pool");
     if (pools.length > 1) {

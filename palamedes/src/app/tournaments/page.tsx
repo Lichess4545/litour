@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { allLeaves } from "@/tournament/engine";
 
 export const metadata: Metadata = {
   title: "Tournament formats",
@@ -21,9 +22,9 @@ export default function TournamentsPage() {
       </h1>
       <p className="mt-2 max-w-3xl text-muted-foreground text-sm">
         Every format below is plain data interpreted by one recursive model:
-        encounters (game, series, match) nest freely inside pools and stages.
-        Open one to explore its structure — click any composite node to fold or
-        unfold the recursion.
+        competitions nest inside competitions, and encounters (game, series,
+        match) nest freely inside pools. Open one to explore its structure —
+        click any composite node to fold or unfold the recursion.
       </p>
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FORMAT_EXAMPLES.map((format) => (
@@ -38,8 +39,8 @@ export default function TournamentsPage() {
                 <CardDescription>{format.blurb}</CardDescription>
                 <p className="pt-1 text-muted-foreground text-xs">
                   {format.def.competitors.length} competitors ·{" "}
-                  {format.def.stages.length} stage
-                  {format.def.stages.length === 1 ? "" : "s"}
+                  {allLeaves(format.def).length} competition
+                  {allLeaves(format.def).length === 1 ? "" : "s"}
                 </p>
               </CardHeader>
             </Card>

@@ -18,7 +18,7 @@ import {
 } from "@/chess/formats";
 import { chessRegistry } from "@/chess/registry";
 import { expectStandings, runEvent as runEventWith } from "./builder";
-import { groupRootPath } from "./core";
+import { compRootPath } from "./core";
 import { pairingsAt } from "./engine";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
@@ -42,7 +42,7 @@ describe("armageddon showdown", () => {
       "1/2-1/2",
     );
     expect(run.winnerName()).toBe("Hikaru");
-    const outcome = run.outcome(groupRootPath("main", "duel"));
+    const outcome = run.outcome(compRootPath("duel"));
     expect(outcome.points).toEqual([0.5, 0.5]);
     expect(outcome.decision).toMatchObject({
       kind: "win",
@@ -58,7 +58,7 @@ describe("armageddon showdown", () => {
 });
 
 describe("world championship match", () => {
-  const root = groupRootPath("match", "title");
+  const root = compRootPath("title");
 
   it("stops the classical series at 7.5 and schedules nothing further", () => {
     const run = runEvent(worldChampionship).drawColors("Ding");
@@ -111,7 +111,7 @@ describe("world championship match", () => {
 });
 
 describe("FIDE world cup", () => {
-  const pool = groupRootPath("ko", "bracket");
+  const pool = compRootPath("bracket");
 
   it("seeds round 1 in traditional bracket order (1v8, 4v5, 3v6, 2v7)", () => {
     const run = runEvent(worldCup).pairRound();
@@ -456,7 +456,7 @@ describe("Norway Chess", () => {
 describe("candidates double round robin", () => {
   it("plays the canonical Berger tables and reverses colors in cycle two", () => {
     const run = runEvent(candidates);
-    const pool = groupRootPath("main", "rr");
+    const pool = compRootPath("rr");
     const expectRound = (
       round: number,
       pairs: readonly (readonly [string, string])[],
@@ -587,12 +587,12 @@ describe("WUCC weekend knockout (two team matches per tie)", () => {
 describe("multi-stage: groups into knockout with a bronze final", () => {
   it("waits on seeding, then runs semis, final, and third-place playoff", () => {
     const run = runEvent(miniChampionship);
-    const a = groupRootPath("groups", "a");
-    const b = groupRootPath("groups", "b");
-    const ko = groupRootPath("finals", "ko");
+    const a = compRootPath("a");
+    const b = compRootPath("b");
+    const ko = compRootPath("ko");
 
     expect(run.actions()).toContainEqual(
-      expect.objectContaining({ kind: "awaitSeeding", stage: "finals" }),
+      expect.objectContaining({ kind: "awaitSeeding", competition: "ko" }),
     );
 
     // Group A: Anna, David, Elena (round-robin of three, rotating byes).
@@ -631,7 +631,7 @@ describe("multi-stage: groups into knockout with a bronze final", () => {
 describe("scheveningen", () => {
   it("plays uniform-color legs with rotated lineups", () => {
     const run = runEvent(scheveningen);
-    const root = groupRootPath("match", "tie");
+    const root = compRootPath("tie");
 
     run.lineup("Hammers", ["ham1", "ham2"]);
     run.lineup("Anvils", ["anv1", "anv2"]);
@@ -666,8 +666,8 @@ describe("scheveningen", () => {
 describe("quads", () => {
   it("runs parallel round-robin groups independently", () => {
     const run = runEvent(quads);
-    const q1 = groupRootPath("main", "quad-1");
-    const q2 = groupRootPath("main", "quad-2");
+    const q1 = compRootPath("quad-1");
+    const q2 = compRootPath("quad-2");
     const awaiting = run
       .actions()
       .filter((a) => a.kind === "awaitPairings")

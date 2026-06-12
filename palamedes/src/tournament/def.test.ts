@@ -4,7 +4,7 @@ import { FORMAT_EXAMPLES } from "@/chess/formats";
 import { safeParseEventDef } from "@/chess/registry";
 import {
   appendPath,
-  groupRootPath,
+  compRootPath,
   nodePath,
   nodePathSchema,
   pathSegments,
@@ -19,21 +19,14 @@ const baseEvent = (overrides: Record<string, unknown>) => ({
     { id: "b", name: "B" },
     { id: "c", name: "C" },
   ],
-  stages: [
-    {
-      id: "main",
-      groups: [
-        {
-          id: "g",
-          entries: [
-            { kind: "registration", seed: 1 },
-            { kind: "registration", seed: 2 },
-          ],
-          run: { kind: "game", clock: { initial: 300, increment: 2 } },
-        },
-      ],
-    },
-  ],
+  competition: {
+    id: "g",
+    entries: [
+      { kind: "registration", seed: 1 },
+      { kind: "registration", seed: 2 },
+    ],
+    run: { kind: "game", clock: { initial: 300, increment: 2 } },
+  },
   ...overrides,
 });
 
@@ -55,30 +48,23 @@ describe("parseEventDef", () => {
   it("rejects knockout pools whose field is not a power of two", () => {
     const messages = failureMessages(
       baseEvent({
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "ko",
-                entries: [1, 2, 3].map((seed) => ({
-                  kind: "registration",
-                  seed,
-                })),
-                run: {
-                  kind: "pool",
-                  pairing: { system: "knockout", seeding: "adjacent" },
-                  encounter: {
-                    kind: "game",
-                    clock: { initial: 300, increment: 2 },
-                  },
-                  score: { kind: "passThrough" },
-                  tiebreaks: [],
-                },
-              },
-            ],
+        competition: {
+          id: "ko",
+          entries: [1, 2, 3].map((seed) => ({
+            kind: "registration",
+            seed,
+          })),
+          run: {
+            kind: "pool",
+            pairing: { system: "knockout", seeding: "adjacent" },
+            encounter: {
+              kind: "game",
+              clock: { initial: 300, increment: 2 },
+            },
+            score: { kind: "passThrough" },
+            tiebreaks: [],
           },
-        ],
+        },
       }),
     );
     expect(messages).toContain("power-of-two");
@@ -93,64 +79,48 @@ describe("parseEventDef", () => {
       score: { kind: "passThrough" },
       tiebreaks: [],
     });
-    const group = (run: object) =>
+    const leaf = (run: object) =>
       baseEvent({
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "g",
-                entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
-                run,
-              },
-            ],
-          },
-        ],
+        competition: {
+          id: "g",
+          entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
+          run,
+        },
       });
-    expect(failureMessages(group(pool({ system: "swiss" })))).toContain(
+    expect(failureMessages(leaf(pool({ system: "swiss" })))).toContain(
       "must declare rounds",
     );
     expect(
-      failureMessages(group(pool({ system: "roundRobin", cycles: 1 }, 3))),
+      failureMessages(leaf(pool({ system: "roundRobin", cycles: 1 }, 3))),
     ).toContain("derive their round count");
   });
 
   it("rejects byLeg scoring that does not match the series", () => {
     const messages = failureMessages(
       baseEvent({
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "g",
-                entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
-                run: {
-                  kind: "pool",
-                  pairing: { system: "roundRobin", cycles: 1 },
-                  encounter: {
-                    kind: "series",
-                    legs: [
-                      { kind: "game", clock: { initial: 300, increment: 2 } },
-                    ],
-                    stop: { untilDecided: true },
-                    seats: { source: "inherit", cycle: ["keep"] },
-                  },
-                  score: {
-                    kind: "table",
-                    draw: 0,
-                    legs: [
-                      { win: 3, loss: 0 },
-                      { win: 1.5, loss: 1 },
-                    ],
-                  },
-                  tiebreaks: [],
-                },
-              },
-            ],
+        competition: {
+          id: "g",
+          entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
+          run: {
+            kind: "pool",
+            pairing: { system: "roundRobin", cycles: 1 },
+            encounter: {
+              kind: "series",
+              legs: [{ kind: "game", clock: { initial: 300, increment: 2 } }],
+              stop: { untilDecided: true },
+              seats: { source: "inherit", cycle: ["keep"] },
+            },
+            score: {
+              kind: "table",
+              draw: 0,
+              legs: [
+                { win: 3, loss: 0 },
+                { win: 1.5, loss: 1 },
+              ],
+            },
+            tiebreaks: [],
           },
-        ],
+        },
       }),
     );
     expect(messages).toContain(
@@ -158,27 +128,103 @@ describe("parseEventDef", () => {
     );
   });
 
-  it("rejects rank seeds that reference the same or a later stage", () => {
+  it("rejects a competition seeding from its own ranking", () => {
     const messages = failureMessages(
       baseEvent({
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "g",
-                entries: [
-                  { kind: "registration", seed: 1 },
-                  { kind: "rank", stage: "main", group: "g", rank: 1 },
-                ],
-                run: { kind: "game", clock: { initial: 300, increment: 2 } },
-              },
-            ],
-          },
-        ],
+        competition: {
+          id: "g",
+          entries: [
+            { kind: "registration", seed: 1 },
+            { kind: "rank", of: "g", rank: 1 },
+          ],
+          run: { kind: "game", clock: { initial: 300, increment: 2 } },
+        },
       }),
     );
-    expect(messages).toContain("must reference an earlier stage");
+    expect(messages).toContain("cannot seed from its own ranking");
+  });
+
+  it("rejects an intake cycle between competitions", () => {
+    const duel = (id: string, source: string) => ({
+      id,
+      entries: [
+        { kind: "rank", of: source, rank: 1 },
+        { kind: "rank", of: source, rank: 2 },
+      ],
+      run: { kind: "game", clock: { initial: 300, increment: 2 } },
+    });
+    const messages = failureMessages(
+      baseEvent({
+        competition: {
+          id: "root",
+          run: {
+            kind: "competitions",
+            competitions: [duel("x", "y"), duel("y", "x")],
+          },
+        },
+      }),
+    );
+    expect(messages).toContain("intake cycle: x → y → x");
+  });
+
+  it("rejects duplicate competition ids across the whole tree", () => {
+    const leaf = {
+      id: "dup",
+      entries: [
+        { kind: "registration", seed: 1 },
+        { kind: "registration", seed: 2 },
+      ],
+      run: { kind: "game", clock: { initial: 300, increment: 2 } },
+    };
+    const messages = failureMessages(
+      baseEvent({
+        competition: {
+          id: "root",
+          run: { kind: "competitions", competitions: [leaf, leaf] },
+        },
+      }),
+    );
+    expect(messages).toContain("duplicate competition id dup");
+  });
+
+  it("requires entries on leaves and forbids them on containers", () => {
+    expect(
+      failureMessages(
+        baseEvent({
+          competition: {
+            id: "g",
+            run: { kind: "game", clock: { initial: 300, increment: 2 } },
+          },
+        }),
+      ),
+    ).toContain("needs entries");
+
+    expect(
+      failureMessages(
+        baseEvent({
+          competition: {
+            id: "root",
+            entries: { open: true },
+            run: {
+              kind: "competitions",
+              competitions: [
+                {
+                  id: "g",
+                  entries: [
+                    { kind: "registration", seed: 1 },
+                    { kind: "registration", seed: 2 },
+                  ],
+                  run: {
+                    kind: "game",
+                    clock: { initial: 300, increment: 2 },
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    ).toContain("container root cannot have entries");
   });
 
   it("rejects duplicate competitor ids and unreachable firstTo targets", () => {
@@ -196,29 +242,22 @@ describe("parseEventDef", () => {
     expect(
       failureMessages(
         baseEvent({
-          stages: [
-            {
-              id: "main",
-              groups: [
-                {
-                  id: "g",
-                  entries: [1, 2].map((seed) => ({
-                    kind: "registration",
-                    seed,
-                  })),
-                  run: {
-                    kind: "series",
-                    legs: [
-                      { kind: "game", clock: { initial: 300, increment: 2 } },
-                      { kind: "game", clock: { initial: 300, increment: 2 } },
-                    ],
-                    stop: { untilScore: 7.5 },
-                    seats: { source: "inherit", cycle: ["keep", "flip"] },
-                  },
-                },
+          competition: {
+            id: "g",
+            entries: [1, 2].map((seed) => ({
+              kind: "registration",
+              seed,
+            })),
+            run: {
+              kind: "series",
+              legs: [
+                { kind: "game", clock: { initial: 300, increment: 2 } },
+                { kind: "game", clock: { initial: 300, increment: 2 } },
               ],
+              stop: { untilScore: 7.5 },
+              seats: { source: "inherit", cycle: ["keep", "flip"] },
             },
-          ],
+          },
         }),
       ),
     ).toContain("exceeds the 2 points reachable");
@@ -231,26 +270,19 @@ describe("parseEventDef", () => {
           { id: "a", name: "A", roster: ["a1"] },
           { id: "b", name: "B", roster: ["b1", "b2"] },
         ],
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "g",
-                entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
-                run: {
-                  kind: "match",
-                  boards: 2,
-                  board: {
-                    kind: "game",
-                    clock: { initial: 300, increment: 2 },
-                  },
-                  seats: { cycle: ["keep", "flip"] },
-                },
-              },
-            ],
+        competition: {
+          id: "g",
+          entries: [1, 2].map((seed) => ({ kind: "registration", seed })),
+          run: {
+            kind: "match",
+            boards: 2,
+            board: {
+              kind: "game",
+              clock: { initial: 300, increment: 2 },
+            },
+            seats: { cycle: ["keep", "flip"] },
           },
-        ],
+        },
       }),
     );
     expect(messages).toContain("needs a roster of at least 2 players");
@@ -259,21 +291,14 @@ describe("parseEventDef", () => {
   it("rejects root encounters without exactly two entries", () => {
     const messages = failureMessages(
       baseEvent({
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "g",
-                entries: [1, 2, 3].map((seed) => ({
-                  kind: "registration",
-                  seed,
-                })),
-                run: { kind: "game", clock: { initial: 300, increment: 2 } },
-              },
-            ],
-          },
-        ],
+        competition: {
+          id: "g",
+          entries: [1, 2, 3].map((seed) => ({
+            kind: "registration",
+            seed,
+          })),
+          run: { kind: "game", clock: { initial: 300, increment: 2 } },
+        },
       }),
     );
     expect(messages).toContain("exactly 2 entries");
@@ -283,13 +308,12 @@ describe("parseEventDef", () => {
 describe("node paths", () => {
   it("round-trips through segments", () => {
     const path = appendPath(
-      appendPath(groupRootPath("otb", "ko"), { kind: "round", n: 2 }),
+      appendPath(compRootPath("ko"), { kind: "round", n: 2 }),
       { kind: "pair", n: 3 },
     );
-    expect(path).toBe("stage-otb/group-ko/round-2/pair-3");
+    expect(path).toBe("comp-ko/round-2/pair-3");
     expect(pathSegments(path)).toEqual([
-      { kind: "stage", id: "otb" },
-      { kind: "group", id: "ko" },
+      { kind: "comp", id: "ko" },
       { kind: "round", n: 2 },
       { kind: "pair", n: 3 },
     ]);
@@ -298,14 +322,15 @@ describe("node paths", () => {
   it("rejects malformed paths", () => {
     for (const bad of [
       "round-0",
-      "Stage-a/group-b",
-      "stage-a//group-b",
-      "stage-a/board-x",
-      "leg-1", // grammar requires a stage/group root
-      "stage-a/group-b/pair-1", // a pair only exists inside a round
+      "Comp-a",
+      "comp-a//round-1",
+      "comp-a/board-x",
+      "leg-1", // grammar requires a comp root
+      "comp-a/pair-1", // a pair only exists inside a round
+      "stage-a/group-b", // the pre-recursion grammar
     ]) {
       expect(nodePathSchema.safeParse(bad).success).toBe(false);
     }
-    expect(() => nodePath([{ kind: "stage", id: "UPPER" }])).toThrow();
+    expect(() => nodePath([{ kind: "comp", id: "UPPER" }])).toThrow();
   });
 });

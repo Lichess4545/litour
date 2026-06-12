@@ -57,8 +57,8 @@ import {
  */
 
 const CHIP_STYLES: Record<string, string> = {
-  stage: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
-  group: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+  competitions: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+  competition: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
   round: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   series: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   match: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
@@ -72,8 +72,8 @@ const DEFAULT_CHIP = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
 
 /** One icon per kind key — unknown kinds get the puzzle piece. */
 const CHIP_ICONS: Record<string, LucideIcon> = {
-  stage: Layers,
-  group: Users,
+  competitions: Layers,
+  competition: Users,
   round: CircleDot,
   series: ListOrdered,
   match: Swords,
@@ -185,6 +185,7 @@ function FlowCard(props: NodeProps<CardNode>) {
       >
         <CardHandles />
         <span
+          role="img"
           aria-label={data.title}
           className={`rounded-lg p-2 ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
         >
@@ -325,6 +326,7 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     null,
   );
   const focusRef = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `graph` is the intentional trigger — refocus after every layout reflow, not only when the flow instance appears.
   useEffect(() => {
     const focus = focusRef.current;
     focusRef.current = null;

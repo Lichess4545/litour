@@ -3,6 +3,8 @@ import {
   type AnyEncounterDef,
   type ByeRule,
   type Color,
+  type CompetitionDef,
+  type CompetitionsDef,
   type CompetitorDef,
   type CompetitorId,
   competitorIdSchema,
@@ -192,21 +194,16 @@ export type PairingResult =
 
 export type SeedContext = {
   readonly competitors: readonly CompetitorDef[];
-  /** Final order of a completed earlier group; undefined while unresolved. */
-  readonly ranking: (
-    stage: string,
-    group: string,
-  ) => readonly CompetitorId[] | undefined;
+  /** Final order of a completed source competition; undefined while unresolved. */
+  readonly ranking: (of: string) => readonly CompetitorId[] | undefined;
 };
 
 export type SeedValidateContext = {
   readonly competitors: readonly CompetitorDef[];
-  readonly stageIndex: number;
-  readonly stages: readonly {
-    readonly id: string;
-    /** "open" — the group's field is registration-bound, size unknown. */
-    readonly groupSizes: ReadonlyMap<string, number | "open">;
-  }[];
+  /** Field size per LEAF competition id; "open" = registration-bound. */
+  readonly sizes: ReadonlyMap<string, number | "open">;
+  /** The consuming leaf's id (self-reference and cycle messages). */
+  readonly self: string;
 };
 
 export type ScoredLineInput = {
@@ -354,8 +351,8 @@ export type TieKind = {
 
 /** Where a seed pulls its competitor from, for kinds that carry one. */
 export type SeedOrigin = {
-  readonly stage: string;
-  readonly group: string;
+  /** The source competition's id. */
+  readonly of: string;
   readonly rank?: number | undefined;
 };
 
@@ -368,7 +365,7 @@ export type SeedKind = {
     ctx: SeedValidateContext,
     issue: Issue,
   ) => void;
-  /** The earlier groups this seed draws from (cross-stage UI edges) — possibly several (tour aggregations). */
+  /** The competitions this seed draws from (intake UI edges, the intake DAG) — possibly several (tour aggregations). */
   readonly origins?: (ref: SeedRef) => readonly SeedOrigin[];
   /** How an aggregating seed describes itself ("Tour standings", the points table). */
   readonly card?: (ref: SeedRef) => CardInfo;
@@ -738,8 +735,8 @@ export function buildRegistry(spec: RegistrySpec): ModelRegistry {
 
   const deps: SchemaDeps = { encounter: encounterSchema, tie: tieSchema };
   for (const kind of spec.encounters) {
-    if (kind.kind === "pool")
-      throw new Error('"pool" is reserved for the pool spine');
+    if (kind.kind === "pool" || kind.kind === "competitions")
+      throw new Error(`"${kind.kind}" is reserved for the spine`);
     if (bound.has(kind.kind))
       throw new Error(`duplicate encounter kind: ${kind.kind}`);
     bound.set(kind.kind, kind.bind(deps));
@@ -838,6 +835,9 @@ const byeRuleSchema = z.discriminatedUnion("kind", [
 
 export const isPool = (run: RunDef): run is PoolDef => run.kind === "pool";
 
+export const isContainer = (run: RunDef): run is CompetitionsDef =>
+  run.kind === "competitions";
+
 type RegistryCore = Omit<ModelRegistry, "eventSchema">;
 
 function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
@@ -858,14 +858,25 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
       .optional(),
   });
 
-  const groupSchema = z.object({
-    id: idSchema,
-    name: z.string().min(1).optional(),
-    entries: z.union([
-      z.array(z.looseObject({ kind: z.string() })).min(1),
-      z.object({ open: z.literal(true) }),
-    ]),
-    run: z.union([poolSchema, registry.encounterSchema]),
+  // The recursive spine schema: a competition's run may hold competitions,
+  // which hold runs — z.lazy breaks the cycle.
+  const competitionSchema: z.ZodType<CompetitionDef> = z.lazy(() =>
+    z.object({
+      id: idSchema,
+      name: z.string().min(1).optional(),
+      entries: z
+        .union([
+          z.array(z.looseObject({ kind: z.string() })).min(1),
+          z.object({ open: z.literal(true) }),
+        ])
+        .optional(),
+      run: z.union([poolSchema, competitionsSchema, registry.encounterSchema]),
+    }),
+  );
+
+  const competitionsSchema = z.object({
+    kind: z.literal("competitions"),
+    competitions: z.array(competitionSchema).min(1),
   });
 
   const schema: z.ZodType<EventDef> = z
@@ -881,15 +892,7 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
           roster: z.array(playerIdSchema).min(1).optional(),
         }),
       ),
-      stages: z
-        .array(
-          z.object({
-            id: idSchema,
-            name: z.string().min(1).optional(),
-            groups: z.array(groupSchema).min(1),
-          }),
-        )
-        .min(1),
+      competition: competitionSchema,
     })
     .superRefine((event, ctx) => {
       for (const f of validateEvent(event, registry)) {
@@ -903,6 +906,26 @@ type Found = {
   readonly message: string;
   readonly path: readonly (string | number)[];
 };
+
+type CompetitionAt = {
+  readonly comp: CompetitionDef;
+  /** The zod issue path of this node within the event. */
+  readonly path: readonly (string | number)[];
+};
+
+function* walkCompetitions(
+  comp: CompetitionDef,
+  base: readonly (string | number)[],
+): Generator<CompetitionAt> {
+  yield { comp, path: base };
+  if (isContainer(comp.run)) {
+    let i = 0;
+    for (const child of comp.run.competitions) {
+      yield* walkCompetitions(child, [...base, "run", "competitions", i]);
+      i += 1;
+    }
+  }
+}
 
 function validateEvent(
   event: EventDef,
@@ -940,114 +963,189 @@ function validateEvent(
     });
   });
 
-  const stageMeta = event.stages.map((stage) => ({
-    id: stage.id,
-    groupSizes: new Map<string, number | "open">(
-      stage.groups.map((g) => [
-        g.id,
-        isOpenEntries(g.entries) ? "open" : g.entries.length,
-      ]),
-    ),
-  }));
+  const all = [...walkCompetitions(event.competition, ["competition"])];
 
-  const stageIds = new Set<string>();
-  event.stages.forEach((stage, si) => {
-    if (stageIds.has(stage.id))
+  // Ids are globally unique — containers and leaves share one namespace
+  // (paths are flat, seeds reference by bare id).
+  const compIds = new Set<string>();
+  for (const { comp, path } of all) {
+    if (compIds.has(comp.id))
       found.push({
-        message: `duplicate stage id ${stage.id}`,
-        path: ["stages", si, "id"],
+        message: `duplicate competition id ${comp.id}`,
+        path: [...path, "id"],
       });
-    stageIds.add(stage.id);
+    compIds.add(comp.id);
+  }
 
-    const groupIds = new Set<string>();
-    stage.groups.forEach((group, gi) => {
-      const base = ["stages", si, "groups", gi] as const;
-      if (groupIds.has(group.id))
+  // Leaves intake; containers don't. The sizes table seeds validate against
+  // covers every leaf.
+  const sizes = new Map<string, number | "open">();
+  const leaves: CompetitionAt[] = [];
+  for (const at of all) {
+    if (isContainer(at.comp.run)) {
+      if (at.comp.entries !== undefined) {
         found.push({
-          message: `duplicate group id ${group.id} in stage ${stage.id}`,
-          path: [...base, "id"],
-        });
-      groupIds.add(group.id);
-
-      const entries = group.entries;
-      if (!isOpenEntries(entries)) {
-        entries.forEach((entry, ei) => {
-          const seedKind = registry.seeds.get(entry.kind);
-          if (seedKind === undefined) {
-            found.push({
-              message: `unknown seed kind "${entry.kind}" (registered: ${[...registry.seeds.keys()].join(", ")})`,
-              path: [...base, "entries", ei],
-            });
-            return;
-          }
-          const parsed = seedKind.schema.safeParse(entry);
-          if (!parsed.success) {
-            for (const zi of parsed.error.issues)
-              found.push({
-                message: zi.message,
-                path: [...base, "entries", ei, ...zi.path.map(String)],
-              });
-            return;
-          }
-          seedKind.validate?.(
-            entry,
-            {
-              competitors: event.competitors,
-              stageIndex: si,
-              stages: stageMeta,
-            },
-            issueAt([...base, "entries", ei]),
-          );
+          message: `container ${at.comp.id} cannot have entries; its competitions intake their own`,
+          path: [...at.path, "entries"],
         });
       }
+      continue;
+    }
+    leaves.push(at);
+    const entries = at.comp.entries;
+    if (entries === undefined) {
+      found.push({
+        message: `competition ${at.comp.id} needs entries: a seed list or { open: true }`,
+        path: [...at.path, "entries"],
+      });
+      continue;
+    }
+    sizes.set(at.comp.id, isOpenEntries(entries) ? "open" : entries.length);
+  }
 
-      const run = group.run;
-      const encounter = isPool(run) ? run.encounter : run;
-      if (!isPool(run) && (isOpenEntries(entries) || entries.length !== 2)) {
-        found.push({
-          message: `a root encounter needs exactly 2 entries; group ${group.id} ${isOpenEntries(entries) ? "is open" : `has ${entries.length}`}`,
-          path: [...base, "entries"],
-        });
-      }
-      // Unknown kinds were already reported by the schema layer; recursing
-      // into them through ops would throw.
-      const known = registry.encounters.has(encounter.kind);
-      if (known) {
-        registry.ops.validate(encounter, issueAt([...base, "run"]));
-      }
-      if (isPool(run)) {
-        validatePoolDef(
-          run,
-          isOpenEntries(entries) ? undefined : entries.length,
-          registry,
-          issueAt([...base, "run"]),
-        );
-      }
+  for (const { comp, path } of leaves) {
+    const run = comp.run;
+    if (isContainer(run)) continue; // unreachable: leaves filtered above
+    const entries = comp.entries;
 
-      const need = known ? registry.ops.rosterNeed(encounter) : 0;
-      if (need > 0 && !isOpenEntries(entries)) {
-        entries.forEach((entry, ei) => {
-          const seedKind = registry.seeds.get(entry.kind);
-          const id = seedKind?.resolve(entry, {
-            competitors: event.competitors,
-            ranking: () => undefined, // runtime-resolved seeds are checked at lineup time
+    if (entries !== undefined && !isOpenEntries(entries)) {
+      entries.forEach((entry, ei) => {
+        const seedKind = registry.seeds.get(entry.kind);
+        if (seedKind === undefined) {
+          found.push({
+            message: `unknown seed kind "${entry.kind}" (registered: ${[...registry.seeds.keys()].join(", ")})`,
+            path: [...path, "entries", ei],
           });
-          if (id === undefined) return;
-          const competitor = event.competitors.find((c) => c.id === id);
-          if (
-            competitor !== undefined &&
-            (competitor.roster?.length ?? 0) < need
-          ) {
+          return;
+        }
+        const parsed = seedKind.schema.safeParse(entry);
+        if (!parsed.success) {
+          for (const zi of parsed.error.issues)
             found.push({
-              message: `${competitor.name} needs a roster of at least ${need} players for this group`,
-              path: [...base, "entries", ei],
+              message: zi.message,
+              path: [...path, "entries", ei, ...zi.path.map(String)],
             });
-          }
+          return;
+        }
+        seedKind.validate?.(
+          entry,
+          { competitors: event.competitors, sizes, self: comp.id },
+          issueAt([...path, "entries", ei]),
+        );
+      });
+    }
+
+    const encounter = isPool(run) ? run.encounter : run;
+    if (
+      !isPool(run) &&
+      (entries === undefined || isOpenEntries(entries) || entries.length !== 2)
+    ) {
+      found.push({
+        message: `a root encounter needs exactly 2 entries; ${comp.id} ${entries === undefined || isOpenEntries(entries) ? "is open" : `has ${entries.length}`}`,
+        path: [...path, "entries"],
+      });
+    }
+    // Unknown kinds were already reported by the schema layer; recursing
+    // into them through ops would throw.
+    const known = registry.encounters.has(encounter.kind);
+    if (known) {
+      registry.ops.validate(encounter, issueAt([...path, "run"]));
+    }
+    if (isPool(run)) {
+      validatePoolDef(
+        run,
+        entries === undefined || isOpenEntries(entries)
+          ? undefined
+          : entries.length,
+        registry,
+        issueAt([...path, "run"]),
+      );
+    }
+
+    const need = known ? registry.ops.rosterNeed(encounter) : 0;
+    if (need > 0 && entries !== undefined && !isOpenEntries(entries)) {
+      entries.forEach((entry, ei) => {
+        const seedKind = registry.seeds.get(entry.kind);
+        const id = seedKind?.resolve(entry, {
+          competitors: event.competitors,
+          ranking: () => undefined, // runtime-resolved seeds are checked at lineup time
+        });
+        if (id === undefined) return;
+        const competitor = event.competitors.find((c) => c.id === id);
+        if (
+          competitor !== undefined &&
+          (competitor.roster?.length ?? 0) < need
+        ) {
+          found.push({
+            message: `${competitor.name} needs a roster of at least ${need} players for this competition`,
+            path: [...path, "entries", ei],
+          });
+        }
+      });
+    }
+  }
+
+  found.push(...intakeCycleIssues(leaves, registry));
+  return found;
+}
+
+/**
+ * The intake graph (consumer → the sources its seeds draw from) must be a
+ * DAG. This replaces the old "earlier stage" ordering: definition order no
+ * longer constrains references, only actual cycles do.
+ */
+function intakeCycleIssues(
+  leaves: readonly CompetitionAt[],
+  registry: RegistryCore,
+): readonly Found[] {
+  const sourcesOf = new Map<string, readonly string[]>();
+  const entriesPath = new Map<string, readonly (string | number)[]>();
+  for (const { comp, path } of leaves) {
+    const entries = comp.entries;
+    if (entries === undefined || isOpenEntries(entries)) continue;
+    const sources = new Set<string>();
+    for (const entry of entries) {
+      const seedKind = registry.seeds.get(entry.kind);
+      if (
+        seedKind?.origins === undefined ||
+        !seedKind.schema.safeParse(entry).success
+      )
+        continue;
+      for (const origin of seedKind.origins(entry)) sources.add(origin.of);
+    }
+    sourcesOf.set(comp.id, [...sources]);
+    entriesPath.set(comp.id, [...path, "entries"]);
+  }
+
+  const found: Found[] = [];
+  const reported = new Set<string>();
+  const state = new Map<string, "visiting" | "done">();
+  const stack: string[] = [];
+  const visit = (id: string): void => {
+    const mark = state.get(id);
+    if (mark === "done") return;
+    if (mark === "visiting") {
+      const cycle = [...stack.slice(stack.indexOf(id)), id];
+      const canonical = [...cycle.slice(0, -1)].sort().join("|");
+      if (!reported.has(canonical)) {
+        reported.add(canonical);
+        found.push({
+          message: `intake cycle: ${cycle.join(" → ")}`,
+          path: entriesPath.get(id) ?? [],
         });
       }
-    });
-  });
-
+      return;
+    }
+    state.set(id, "visiting");
+    stack.push(id);
+    for (const source of sourcesOf.get(id) ?? []) {
+      // Unknown source ids were already reported by the seed's validate.
+      if (sourcesOf.has(source)) visit(source);
+    }
+    stack.pop();
+    state.set(id, "done");
+  };
+  for (const id of sourcesOf.keys()) visit(id);
   return found;
 }
 

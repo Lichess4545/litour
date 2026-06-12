@@ -7,9 +7,9 @@ import {
 import { defineSeedKind, type SeedKind } from "@/tournament/registry";
 
 /**
- * Built-in seed sources — how a group's entry list resolves to competitors.
- * Stage variety lives here: a losers-bracket or "best third place" is a new
- * seed kind, not a new stage concept.
+ * Built-in seed sources — how a leaf competition's entry list resolves to
+ * competitors. Pipeline variety lives here: a losers-bracket or "best third
+ * place" is a new seed kind, not a new spine concept.
  */
 
 export const registrationSeed: SeedKind = defineSeedKind({
@@ -44,36 +44,30 @@ export const rankSeed: SeedKind = defineSeedKind({
   kind: "rank",
   schema: z.object({
     kind: z.literal("rank"),
-    stage: idSchema,
-    group: idSchema,
+    of: idSchema,
     rank: z.number().int().min(1),
   }),
-  resolve: (ref, ctx) => ctx.ranking(ref.stage, ref.group)?.[ref.rank - 1],
-  origins: (ref) => [{ stage: ref.stage, group: ref.group, rank: ref.rank }],
+  resolve: (ref, ctx) => ctx.ranking(ref.of)?.[ref.rank - 1],
+  origins: (ref) => [{ of: ref.of, rank: ref.rank }],
   validate: (ref, ctx, issue) => {
-    const sourceIndex = ctx.stages.findIndex((s) => s.id === ref.stage);
-    if (sourceIndex === -1 || sourceIndex >= ctx.stageIndex) {
-      issue(
-        `rank source must reference an earlier stage; ${ref.stage} is not one`,
-        ["stage"],
-      );
+    if (ref.of === ctx.self) {
+      issue(`${ctx.self} cannot seed from its own ranking`, ["of"]);
       return;
     }
-    const size = ctx.stages[sourceIndex]?.groupSizes.get(ref.group);
+    const size = ctx.sizes.get(ref.of);
     if (size === undefined) {
-      issue(`unknown group ${ref.group} in stage ${ref.stage}`, ["group"]);
+      issue(`unknown competition "${ref.of}"`, ["of"]);
     } else if (size !== "open" && ref.rank > size) {
-      issue(
-        `rank ${ref.rank} exceeds the ${size} entries of ${ref.stage}/${ref.group}`,
-        ["rank"],
-      );
+      issue(`rank ${ref.rank} exceeds the ${size} entries of ${ref.of}`, [
+        "rank",
+      ]);
     }
   },
 });
 
 /**
- * Tour aggregation: placements across several completed groups convert to
- * points through a table (Grand Chess Tour: 13/10/8/…), and the seed
+ * Tour aggregation: placements across several completed competitions convert
+ * to points through a table (Grand Chess Tour: 13/10/8/…), and the seed
  * resolves rank N of the combined standings. Ties break by total, then by
  * best single placement, then by source order — deterministic, and an
  * arbiter can always override with fixed seeds.
@@ -82,14 +76,14 @@ export const placementsSeed: SeedKind = defineSeedKind({
   kind: "placements",
   schema: z.object({
     kind: z.literal("placements"),
-    sources: z.array(z.object({ stage: idSchema, group: idSchema })).min(1),
+    over: z.array(idSchema).min(1),
     points: z.array(z.number().finite().nonnegative()).min(1),
     rank: z.number().int().min(1),
   }),
   resolve: (ref, ctx) => {
     const totals = new Map<CompetitorId, { total: number; best: number }>();
-    for (const source of ref.sources) {
-      const ranking = ctx.ranking(source.stage, source.group);
+    for (const source of ref.over) {
+      const ranking = ctx.ranking(source);
       if (ranking === undefined) return undefined; // every source must finish
       ranking.forEach((competitor, index) => {
         const award = ref.points[index] ?? 0;
@@ -108,31 +102,22 @@ export const placementsSeed: SeedKind = defineSeedKind({
     );
     return order[ref.rank - 1]?.[0];
   },
-  origins: (ref) =>
-    ref.sources.map((source) => ({ stage: source.stage, group: source.group })),
+  origins: (ref) => ref.over.map((of) => ({ of })),
   card: (ref) => ({
     title: "Tour standings",
-    badge: `${ref.sources.length} events`,
+    badge: `${ref.over.length} events`,
     lines: [
       `placement points ${ref.points.slice(0, 4).join("/")}${ref.points.length > 4 ? "/…" : ""}`,
     ],
   }),
   validate: (ref, ctx, issue) => {
-    ref.sources.forEach((source, i) => {
-      const sourceIndex = ctx.stages.findIndex((s) => s.id === source.stage);
-      if (sourceIndex === -1 || sourceIndex >= ctx.stageIndex) {
-        issue(
-          `placements source must reference an earlier stage; ${source.stage} is not one`,
-          ["sources", i, "stage"],
-        );
+    ref.over.forEach((source, i) => {
+      if (source === ctx.self) {
+        issue(`${ctx.self} cannot aggregate its own ranking`, ["over", i]);
         return;
       }
-      if (ctx.stages[sourceIndex]?.groupSizes.get(source.group) === undefined) {
-        issue(`unknown group ${source.group} in stage ${source.stage}`, [
-          "sources",
-          i,
-          "group",
-        ]);
+      if (!ctx.sizes.has(source)) {
+        issue(`unknown competition "${source}"`, ["over", i]);
       }
     });
   },

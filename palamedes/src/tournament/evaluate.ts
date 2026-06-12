@@ -78,7 +78,7 @@ function makeView(indexes: EngineIndexes, ctx: EvalCtx): NodeView {
 }
 
 const CHILD_GUARD = 10_000;
-const RESERVED_LABELS = new Set(["stage", "group", "round", "pair"]);
+const RESERVED_LABELS = new Set(["comp", "round", "pair"]);
 
 export function evalNode(
   registry: ModelRegistry,

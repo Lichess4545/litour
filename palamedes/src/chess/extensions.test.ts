@@ -135,22 +135,15 @@ describe("third-party kinds run end-to-end without touching the core", () => {
           { id: "master", name: "Master" },
           { id: "club", name: "Club player" },
         ],
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "duel",
-                entries: [
-                  { kind: "registration", seed: 1 },
-                  { kind: "registration", seed: 2 },
-                ],
-                // The club player starts half a point ahead: master must win.
-                run: { kind: "handicap", ahead: 1, head: 0.5, of: game },
-              },
-            ],
-          },
-        ],
+        competition: {
+          id: "duel",
+          entries: [
+            { kind: "registration", seed: 1 },
+            { kind: "registration", seed: 2 },
+          ],
+          // The club player starts half a point ahead: master must win.
+          run: { kind: "handicap", ahead: 1, head: 0.5, of: game },
+        },
       },
       registry,
     );
@@ -175,28 +168,21 @@ describe("third-party kinds run end-to-end without touching the core", () => {
           { id: "a", name: "Ann" },
           { id: "b", name: "Ben" },
         ],
-        stages: [
-          {
-            id: "main",
-            groups: [
-              {
-                id: "arena",
-                entries: [
-                  { kind: "registration", seed: 1 },
-                  { kind: "registration", seed: 2 },
-                ],
-                run: {
-                  kind: "pool",
-                  pairing: { system: "manual" },
-                  rounds: 3,
-                  encounter: game,
-                  score: { kind: "arena", win: 2, draw: 1, streak: 2 },
-                  tiebreaks: [],
-                },
-              },
-            ],
+        competition: {
+          id: "arena",
+          entries: [
+            { kind: "registration", seed: 1 },
+            { kind: "registration", seed: 2 },
+          ],
+          run: {
+            kind: "pool",
+            pairing: { system: "manual" },
+            rounds: 3,
+            encounter: game,
+            score: { kind: "arena", win: 2, draw: 1, streak: 2 },
+            tiebreaks: [],
           },
-        ],
+        },
       },
       registry,
     );
@@ -223,21 +209,14 @@ describe("third-party kinds run end-to-end without touching the core", () => {
         { id: "m", name: "M" },
         { id: "c", name: "C" },
       ],
-      stages: [
-        {
-          id: "main",
-          groups: [
-            {
-              id: "duel",
-              entries: [
-                { kind: "registration", seed: 1 },
-                { kind: "registration", seed: 2 },
-              ],
-              run: { kind: "handicap", ahead: 1, head: 0.5, of: game },
-            },
-          ],
-        },
-      ],
+      competition: {
+        id: "duel",
+        entries: [
+          { kind: "registration", seed: 1 },
+          { kind: "registration", seed: 2 },
+        ],
+        run: { kind: "handicap", ahead: 1, head: 0.5, of: game },
+      },
     });
     expect(result.success).toBe(false);
     if (!result.success) {

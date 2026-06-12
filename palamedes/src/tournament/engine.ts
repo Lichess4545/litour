@@ -1,11 +1,11 @@
 import {
   type AnyEncounterDef,
   type Clock,
+  type CompetitionDef,
   type CompetitorId,
+  compRootPath,
   type EventDef,
   type GameResultCode,
-  type GroupDef,
-  groupRootPath,
   type Input,
   isOpenEntries,
   type NodePath,
@@ -17,7 +17,6 @@ import {
   pathPrefix,
   pathSegments,
   type Side,
-  type StageDef,
 } from "./core";
 import {
   type EngineIndexes,
@@ -27,6 +26,7 @@ import {
   nodeAt,
 } from "./evaluate";
 import {
+  isContainer,
   isPool,
   type ModelRegistry,
   type PairingContext,
@@ -152,7 +152,7 @@ function staleEntrant(
   state: StateView,
   input: PairingsSetInput,
 ): CompetitorId | undefined {
-  const ref = groupAt(state, input.pool);
+  const ref = compAt(state, input.pool);
   if (typeof ref === "string") return undefined;
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) return undefined;
@@ -168,74 +168,73 @@ function staleEntrant(
 // ---------------------------------------------------------------------------
 // Definition lookups and entrant resolution
 
-type GroupRef = {
-  readonly stage: StageDef;
-  readonly stageIndex: number;
-  readonly group: GroupDef;
+/** A competition plus its node path (meaningful for leaves; ids are flat). */
+export type CompRef = {
+  readonly comp: CompetitionDef;
   readonly path: NodePath;
 };
 
-function findGroup(
+/** Any competition — leaf or container — by its globally-unique id. */
+export function findCompetition(
   def: EventDef,
-  stageId: string,
-  groupId: string,
-): GroupRef | undefined {
-  const stageIndex = def.stages.findIndex((s) => s.id === stageId);
-  const stage = def.stages[stageIndex];
-  if (stage === undefined) return undefined;
-  const group = stage.groups.find((g) => g.id === groupId);
-  if (group === undefined) return undefined;
-  return { stage, stageIndex, group, path: groupRootPath(stageId, groupId) };
+  id: string,
+): CompRef | undefined {
+  const stack: CompetitionDef[] = [def.competition];
+  for (let comp = stack.pop(); comp !== undefined; comp = stack.pop()) {
+    if (comp.id === id) return { comp, path: compRootPath(comp.id) };
+    if (isContainer(comp.run)) stack.push(...comp.run.competitions);
+  }
+  return undefined;
 }
 
-function* allGroups(def: EventDef): Generator<GroupRef> {
-  for (let stageIndex = 0; stageIndex < def.stages.length; stageIndex += 1) {
-    const stage = def.stages[stageIndex];
-    if (stage === undefined) continue;
-    for (const group of stage.groups) {
-      yield {
-        stage,
-        stageIndex,
-        group,
-        path: groupRootPath(stage.id, group.id),
-      };
+/** Every leaf, in definition order; containers contribute only their children. */
+export function allLeaves(def: EventDef): readonly CompRef[] {
+  const leaves: CompRef[] = [];
+  const walk = (comp: CompetitionDef): void => {
+    if (isContainer(comp.run)) {
+      for (const child of comp.run.competitions) walk(child);
+      return;
     }
-  }
+    leaves.push({ comp, path: compRootPath(comp.id) });
+  };
+  walk(def.competition);
+  return leaves;
 }
 
-function groupAt(state: StateView, path: NodePath): GroupRef | string {
-  const [stageSeg, groupSeg, ...rest] = pathSegments(path);
-  if (
-    rest.length > 0 ||
-    stageSeg?.kind !== "stage" ||
-    groupSeg?.kind !== "group"
-  ) {
-    return `expected a stage-<id>/group-<id> path, got ${path}`;
+function compAt(state: StateView, path: NodePath): CompRef | string {
+  const [compSeg, ...rest] = pathSegments(path);
+  if (rest.length > 0 || compSeg?.kind !== "comp") {
+    return `expected a comp-<id> path, got ${path}`;
   }
-  const ref = findGroup(state.def, stageSeg.id, groupSeg.id);
-  return ref ?? `unknown group ${stageSeg.id}/${groupSeg.id}`;
+  const ref = findCompetition(state.def, compSeg.id);
+  if (ref === undefined) return `unknown competition ${compSeg.id}`;
+  if (isContainer(ref.comp.run)) {
+    return `${compSeg.id} is a container; only leaf competitions hold nodes`;
+  }
+  return ref;
 }
 
 /**
- * Resolve a group's entrants. Rank-style seeds resolve only once their
- * source group has completed; until then the whole group is unresolved.
+ * Resolve a leaf's entrants. Rank-style seeds resolve only once their source
+ * competition has completed; until then the whole leaf is unresolved.
  */
 export function resolveEntrants(
   state: StateView,
-  ref: GroupRef,
+  ref: CompRef,
 ): readonly CompetitorId[] | undefined {
-  // Open groups have no field until registration binds one.
-  if (isOpenEntries(ref.group.entries)) return undefined;
+  const entries = ref.comp.entries;
+  // Open leaves have no field until registration binds one.
+  if (entries === undefined || isOpenEntries(entries)) return undefined;
   const entrants: CompetitorId[] = [];
-  for (const entry of ref.group.entries) {
+  for (const entry of entries) {
     const kind = state.registry.seeds.get(entry.kind);
     if (kind === undefined) return undefined;
     const id = kind.resolve(entry, {
       competitors: state.def.competitors,
-      ranking: (stage, group) => {
-        const source = findGroup(state.def, stage, group);
+      ranking: (of) => {
+        const source = findCompetition(state.def, of);
         if (source === undefined) return undefined;
-        return groupRanking(state, source);
+        return rankingOf(state, source);
       },
     });
     if (id === undefined) return undefined;
@@ -254,26 +253,27 @@ export function totalRoundsOf(
   return kind?.totalRounds?.(pool.pairing, entrants) ?? pool.rounds ?? 0;
 }
 
-/** Final order of a completed group: standings for pools, [winner, loser] for encounters (entry order on a draw). */
-export function groupRanking(
+/** Final order of a completed leaf: standings for pools, [winner, loser] for encounters (entry order on a draw). */
+export function rankingOf(
   state: StateView,
-  ref: GroupRef,
+  ref: CompRef,
 ): readonly CompetitorId[] | undefined {
+  const run = ref.comp.run;
+  if (isContainer(run)) return undefined; // containers rank nothing themselves
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) return undefined;
 
-  if (isPool(ref.group.run)) {
-    const pool = ref.group.run;
-    const total = totalRoundsOf(state, pool, entrants.length);
+  if (isPool(run)) {
+    const total = totalRoundsOf(state, run, entrants.length);
     const rounds = poolRounds(state, ref.path, total);
     if (rounds.size < total) return undefined;
     for (const [round, plans] of rounds) {
-      if (!roundComplete(state, pool, ref.path, round, plans)) return undefined;
+      if (!roundComplete(state, run, ref.path, round, plans)) return undefined;
     }
     return poolStandings(
       state.registry,
       state,
-      pool,
+      run,
       ref.path,
       entrants,
       rounds,
@@ -283,7 +283,7 @@ export function groupRanking(
 
   const sides = rootSides(entrants);
   if (sides === undefined) return undefined;
-  const node = evalRoot(state, ref.group.run, ref.path, sides);
+  const node = evalRoot(state, run, ref.path, sides);
   const d = node.outcome.decision;
   if (d.kind === "pending") return undefined;
   if (d.kind === "win") {
@@ -364,22 +364,27 @@ type Resolved =
 
 function resolveNode(state: StateView, path: NodePath): Resolved {
   const segments = pathSegments(path);
-  const [stageSeg, groupSeg, ...rest] = segments;
-  if (stageSeg?.kind !== "stage" || groupSeg?.kind !== "group") {
+  const [compSeg, ...rest] = segments;
+  if (compSeg?.kind !== "comp") {
+    return { ok: false, reason: `path must start with comp-<id>: ${path}` };
+  }
+  const found = findCompetition(state.def, compSeg.id);
+  if (found === undefined) {
+    return { ok: false, reason: `unknown competition ${compSeg.id}` };
+  }
+  const run = found.comp.run;
+  if (isContainer(run)) {
     return {
       ok: false,
-      reason: `path must start with stage-<id>/group-<id>: ${path}`,
+      reason: `${compSeg.id} is a container; only leaf competitions hold nodes`,
     };
   }
-  const ref = findGroup(state.def, stageSeg.id, groupSeg.id);
-  if (ref === undefined) {
-    return { ok: false, reason: `unknown group ${stageSeg.id}/${groupSeg.id}` };
-  }
+  const ref = found;
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
     return {
       ok: false,
-      reason: `${stageSeg.id}/${groupSeg.id} is waiting on an earlier stage`,
+      reason: `${compSeg.id} is waiting on its seeding sources`,
     };
   }
 
@@ -387,7 +392,7 @@ function resolveNode(state: StateView, path: NodePath): Resolved {
   let sides: readonly [CompetitorId, CompetitorId];
   let descend: readonly (typeof segments)[number][];
 
-  if (isPool(ref.group.run)) {
+  if (isPool(run)) {
     const [roundSeg, pairSeg, ...encounterSegs] = rest;
     if (roundSeg?.kind !== "round" || pairSeg?.kind !== "pair") {
       return {
@@ -412,7 +417,7 @@ function resolveNode(state: StateView, path: NodePath): Resolved {
     root = evalPair(
       state.registry,
       state,
-      ref.group.run,
+      run,
       ref.path,
       roundSeg.n,
       pairSeg.n - 1,
@@ -425,10 +430,10 @@ function resolveNode(state: StateView, path: NodePath): Resolved {
     if (rs === undefined) {
       return {
         ok: false,
-        reason: `group ${ref.group.id} needs exactly two entrants`,
+        reason: `${ref.comp.id} needs exactly two entrants`,
       };
     }
-    root = evalRoot(state, ref.group.run, ref.path, rs);
+    root = evalRoot(state, run, ref.path, rs);
     sides = rs;
     descend = rest;
   }
@@ -535,10 +540,10 @@ function applyInput(state: MutableState, input: Input): string | undefined {
         return `colors at ${input.node} are fixed: results are already recorded under it`;
       }
       const segments = pathSegments(input.node);
-      if (segments.length === 2) {
-        const ref = groupAt(state, input.node);
+      if (segments.length === 1) {
+        const ref = compAt(state, input.node);
         if (typeof ref === "string") return ref;
-        if (isPool(ref.group.run)) {
+        if (isPool(ref.comp.run)) {
           return "pool pairings assign colors; colorDraw applies to root encounters and drawn child seats";
         }
         state.colorDraws.set(input.node, input.whiteSeat);
@@ -580,14 +585,14 @@ function applyPairingsSet(
   state: MutableState,
   input: PairingsSetInput,
 ): string | undefined {
-  const ref = groupAt(state, input.pool);
+  const ref = compAt(state, input.pool);
   if (typeof ref === "string") return ref;
-  if (!isPool(ref.group.run)) return `${input.pool} is not a pool`;
-  const pool = ref.group.run;
+  if (!isPool(ref.comp.run)) return `${input.pool} is not a pool`;
+  const pool = ref.comp.run;
 
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
-    return `${input.pool} is waiting on an earlier stage`;
+    return `${input.pool} is waiting on its seeding sources`;
   }
   const total = totalRoundsOf(state, pool, entrants.length);
   if (input.round < 1 || input.round > total) {
@@ -662,8 +667,7 @@ export type Action =
     }
   | {
       readonly kind: "awaitSeeding";
-      readonly stage: string;
-      readonly group: string;
+      readonly competition: string;
     }
   | {
       readonly kind: "eventComplete";
@@ -679,26 +683,24 @@ export function nextActions(state: EventState): readonly Action[] {
   const actions: Action[] = [];
   let allComplete = true;
 
-  for (const ref of allGroups(state.def)) {
+  for (const ref of allLeaves(state.def)) {
+    const run = ref.comp.run;
+    if (isContainer(run)) continue; // unreachable: allLeaves yields leaves
     const entrants = resolveEntrants(state, ref);
     if (entrants === undefined) {
-      actions.push({
-        kind: "awaitSeeding",
-        stage: ref.stage.id,
-        group: ref.group.id,
-      });
+      actions.push({ kind: "awaitSeeding", competition: ref.comp.id });
       allComplete = false;
       continue;
     }
-    if (groupRanking(state, ref) !== undefined) continue;
+    if (rankingOf(state, ref) !== undefined) continue;
     allComplete = false;
 
-    if (isPool(ref.group.run)) {
-      collectPoolActions(state, ref, ref.group.run, entrants, actions);
+    if (isPool(run)) {
+      collectPoolActions(state, ref, run, entrants, actions);
     } else {
       const sides = rootSides(entrants);
       if (sides === undefined) continue;
-      const node = evalRoot(state, ref.group.run, ref.path, sides);
+      const node = evalRoot(state, run, ref.path, sides);
       collectNodeActions(node, sides, undefined, actions);
     }
   }
@@ -709,27 +711,42 @@ export function nextActions(state: EventState): readonly Action[] {
   return actions;
 }
 
+/**
+ * The champion comes from the intake DAG's sink: the one leaf that no other
+ * leaf draws entrants from. Two or more sinks (parallel sections, an
+ * embedded open side event) means the event crowns no single champion.
+ */
 function eventWinner(state: EventState): CompetitorId | undefined {
-  const lastStage = state.def.stages[state.def.stages.length - 1];
-  const onlyGroup =
-    lastStage?.groups.length === 1 ? lastStage.groups[0] : undefined;
-  if (lastStage === undefined || onlyGroup === undefined) return undefined;
-  const ref = findGroup(state.def, lastStage.id, onlyGroup.id);
-  if (ref === undefined) return undefined;
-  if (!isPool(ref.group.run)) {
+  const leaves = allLeaves(state.def);
+  const sources = new Set<string>();
+  for (const ref of leaves) {
+    const entries = ref.comp.entries;
+    if (entries === undefined || isOpenEntries(entries)) continue;
+    for (const entry of entries) {
+      const kind = state.registry.seeds.get(entry.kind);
+      for (const origin of kind?.origins?.(entry) ?? []) {
+        sources.add(origin.of);
+      }
+    }
+  }
+  const sinks = leaves.filter((ref) => !sources.has(ref.comp.id));
+  const sink = sinks[0];
+  if (sinks.length !== 1 || sink === undefined) return undefined;
+  const run = sink.comp.run;
+  if (!isContainer(run) && !isPool(run)) {
     // A drawn deciding match has no champion even though the event is over.
-    const entrants = resolveEntrants(state, ref);
+    const entrants = resolveEntrants(state, sink);
     const sides = entrants === undefined ? undefined : rootSides(entrants);
     if (sides === undefined) return undefined;
-    const d = evalRoot(state, ref.group.run, ref.path, sides).outcome.decision;
+    const d = evalRoot(state, run, sink.path, sides).outcome.decision;
     if (d.kind !== "win") return undefined;
   }
-  return groupRanking(state, ref)?.[0];
+  return rankingOf(state, sink)?.[0];
 }
 
 function collectPoolActions(
   state: EventState,
-  ref: GroupRef,
+  ref: CompRef,
   pool: PoolDef,
   entrants: readonly CompetitorId[],
   actions: Action[],
@@ -872,7 +889,7 @@ function collectNodeActions(
 
 function buildPairingContext(
   state: EventState,
-  ref: GroupRef,
+  ref: CompRef,
   pool: PoolDef,
   entrants: readonly CompetitorId[],
   round: number,
@@ -970,11 +987,11 @@ export function proposePairings(
   if (awaiting === undefined) {
     return { ok: false, error: `${poolPath} is not awaiting pairings` };
   }
-  const ref = groupAt(state, poolPath);
+  const ref = compAt(state, poolPath);
   if (typeof ref === "string") return { ok: false, error: ref };
-  if (!isPool(ref.group.run))
+  if (!isPool(ref.comp.run))
     return { ok: false, error: `${poolPath} is not a pool` };
-  const system = ref.group.run.pairing.system;
+  const system = ref.comp.run.pairing.system;
   const kind = state.registry.pairings.get(system);
   if (kind === undefined) {
     return {
@@ -982,7 +999,7 @@ export function proposePairings(
       error: `pairing system "${system}" has no registered proposer: record a pairingsSet input directly`,
     };
   }
-  const result = kind.propose(ref.group.run.pairing, awaiting.context);
+  const result = kind.propose(ref.comp.run.pairing, awaiting.context);
   if (!result.ok) return result;
   return {
     ok: true,
@@ -1017,18 +1034,18 @@ export function standingsOf(
   state: EventState,
   poolPath: NodePath,
 ): readonly StandingsRow[] {
-  const ref = groupAt(state, poolPath);
+  const ref = compAt(state, poolPath);
   if (typeof ref === "string") throw new Error(ref);
-  if (!isPool(ref.group.run)) throw new Error(`${poolPath} is not a pool`);
+  if (!isPool(ref.comp.run)) throw new Error(`${poolPath} is not a pool`);
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
-    throw new Error(`${poolPath} is waiting on an earlier stage`);
+    throw new Error(`${poolPath} is waiting on its seeding sources`);
   }
-  const total = totalRoundsOf(state, ref.group.run, entrants.length);
+  const total = totalRoundsOf(state, ref.comp.run, entrants.length);
   return poolStandings(
     state.registry,
     state,
-    ref.group.run,
+    ref.comp.run,
     ref.path,
     entrants,
     poolRounds(state, ref.path, total),

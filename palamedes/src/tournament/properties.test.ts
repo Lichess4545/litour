@@ -6,7 +6,7 @@ import { chessRegistry, parseEventDef } from "@/chess/registry";
 import type { ParsedEventDef } from "@/tournament/registry";
 import { type EventRun, runEvent as runEventWith } from "./builder";
 import type { GameResultCode } from "./core";
-import { groupRootPath } from "./core";
+import { compRootPath } from "./core";
 import { pairingsAt, proposePairings } from "./engine";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
@@ -20,31 +20,24 @@ const rrEvent = (n: number, cycles: 1 | 2): ParsedEventDef =>
       id: `p${i + 1}`,
       name: `P${i + 1}`,
     })),
-    stages: [
-      {
-        id: "main",
-        groups: [
-          {
-            id: "rr",
-            entries: Array.from({ length: n }, (_, i) => ({
-              kind: "registration",
-              seed: i + 1,
-            })),
-            run: {
-              kind: "pool",
-              pairing: { system: "roundRobin", cycles },
-              encounter: {
-                kind: "game",
-                clock: { initial: 180, increment: 2 },
-              },
-              score: { kind: "passThrough" },
-              bye: { kind: "points", standings: 0, encounter: 0 },
-              tiebreaks: [],
-            },
-          },
-        ],
+    competition: {
+      id: "rr",
+      entries: Array.from({ length: n }, (_, i) => ({
+        kind: "registration",
+        seed: i + 1,
+      })),
+      run: {
+        kind: "pool",
+        pairing: { system: "roundRobin", cycles },
+        encounter: {
+          kind: "game",
+          clock: { initial: 180, increment: 2 },
+        },
+        score: { kind: "passThrough" },
+        bye: { kind: "points", standings: 0, encounter: 0 },
+        tiebreaks: [],
       },
-    ],
+    },
   });
 
 const playAllScheduled = (run: EventRun, result: GameResultCode): void => {
@@ -58,7 +51,7 @@ describe("berger round robin", () => {
     for (let n = 3; n <= 9; n += 1) {
       for (const cycles of [1, 2] as const) {
         const run = runEvent(rrEvent(n, cycles));
-        const pool = groupRootPath("main", "rr");
+        const pool = compRootPath("rr");
         const perCycle = n % 2 === 0 ? n - 1 : n;
         const meetings = new Map<string, number>();
         const whites = new Map<string, number>();
@@ -195,32 +188,25 @@ const swissEvent = (): ParsedEventDef =>
       id: name.toLowerCase(),
       name,
     })),
-    stages: [
-      {
-        id: "main",
-        groups: [
-          {
-            id: "swiss",
-            entries: Array.from({ length: 5 }, (_, i) => ({
-              kind: "registration",
-              seed: i + 1,
-            })),
-            run: {
-              kind: "pool",
-              pairing: { system: "swiss" },
-              rounds: 3,
-              encounter: {
-                kind: "game",
-                clock: { initial: 180, increment: 2 },
-              },
-              score: { kind: "passThrough" },
-              bye: { kind: "points", standings: 1, encounter: 1 },
-              tiebreaks: [],
-            },
-          },
-        ],
+    competition: {
+      id: "swiss",
+      entries: Array.from({ length: 5 }, (_, i) => ({
+        kind: "registration",
+        seed: i + 1,
+      })),
+      run: {
+        kind: "pool",
+        pairing: { system: "swiss" },
+        rounds: 3,
+        encounter: {
+          kind: "game",
+          clock: { initial: 180, increment: 2 },
+        },
+        score: { kind: "passThrough" },
+        bye: { kind: "points", standings: 1, encounter: 1 },
+        tiebreaks: [],
       },
-    ],
+    },
   });
 
 describe("naive swiss legality", () => {
@@ -230,7 +216,7 @@ describe("naive swiss legality", () => {
         fc.array(classicalResult, { minLength: 6, maxLength: 6 }),
         (results) => {
           const run = runEvent(swissEvent());
-          const pool = groupRootPath("main", "swiss");
+          const pool = compRootPath("swiss");
           let cursor = 0;
           const met = new Set<string>();
           const byes = new Map<string, number>();
@@ -278,37 +264,30 @@ const knockout16 = (): ParsedEventDef =>
       id: `s${i + 1}`,
       name: `Seed ${i + 1}`,
     })),
-    stages: [
-      {
-        id: "main",
-        groups: [
-          {
-            id: "ko",
-            entries: Array.from({ length: 16 }, (_, i) => ({
-              kind: "registration",
-              seed: i + 1,
-            })),
-            run: {
-              kind: "pool",
-              pairing: { system: "knockout", seeding: "traditional" },
-              encounter: {
-                kind: "game",
-                clock: { initial: 180, increment: 2 },
-                tie: { kind: "drawOdds", color: "black" },
-              },
-              score: { kind: "passThrough" },
-              tiebreaks: [],
-            },
-          },
-        ],
+    competition: {
+      id: "ko",
+      entries: Array.from({ length: 16 }, (_, i) => ({
+        kind: "registration",
+        seed: i + 1,
+      })),
+      run: {
+        kind: "pool",
+        pairing: { system: "knockout", seeding: "traditional" },
+        encounter: {
+          kind: "game",
+          clock: { initial: 180, increment: 2 },
+          tie: { kind: "drawOdds", color: "black" },
+        },
+        score: { kind: "passThrough" },
+        tiebreaks: [],
       },
-    ],
+    },
   });
 
 describe("traditional knockout bracket", () => {
   it("pairs seeds summing to n+1 with seeds 1 and 2 in opposite halves (16 players)", () => {
     const run = runEvent(knockout16()).pairRound();
-    const plans = pairingsAt(run.state(), groupRootPath("main", "ko"), 1) ?? [];
+    const plans = pairingsAt(run.state(), compRootPath("ko"), 1) ?? [];
     expect(plans).toHaveLength(8);
     const seedOf = (id: string): number => Number.parseInt(id.slice(1), 10);
     const halves: number[][] = [[], []];
@@ -329,36 +308,26 @@ describe("traditional knockout bracket", () => {
         id: `p${i + 1}`,
         name: `P${i + 1}`,
       })),
-      stages: [
-        {
-          id: "main",
-          groups: [
-            {
-              id: "ko",
-              entries: Array.from({ length: 64 }, (_, i) => ({
-                kind: "registration",
-                seed: i + 1,
-              })),
-              run: {
-                kind: "pool",
-                pairing: { system: "knockout", seeding: "traditional" },
-                encounter: {
-                  kind: "game",
-                  clock: { initial: 180, increment: 2 },
-                  tie: { kind: "drawOdds", color: "black" },
-                },
-                score: { kind: "passThrough" },
-                tiebreaks: [],
-              },
-            },
-          ],
+      competition: {
+        id: "ko",
+        entries: Array.from({ length: 64 }, (_, i) => ({
+          kind: "registration",
+          seed: i + 1,
+        })),
+        run: {
+          kind: "pool",
+          pairing: { system: "knockout", seeding: "traditional" },
+          encounter: {
+            kind: "game",
+            clock: { initial: 180, increment: 2 },
+            tie: { kind: "drawOdds", color: "black" },
+          },
+          score: { kind: "passThrough" },
+          tiebreaks: [],
         },
-      ],
+      },
     });
-    const proposed = proposePairings(
-      runEvent(big).state(),
-      groupRootPath("main", "ko"),
-    );
+    const proposed = proposePairings(runEvent(big).state(), compRootPath("ko"));
     expect(proposed).toMatchObject({
       ok: false,
       error: expect.stringContaining("no verified bracket table"),

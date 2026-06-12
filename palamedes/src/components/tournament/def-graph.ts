@@ -1,13 +1,13 @@
 import { z } from "zod";
 import {
   type ConcreteCard,
+  type ConcreteCompetition,
   type ConcreteEvent,
-  type ConcreteGroup,
   type ConcreteNode,
   type ConcretePairing,
   type ConcreteProcess,
   type ConcreteRound,
-  type ConcreteStage,
+  type ConcreteRoundsRun,
   manyList,
 } from "@/tournament/concrete";
 
@@ -17,20 +17,24 @@ import {
  * can be expanded where it stands: the card is replaced by a bordered frame
  * containing the next level of resolution — siblings shift to make room and
  * every edge keeps pointing at the same id — so one canvas can span several
- * resolutions (the stage sequence with one stage opened to its rounds, a
- * round opened to its pairings, a pairing opened to its boards).
+ * resolutions (a container opened beside collapsed siblings, a round opened
+ * to its pairings, a pairing opened to its boards).
  *
- * The levels: the EVENT is its stages in sequence joined by advancement
- * flows; a STAGE is its groups as lanes of round/process steps; a ROUND is
- * its pairings feeding the scoring rule; a NODE is its immediate children;
- * a PROCESS is standings → pair-next. One generic rule needs no state: an
- * item that is the only drillable thing at its level renders pre-expanded
- * (and cannot collapse), so a single-stage event opens at its rounds
- * without any special case.
+ * ONE recursive item draws every competition. A leaf's collapsed face is
+ * its card (name, entrants, schedule, inflows — the card IS the lane
+ * header); expanded, it becomes a frame holding its lane (the rounds cycle,
+ * brackets, process icons) or its encounter recursion. A container's
+ * collapsed face lists its children; expanded, it becomes a frame holding
+ * intake icons and its children laid out by sibling tier. One generic rule
+ * needs no state: an item that is the only drillable thing at its level
+ * renders pre-expanded (and cannot collapse) — the root always, an only
+ * child, an encounter leaf's run — so a single-competition event opens at
+ * its rounds without any special case.
  *
  * Everything domain-shaped — sizes (known or open-with-exemplars), side
- * names, seat-derived colors, roles, seed links — arrives precomputed in
- * the concrete structure. This file iterates it and places cards.
+ * names, seat-derived colors, roles, sibling tiers, seed links — arrives
+ * precomputed in the concrete structure. This file iterates it and places
+ * cards; intake edges target the most specific visible node.
  */
 
 export const flowCardDataSchema = z.object({
@@ -371,31 +375,218 @@ export function buildGraph(
   event: ConcreteEvent,
   expanded: ReadonlySet<string>,
 ): FlowGraph {
-  const force = event.stages.length === 1;
-  const stageItem = (stage: ConcreteEvent["stages"][number]): Sub =>
-    item(
-      `s:${stage.id}`,
-      stage.id,
-      card(stage.card.kind, stage.card.title, stage.card.lines, {
-        badge: stage.card.badge,
-        drill: true,
-      }),
-      () => stageSub(stage, `s:${stage.id}`, expanded),
-      expanded,
-      force,
-    );
+  const root = event.root;
+  // The root is the only item at its level: force-expanded, uncollapsible.
+  const rootItem = competitionItem(root, expanded, true);
+  const laid =
+    root.intakes.length === 0
+      ? rootItem
+      : row(
+          [
+            column(
+              root.intakes.map((intake) =>
+                iconItem(`in:${intake.id}`, intake.card, expanded),
+              ),
+              LANE_GAP,
+              "center",
+            ),
+            rootItem,
+          ],
+          GAP * 2,
+        );
 
-  // Tiers flow left to right; stages within a tier are independent of each
-  // other (the tour's five events) and stack vertically. The only edges are
-  // real seed flows — no implied order between independents.
-  const tierCount =
-    event.stages.reduce((max, stage) => Math.max(max, stage.tier), 0) + 1;
+  const visibility = collectVisibility(root, expanded);
+  // Where a flow out of a competition starts: its lane end when its own
+  // frame is open, its card when collapsed, the deepest visible ancestor
+  // when folded away inside one.
+  const sourceAnchor = (id: string): string | undefined => {
+    const spot = visibility.get(id);
+    if (spot === undefined) return undefined;
+    if (!spot.selfVisible) return spot.anchor;
+    if (!spot.selfExpanded) return `s:${id}`;
+    switch (spot.runKind) {
+      case "rounds":
+        return `s:${id}/out`;
+      case "encounter":
+        return `s:${id}/run`;
+      case "competitions":
+        return `s:${id}`;
+    }
+  };
+
+  // Intake edges target the most specific visible node: the intake icon and
+  // the leaf card/frame where rendered, else the deepest visible ancestor.
+  const edges: FlowGraphEdge[] = [...laid.edges];
+  const direct = new Set<string>();
+  const visitComp = (comp: ConcreteCompetition): void => {
+    const spot = visibility.get(comp.id);
+    for (const intake of spot === undefined ? [] : comp.intakes) {
+      if (spot?.selfVisible === true) {
+        intake.from.forEach((source, si) => {
+          const from = sourceAnchor(source);
+          if (from === undefined) return;
+          edges.push({
+            id: `seed:in:${intake.id}:${si}`,
+            source: from,
+            target: `in:${intake.id}`,
+            fromHandle: "r",
+            toHandle: "l",
+            kind: "seed",
+          });
+        });
+        edges.push({
+          id: `seed:in:${intake.id}->${comp.id}`,
+          source: `in:${intake.id}`,
+          target: `s:${comp.id}`,
+          label: intake.take,
+          fromHandle: "r",
+          toHandle: "l",
+          kind: "seed",
+        });
+        continue;
+      }
+      // The icon is folded away inside a collapsed ancestor: connect the
+      // sources straight to that ancestor, once per (source, target, label).
+      for (const source of intake.from) {
+        const from = sourceAnchor(source);
+        const to = spot?.anchor;
+        if (from === undefined || to === undefined || from === to) continue;
+        const key = `${from}|${to}|${intake.take ?? ""}`;
+        if (direct.has(key)) continue;
+        direct.add(key);
+        edges.push({
+          id: `seed:${key}`,
+          source: from,
+          target: to,
+          label: intake.take,
+          fromHandle: "r",
+          toHandle: "l",
+          kind: "seed",
+        });
+      }
+    }
+    if (comp.run.kind === "competitions") {
+      for (const child of comp.run.competitions) visitComp(child);
+    }
+  };
+  visitComp(root);
+
+  return {
+    nodes: laid.nodes,
+    edges,
+    expandables: laid.expandables,
+    collapsibles: laid.collapsibles,
+  };
+}
+
+type CompVisibility = {
+  /** This competition's own node id, or the deepest visible ancestor's. */
+  readonly anchor: string;
+  readonly selfVisible: boolean;
+  readonly selfExpanded: boolean;
+  readonly runKind: "rounds" | "encounter" | "competitions";
+};
+
+function collectVisibility(
+  root: ConcreteCompetition,
+  expanded: ReadonlySet<string>,
+): ReadonlyMap<string, CompVisibility> {
+  const info = new Map<string, CompVisibility>();
+  const walk = (
+    comp: ConcreteCompetition,
+    parentInteriorVisible: boolean,
+    anchorAbove: string,
+    forced: boolean,
+  ): void => {
+    const selfVisible = parentInteriorVisible;
+    const anchor = selfVisible ? `s:${comp.id}` : anchorAbove;
+    const selfExpanded = forced || expanded.has(`s:${comp.id}`);
+    info.set(comp.id, {
+      anchor,
+      selfVisible,
+      selfExpanded,
+      runKind: comp.run.kind,
+    });
+    if (comp.run.kind === "competitions") {
+      const interior = selfVisible && selfExpanded;
+      const onlyChild = comp.run.competitions.length === 1;
+      for (const child of comp.run.competitions) {
+        walk(child, interior, anchor, onlyChild);
+      }
+    }
+  };
+  walk(root, true, `s:${root.id}`, true);
+  return info;
+}
+
+/**
+ * THE recursive item: any competition, leaf or container, collapsed to its
+ * card or expanded in place to its body.
+ */
+function competitionItem(
+  comp: ConcreteCompetition,
+  expanded: ReadonlySet<string>,
+  force: boolean,
+): Sub {
+  const id = `s:${comp.id}`;
+  return item(
+    id,
+    comp.title,
+    card(comp.card.kind, comp.card.title, comp.card.lines, {
+      badge: comp.card.badge,
+      drill: true,
+    }),
+    () => competitionBody(comp, id, expanded),
+    expanded,
+    force,
+  );
+}
+
+/** What an expanded competition's frame contains. */
+function competitionBody(
+  comp: ConcreteCompetition,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
+  const run = comp.run;
+  switch (run.kind) {
+    case "competitions":
+      return containerBody(run.competitions, expanded);
+    case "rounds":
+      return poolLaneSub(run, pid, expanded);
+    case "encounter": {
+      const runId = `${pid}/run`;
+      // The run card is the only drillable thing at this level: forced.
+      return run.node.children.length > 0
+        ? item(
+            runId,
+            run.node.title,
+            nodeCard(run.node, undefined, { drill: true }),
+            () => childrenSub(run.node, runId, expanded),
+            expanded,
+            true,
+          )
+        : cardSub(runId, nodeCard(run.node, undefined, { drill: false }));
+    }
+  }
+}
+
+/**
+ * A container's interior: sibling tiers flow left to right; children within
+ * a tier are independent of each other (the tour's events) and stack
+ * vertically, their intake icons in a column just before them. The only
+ * edges are real seed flows — no implied order between independents.
+ */
+function containerBody(
+  children: readonly ConcreteCompetition[],
+  expanded: ReadonlySet<string>,
+): Sub {
+  const force = children.length === 1;
+  const tierCount = children.reduce((max, c) => Math.max(max, c.tier), 0) + 1;
   const columns: Sub[] = [];
   for (let tier = 0; tier < tierCount; tier += 1) {
-    const stages = event.stages.filter((stage) => stage.tier === tier);
-    // Participant sources sit just before the stage they feed:
-    // registration nodes, standings outputs, aggregations.
-    const intakes = stages.flatMap((stage) => stage.intakes);
+    const tierChildren = children.filter((child) => child.tier === tier);
+    const intakes = tierChildren.flatMap((child) => child.intakes);
     if (intakes.length > 0) {
       columns.push(
         column(
@@ -407,102 +598,42 @@ export function buildGraph(
         ),
       );
     }
-    columns.push(column(stages.map(stageItem), LANE_GAP, "center"));
+    columns.push(
+      column(
+        tierChildren.map((child) => competitionItem(child, expanded, force)),
+        LANE_GAP,
+        "center",
+      ),
+    );
   }
-  const laid = row(columns, GAP * 2);
-
-  const edges: FlowGraphEdge[] = [...laid.edges];
-  for (const stage of event.stages) {
-    // An open stage exposes its group lanes: intakes connect straight to
-    // the group they feed instead of the frame border.
-    const stageOpen = force || expanded.has(`s:${stage.id}`);
-    // An open SOURCE stage exposes its standings outputs: flows originate
-    // from the group's lane end instead of the frame border.
-    const sourceFor = (source: {
-      readonly stage: string;
-      readonly group: string;
-    }): string => {
-      if (!(force || expanded.has(`s:${source.stage}`))) {
-        return `s:${source.stage}`;
-      }
-      const sourceStage = event.stages.find((x) => x.id === source.stage);
-      const sourceGroup = sourceStage?.groups.find(
-        (g) => g.id === source.group,
-      );
-      if (sourceGroup === undefined) return `s:${source.stage}`;
-      return sourceGroup.run.kind === "encounter"
-        ? `s:${source.stage}/${source.group}/run`
-        : `s:${source.stage}/${source.group}/out`;
-    };
-    for (const group of stage.groups) {
-      for (const intake of group.intakes) {
-        intake.from.forEach((source, si) => {
-          edges.push({
-            id: `seed:in:${intake.id}:${si}`,
-            source: sourceFor(source),
-            target: `in:${intake.id}`,
-            fromHandle: "r",
-            toHandle: "l",
-            kind: "seed",
-          });
-        });
-        edges.push({
-          id: `seed:in:${intake.id}->${stage.id}/${group.id}`,
-          source: `in:${intake.id}`,
-          target: stageOpen ? `s:${stage.id}/${group.id}/hdr` : `s:${stage.id}`,
-          label: intake.take,
-          fromHandle: "r",
-          toHandle: "l",
-          kind: "seed",
-        });
-      }
-    }
-  }
-
-  return {
-    nodes: laid.nodes,
-    edges,
-    expandables: laid.expandables,
-    collapsibles: laid.collapsibles,
-  };
+  return row(columns, GAP * 2);
 }
 
-/** One stage: its groups as parallel lanes of round and process steps. */
-function stageSub(
-  stage: ConcreteStage,
+/** A pool leaf's lane: its schedule left-to-right (rounds, process icons). */
+function poolLaneSub(
+  run: ConcreteRoundsRun,
   pid: string,
   expanded: ReadonlySet<string>,
 ): Sub {
-  return column(
-    stage.groups.map((group) => laneSub(group, `${pid}/${group.id}`, expanded)),
-    LANE_GAP,
-  );
-}
-
-/** One group's lane: header, then its schedule left-to-right. */
-function laneSub(
-  group: ConcreteGroup,
-  pid: string,
-  expanded: ReadonlySet<string>,
-): Sub {
-  const items: Sub[] = [cardSub(`${pid}/hdr`, plainCard(group.header))];
+  const items: Sub[] = [];
   /** Bracket, cycle, and chain edges, built as the lane assembles. */
   const loops: FlowGraphEdge[] = [];
-  let prev = `${pid}/hdr`;
+  let prev: string | undefined;
   const connect = (to: string): void => {
-    loops.push({
-      id: `c:${prev}->${to}`,
-      source: prev,
-      target: to,
-      fromHandle: "r",
-      toHandle: "l",
-      kind: "chain",
-    });
+    if (prev !== undefined) {
+      loops.push({
+        id: `c:${prev}->${to}`,
+        source: prev,
+        target: to,
+        fromHandle: "r",
+        toHandle: "l",
+        kind: "chain",
+      });
+    }
     prev = to;
   };
 
-  if (group.run.kind === "rounds") {
-    const run = group.run;
+  {
     const rounds = manyList(run.rounds);
     const roundItem = (
       round: ConcreteRound,
@@ -689,21 +820,6 @@ function laneSub(
         }
       });
     }
-  } else {
-    const node = group.run.node;
-    const runId = `${pid}/run`;
-    items.push(
-      node.children.length > 0
-        ? item(
-            runId,
-            node.title,
-            nodeCard(node, undefined, { drill: true }),
-            () => childrenSub(node, runId, expanded),
-            expanded,
-          )
-        : cardSub(runId, nodeCard(node, undefined, { drill: false })),
-    );
-    connect(runId);
   }
 
   const laid = row(items, GAP);

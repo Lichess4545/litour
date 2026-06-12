@@ -13,7 +13,7 @@ import { chessRegistry, parseEventDef } from "@/chess/registry";
 import type { ParsedEventDef } from "@/tournament/registry";
 import { runEvent as runEventWith } from "./builder";
 import type { Input } from "./core";
-import { competitorId, groupRootPath, nodePathSchema, playerId } from "./core";
+import { competitorId, compRootPath, nodePathSchema, playerId } from "./core";
 import { materialize, proposePairings, withInput } from "./engine";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
@@ -29,7 +29,7 @@ describe("input validation", () => {
     const reasons = errorsOf(worldChampionship, [
       {
         kind: "gameResult",
-        game: path("stage-match/group-title/leg-1/leg-1"),
+        game: path("comp-title/leg-1/leg-1"),
         result: "1-0",
       },
     ]);
@@ -40,12 +40,12 @@ describe("input validation", () => {
     const reasons = errorsOf(worldChampionship, [
       {
         kind: "colorDraw",
-        node: path("stage-match/group-title/leg-1"),
+        node: path("comp-title/leg-1"),
         whiteSeat: 0,
       },
       {
         kind: "gameResult",
-        game: path("stage-match/group-title/leg-1/leg-2"),
+        game: path("comp-title/leg-1/leg-2"),
         result: "1-0",
       },
     ]);
@@ -53,7 +53,7 @@ describe("input validation", () => {
   });
 
   it("rejects pairing round 2 before round 1, and re-pairing a paired round", () => {
-    const pool = groupRootPath("main", "swiss");
+    const pool = compRootPath("swiss");
     const pairings: Extract<Input, { kind: "pairingsSet" }>["pairings"] = [
       {
         kind: "pair",
@@ -77,7 +77,7 @@ describe("input validation", () => {
   });
 
   it("rejects a bye when the pool has no bye rule", () => {
-    const pool = groupRootPath("main", "rr");
+    const pool = compRootPath("rr");
     const reasons = errorsOf(norwayChess, [
       {
         kind: "pairingsSet",
@@ -103,7 +103,7 @@ describe("input validation", () => {
       .game("Magnus", "Praggnanandhaa", "1/2-1/2"); // armageddon leg materializes
     const state = withInput(run.state(), {
       kind: "colorDraw",
-      node: path("stage-main/group-rr/round-1/pair-1/leg-2"),
+      node: path("comp-rr/round-1/pair-1/leg-2"),
       whiteSeat: 1,
     });
     expect(state.errors.map((e) => e.reason)).toEqual([
@@ -115,7 +115,7 @@ describe("input validation", () => {
     const reasons = errorsOf(armageddonShowdown, [
       {
         kind: "manualDecision",
-        node: groupRootPath("main", "duel"),
+        node: compRootPath("duel"),
         winner: 0,
       },
     ]);
@@ -146,7 +146,7 @@ describe("input validation", () => {
     const run = runEvent(lichess4545Season).pairRound();
     const state = withInput(run.state(), {
       kind: "gameResult",
-      game: path("stage-season/group-league/round-1/pair-1/board-1"),
+      game: path("comp-league/round-1/pair-1/board-1"),
       result: "1-0",
     });
     expect(state.errors.map((e) => e.reason)).toEqual([
@@ -157,7 +157,7 @@ describe("input validation", () => {
 
 describe("corrections (last write wins, everything re-derives)", () => {
   it("flips the armageddon winner when the result is corrected", () => {
-    const node = groupRootPath("main", "duel");
+    const node = compRootPath("duel");
     const run = runEvent(armageddonShowdown).game("Magnus", "Hikaru", "1-0");
     expect(run.winnerName()).toBe("Magnus");
     run.submit({ kind: "gameResult", game: node, result: "1/2-1/2" });
@@ -168,8 +168,8 @@ describe("corrections (last write wins, everything re-derives)", () => {
     const run = runEvent(norwayChess)
       .pairRound()
       .game("Magnus", "Praggnanandhaa", "1-0");
-    const classicalPath = path("stage-main/group-rr/round-1/pair-1/leg-1");
-    const armageddonPath = path("stage-main/group-rr/round-1/pair-1/leg-2");
+    const classicalPath = path("comp-rr/round-1/pair-1/leg-1");
+    const armageddonPath = path("comp-rr/round-1/pair-1/leg-2");
     expect(run.scheduled().map((g) => g.path)).not.toContain(armageddonPath);
 
     run.submit({ kind: "gameResult", game: classicalPath, result: "1/2-1/2" }); // correction
@@ -184,12 +184,12 @@ describe("audit trail", () => {
       [
         {
           kind: "manualDecision",
-          node: groupRootPath("main", "duel"),
+          node: compRootPath("duel"),
           winner: 0,
         },
         {
           kind: "gameResult",
-          game: groupRootPath("main", "duel"),
+          game: compRootPath("duel"),
           result: "1-0",
         },
       ],
@@ -208,7 +208,7 @@ describe("review-driven regressions", () => {
       .game("Ding", "Gukesh", "1-0");
     const state = withInput(run.state(), {
       kind: "colorDraw",
-      node: path("stage-match/group-title/leg-1"),
+      node: path("comp-title/leg-1"),
       whiteSeat: 1,
     });
     expect(state.errors.map((e) => e.reason)).toEqual([
@@ -237,7 +237,7 @@ describe("review-driven regressions", () => {
     expect(awaiting).toBeUndefined(); // already submitted
     const state = withInput(run.state(), {
       kind: "lineupSet",
-      match: path("stage-season/group-league/round-1/pair-1"),
+      match: path("comp-league/round-1/pair-1"),
       side: 0,
       players: ["kni4", "kni3", "kni2", "kni1"].map(playerId),
     });
@@ -254,33 +254,26 @@ describe("review-driven regressions", () => {
         id: name.toLowerCase(),
         name,
       })),
-      stages: [
-        {
-          id: "main",
-          groups: [
-            {
-              id: "ko",
-              entries: [1, 2, 3, 4].map((seed) => ({
-                kind: "registration",
-                seed,
-              })),
-              run: {
-                kind: "pool",
-                pairing: { system: "knockout", seeding: "manual" },
-                encounter: {
-                  kind: "game",
-                  clock: { initial: 300, increment: 2 },
-                  tie: { kind: "drawOdds", color: "black" },
-                },
-                score: { kind: "passThrough" },
-                tiebreaks: [],
-              },
-            },
-          ],
+      competition: {
+        id: "ko",
+        entries: [1, 2, 3, 4].map((seed) => ({
+          kind: "registration",
+          seed,
+        })),
+        run: {
+          kind: "pool",
+          pairing: { system: "knockout", seeding: "manual" },
+          encounter: {
+            kind: "game",
+            clock: { initial: 300, increment: 2 },
+            tie: { kind: "drawOdds", color: "black" },
+          },
+          score: { kind: "passThrough" },
+          tiebreaks: [],
         },
-      ],
+      },
     });
-    const ko = groupRootPath("main", "ko");
+    const ko = compRootPath("ko");
     const run = runEvent(def)
       .submit({
         kind: "pairingsSet",
@@ -307,9 +300,9 @@ describe("review-driven regressions", () => {
 
   it("surfaces knockout pairings orphaned by a correction in their seeding source", () => {
     const run = runEvent(miniChampionship);
-    const a = groupRootPath("groups", "a");
-    const b = groupRootPath("groups", "b");
-    const ko = groupRootPath("finals", "ko");
+    const a = compRootPath("a");
+    const b = compRootPath("b");
+    const ko = compRootPath("ko");
     run.pairRound(a).game("David", "Elena", "1-0");
     run.pairRound(a).game("Anna", "David", "1-0");
     run.pairRound(a).game("Elena", "Anna", "0-1");
@@ -321,7 +314,7 @@ describe("review-driven regressions", () => {
     // Correction: Elena actually beat David in round 1 — she overtakes him.
     const corrected = withInput(run.state(), {
       kind: "gameResult",
-      game: path("stage-groups/group-a/round-1/pair-2"),
+      game: path("comp-a/round-1/pair-2"),
       result: "0-1",
     });
     expect(corrected.errors.map((e) => e.reason)).toEqual([
@@ -338,7 +331,7 @@ describe("review-driven regressions", () => {
     run.lineup("Anvils", ["anv1", "anv2"]);
     run.game("anv1", "ham1", "1/2-1/2").game("anv2", "ham2", "1/2-1/2");
 
-    expect(run.outcome(groupRootPath("match", "tie")).decision).toEqual({
+    expect(run.outcome(compRootPath("tie")).decision).toEqual({
       kind: "draw",
     });
     expect(run.actions()).toContainEqual({

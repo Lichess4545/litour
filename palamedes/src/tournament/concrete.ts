@@ -1,11 +1,13 @@
 import {
   type AnyEncounterDef,
+  type CompetitionDef,
   isOpenEntries,
   type PoolDef,
   type SeedRef,
 } from "./core";
 import {
   type Arrangement,
+  isContainer,
   isPool,
   type ModelRegistry,
   type PairFlow,
@@ -131,56 +133,55 @@ export type ConcreteRoundsRun = {
   readonly final: ConcreteProcess;
 };
 
-export type ConcreteRun =
-  | ConcreteRoundsRun
-  | { readonly kind: "encounter"; readonly node: ConcreteNode };
-
 /**
- * Where a group's participants come from. Every group that needs entrants
+ * Where a leaf's participants come from. Every leaf that needs entrants
  * starts from a generator node — composability forces it: a registration
- * process, a previous group's standings output, or an aggregation across
- * several (the tour) — with optional processing on the way in ("top 8").
+ * process, a source competition's standings output, or an aggregation
+ * across several (the tour) — with optional processing on the way in
+ * ("top 8").
  */
 export type ConcreteIntake = {
   readonly id: string;
   /** The participant-generating node (registration, standings, aggregation). */
   readonly card: ConcreteCard;
-  /** Upstream groups feeding the generator (empty for registration). */
-  readonly from: readonly {
-    readonly stage: string;
-    readonly group: string;
-  }[];
+  /** Upstream competition ids feeding the generator (empty for registration). */
+  readonly from: readonly string[];
   /** Processing on the way in ("top 8", "winner", "#2"); undefined = all. */
   readonly take: string | undefined;
 };
 
-export type ConcreteGroup = {
+export type ConcreteRun =
+  | ConcreteRoundsRun
+  | { readonly kind: "encounter"; readonly node: ConcreteNode }
+  | {
+      readonly kind: "competitions";
+      readonly competitions: readonly ConcreteCompetition[];
+    };
+
+/**
+ * One competition, concretified — the recursion as explicit data. A leaf
+ * carries its field and its schedule; a container carries its children,
+ * each tiered among its SIBLINGS by intake dependency (a child whose
+ * subtree draws on a sibling's subtree sits one tier past it; sources
+ * outside the container tier the container itself at the parent's level,
+ * recursively).
+ */
+export type ConcreteCompetition = {
   readonly id: string;
-  readonly entrants: number | "open";
-  /** The lane's header card (entrants, scoring, schedule badge, inflows). */
-  readonly header: ConcreteCard;
-  /** The participant sources feeding this group. */
+  readonly title: string;
+  /** Field size; undefined for containers (their children intake their own). */
+  readonly entrants: number | "open" | undefined;
+  /** Its face at the parent's level. */
+  readonly card: ConcreteCard;
+  /** The participant sources feeding this leaf (empty for containers). */
   readonly intakes: readonly ConcreteIntake[];
+  /** Dependency depth among siblings; 0 = depends on no sibling. */
+  readonly tier: number;
   readonly run: ConcreteRun;
 };
 
-export type ConcreteStage = {
-  readonly id: string;
-  /** The stage's own card at the event level. */
-  readonly card: ConcreteCard;
-  /** Every participant source feeding this stage's groups. */
-  readonly intakes: readonly ConcreteIntake[];
-  /**
-   * Depth in the seed-flow graph: 0 = depends on nothing. Stages sharing a
-   * tier are independent of each other — the five tour events run
-   * concurrently; only what seeds from them comes later.
-   */
-  readonly tier: number;
-  readonly groups: readonly ConcreteGroup[];
-};
-
 export type ConcreteEvent = {
-  readonly stages: readonly ConcreteStage[];
+  readonly root: ConcreteCompetition;
 };
 
 /** Illustrative members shown before the faded "… n" when a size is open. */
@@ -255,11 +256,12 @@ function concretifyNode(
   };
 }
 
-/** A best-effort display name for one seed entry of a two-sided group. */
+/** A best-effort display name for one seed entry of a two-sided leaf. */
 function entryName(
   entry: SeedRef,
   def: ParsedEventDef,
   registry: ModelRegistry,
+  nameOf: (id: string) => string,
 ): string {
   const seedKind = registry.seeds.get(entry.kind);
   const id = seedKind?.resolve(entry, {
@@ -272,8 +274,8 @@ function entryName(
   const [origin] = seedKind?.origins?.(entry) ?? [];
   if (origin !== undefined) {
     return origin.rank === undefined
-      ? `from ${origin.group}`
-      : `${origin.group} #${origin.rank}`;
+      ? `from ${nameOf(origin.of)}`
+      : `${nameOf(origin.of)} #${origin.rank}`;
   }
   return "TBD";
 }
@@ -378,234 +380,282 @@ function concretifyPool(
   };
 }
 
+/** Every leaf id in a concrete competition's subtree (the ids seeds reference). */
+function subtreeLeafIds(comp: ConcreteCompetition, into: Set<string>): void {
+  if (comp.run.kind === "competitions") {
+    for (const child of comp.run.competitions) subtreeLeafIds(child, into);
+    return;
+  }
+  into.add(comp.id);
+}
+
+/** Every source id any leaf in the subtree draws entrants from. */
+function subtreeSources(comp: ConcreteCompetition, into: Set<string>): void {
+  if (comp.run.kind === "competitions") {
+    for (const child of comp.run.competitions) subtreeSources(child, into);
+    return;
+  }
+  for (const intake of comp.intakes) {
+    for (const source of intake.from) into.add(source);
+  }
+}
+
+/**
+ * Tier a container's children among themselves: a child whose subtree draws
+ * on a sibling's subtree sits one tier past that sibling; sources outside
+ * the container don't tier here — they bubble up and tier the container at
+ * its own parent's level. Bounded relaxation, so a sibling-level cycle
+ * (legal when the leaf-level intake graph is still acyclic) terminates.
+ */
+function withSiblingTiers(
+  children: readonly ConcreteCompetition[],
+): readonly ConcreteCompetition[] {
+  const leafSets = children.map((child) => {
+    const ids = new Set<string>();
+    subtreeLeafIds(child, ids);
+    return ids;
+  });
+  const externalSources = children.map((child, i) => {
+    const sources = new Set<string>();
+    subtreeSources(child, sources);
+    return [...sources].filter(
+      (source) => !(leafSets[i]?.has(source) ?? false),
+    );
+  });
+  const tiers = children.map(() => 0);
+  for (let pass = 0; pass < children.length; pass += 1) {
+    let changed = false;
+    children.forEach((_, i) => {
+      for (const source of externalSources[i] ?? []) {
+        const j = leafSets.findIndex((set) => set.has(source));
+        if (j < 0 || j === i) continue;
+        const lifted = (tiers[j] ?? 0) + 1;
+        if (lifted > (tiers[i] ?? 0)) {
+          tiers[i] = lifted;
+          changed = true;
+        }
+      }
+    });
+    if (!changed) break;
+  }
+  return children.map((child, i) => ({ ...child, tier: tiers[i] ?? 0 }));
+}
+
+function concretifyLeaf(
+  comp: CompetitionDef,
+  run: PoolDef | AnyEncounterDef,
+  def: ParsedEventDef,
+  registry: ModelRegistry,
+  nameOf: (id: string) => string,
+): ConcreteCompetition {
+  const entries = comp.entries ?? { open: true };
+  const open = isOpenEntries(entries);
+  const entrants = open ? ("open" as const) : entries.length;
+  const entrantsLine = open ? "open entry" : `${entrants} entrants`;
+
+  // Every leaf's participants come from generator nodes: open or
+  // origin-less seeds are a registration process; single-origin seeds are a
+  // source competition's standings output (with "top N" processing);
+  // multi-origin seeds aggregate several standings (the tour).
+  const bySource = new Map<string, { ranks: (number | undefined)[] }>();
+  const aggregations = new Map<
+    string,
+    { card: ConcreteCard; from: readonly string[]; count: number }
+  >();
+  let registered = 0;
+  if (!open) {
+    for (const entry of entries) {
+      const seedKind = registry.seeds.get(entry.kind);
+      const all = seedKind?.origins?.(entry) ?? [];
+      if (all.length === 0) {
+        registered += 1;
+        continue;
+      }
+      if (all.length > 1) {
+        const key = `${entry.kind}|${all.map((o) => o.of).join(",")}`;
+        const info = seedKind?.card?.(entry);
+        const acc = aggregations.get(key) ?? {
+          card: {
+            kind: "standings",
+            title: info?.title ?? "Standings",
+            badge: info?.badge,
+            lines: info?.lines ?? [],
+          },
+          from: all.map((o) => o.of),
+          count: 0,
+        };
+        acc.count += 1;
+        aggregations.set(key, acc);
+        continue;
+      }
+      for (const origin of all) {
+        const links = bySource.get(origin.of) ?? { ranks: [] };
+        links.ranks.push(origin.rank);
+        bySource.set(origin.of, links);
+      }
+    }
+  }
+
+  const intakes: ConcreteIntake[] = [];
+  if (open || registered > 0) {
+    intakes.push({
+      id: `${comp.id}-reg`,
+      card: {
+        kind: "registration",
+        title: "Registration",
+        badge: undefined,
+        lines: [entrantsLine],
+      },
+      from: [],
+      take: undefined,
+    });
+  }
+  for (const [sourceId, source] of bySource) {
+    const sorted = source.ranks.flatMap((r) => (r === undefined ? [] : [r]));
+    sorted.sort((x, y) => x - y);
+    const [only] = source.ranks;
+    const topN =
+      sorted.length === source.ranks.length &&
+      sorted.every((rank, i) => rank === i + 1);
+    intakes.push({
+      id: `${comp.id}-std-${sourceId}`,
+      card: {
+        kind: "standings",
+        title: `${nameOf(sourceId)} standings`,
+        badge: undefined,
+        lines: [],
+      },
+      from: [sourceId],
+      take:
+        source.ranks.length === 1
+          ? only === 1
+            ? "winner"
+            : only !== undefined
+              ? `#${only}`
+              : undefined
+          : topN
+            ? `top ${source.ranks.length}`
+            : `${source.ranks.length} seeds`,
+    });
+  }
+  [...aggregations.values()].forEach((acc, i) => {
+    intakes.push({
+      id: `${comp.id}-agg${i + 1}`,
+      card: acc.card,
+      from: acc.from,
+      take: `top ${acc.count}`,
+    });
+  });
+
+  const inflowLines = intakes
+    .filter((intake) => intake.from.length > 0)
+    .map((intake) => `${intake.take ?? "all"} of ${intake.card.title}`);
+  const title = comp.name ?? comp.id;
+
+  if (isPool(run)) {
+    const concrete = concretifyPool(run, entrants, registry);
+    const roundsLabel = concrete.rounds.open
+      ? "n"
+      : String(concrete.rounds.items.length);
+    return {
+      id: comp.id,
+      title,
+      entrants,
+      card: {
+        kind: "competition",
+        title,
+        badge: `${concrete.system} · ${roundsLabel} rounds`,
+        lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
+      },
+      intakes,
+      tier: 0,
+      run: concrete,
+    };
+  }
+
+  const [first, second] = open ? [] : entries;
+  const sides: SideNames =
+    first === undefined || second === undefined
+      ? EXEMPLAR_SIDES
+      : {
+          a: entryName(first, def, registry, nameOf),
+          b: entryName(second, def, registry, nameOf),
+          white: 0,
+        };
+  return {
+    id: comp.id,
+    title,
+    entrants,
+    card: {
+      kind: "competition",
+      title,
+      badge: undefined,
+      lines: [entrantsLine, ...inflowLines],
+    },
+    intakes,
+    tier: 0,
+    run: {
+      kind: "encounter",
+      node: concretifyNode(run, { sides, drawn: false }, registry),
+    },
+  };
+}
+
+function concretifyCompetition(
+  comp: CompetitionDef,
+  def: ParsedEventDef,
+  registry: ModelRegistry,
+  nameOf: (id: string) => string,
+): ConcreteCompetition {
+  const run = comp.run;
+  if (!isContainer(run)) {
+    return concretifyLeaf(comp, run, def, registry, nameOf);
+  }
+  const children = withSiblingTiers(
+    run.competitions.map((child) =>
+      concretifyCompetition(child, def, registry, nameOf),
+    ),
+  );
+  const title = comp.name ?? comp.id;
+  return {
+    id: comp.id,
+    title,
+    entrants: undefined,
+    card: {
+      kind: "competitions",
+      title,
+      badge: `${children.length} competitions`,
+      lines: children.map((child) => {
+        const size =
+          child.entrants === undefined
+            ? `${child.run.kind === "competitions" ? child.run.competitions.length : 0} competitions`
+            : child.entrants === "open"
+              ? "open entry"
+              : `${child.entrants} entrants`;
+        return `${child.id} · ${size}`;
+      }),
+    },
+    intakes: [],
+    tier: 0,
+    run: { kind: "competitions", competitions: children },
+  };
+}
+
 /** Expand a definition into the concrete structure of how it works. */
 export function concretify(
   def: ParsedEventDef,
   registry: ModelRegistry,
 ): ConcreteEvent {
-  const built: readonly Omit<ConcreteStage, "tier">[] = def.stages.map(
-    (stage): Omit<ConcreteStage, "tier"> => {
-      const groups = stage.groups.map((group): ConcreteGroup => {
-        const open = isOpenEntries(group.entries);
-        const entrants = open ? ("open" as const) : group.entries.length;
-        const entrantsLine = open ? "open entry" : `${entrants} entrants`;
-
-        // Every group's participants come from generator nodes: open or
-        // origin-less seeds are a registration process; single-origin seeds
-        // are a source group's standings output (with "top N" processing);
-        // multi-origin seeds aggregate several standings (the tour).
-        const bySource = new Map<
-          string,
-          { stage: string; group: string; ranks: (number | undefined)[] }
-        >();
-        const aggregations = new Map<
-          string,
-          {
-            card: ConcreteCard;
-            from: readonly { stage: string; group: string }[];
-            count: number;
-          }
-        >();
-        let registered = 0;
-        if (!open) {
-          for (const entry of group.entries) {
-            const seedKind = registry.seeds.get(entry.kind);
-            const all = seedKind?.origins?.(entry) ?? [];
-            if (all.length === 0) {
-              registered += 1;
-              continue;
-            }
-            if (all.length > 1) {
-              const key = `${entry.kind}|${all
-                .map((o) => `${o.stage}/${o.group}`)
-                .join(",")}`;
-              const info = seedKind?.card?.(entry);
-              const acc = aggregations.get(key) ?? {
-                card: {
-                  kind: "standings",
-                  title: info?.title ?? "Standings",
-                  badge: info?.badge,
-                  lines: info?.lines ?? [],
-                },
-                from: all.map((o) => ({ stage: o.stage, group: o.group })),
-                count: 0,
-              };
-              acc.count += 1;
-              aggregations.set(key, acc);
-              continue;
-            }
-            for (const origin of all) {
-              const sourceKey = `${origin.stage}/${origin.group}`;
-              const links = bySource.get(sourceKey) ?? {
-                stage: origin.stage,
-                group: origin.group,
-                ranks: [],
-              };
-              links.ranks.push(origin.rank);
-              bySource.set(sourceKey, links);
-            }
-          }
-        }
-
-        // Name a source by its group — or by its stage when several
-        // sources share a group id (the tour's five "field" groups).
-        const groupUses = new Map<string, number>();
-        for (const source of bySource.values()) {
-          groupUses.set(source.group, (groupUses.get(source.group) ?? 0) + 1);
-        }
-        const sourceName = (source: {
-          stage: string;
-          group: string;
-        }): string => {
-          const sourceStage = def.stages.find((x) => x.id === source.stage);
-          if ((groupUses.get(source.group) ?? 0) > 1) {
-            return sourceStage?.name ?? source.stage;
-          }
-          const sourceGroup = sourceStage?.groups.find(
-            (g) => g.id === source.group,
-          );
-          return sourceGroup?.name ?? source.group;
-        };
-
-        const intakes: ConcreteIntake[] = [];
-        if (open || registered > 0) {
-          intakes.push({
-            id: `${stage.id}-${group.id}-reg`,
-            card: {
-              kind: "registration",
-              title: "Registration",
-              badge: undefined,
-              lines: [entrantsLine],
-            },
-            from: [],
-            take: undefined,
-          });
-        }
-        for (const source of bySource.values()) {
-          const sorted = source.ranks.flatMap((r) =>
-            r === undefined ? [] : [r],
-          );
-          sorted.sort((x, y) => x - y);
-          const [only] = source.ranks;
-          const topN =
-            sorted.length === source.ranks.length &&
-            sorted.every((rank, i) => rank === i + 1);
-          intakes.push({
-            id: `${stage.id}-${group.id}-std-${source.stage}-${source.group}`,
-            card: {
-              kind: "standings",
-              title: `${sourceName(source)} standings`,
-              badge: undefined,
-              lines: [],
-            },
-            from: [{ stage: source.stage, group: source.group }],
-            take:
-              source.ranks.length === 1
-                ? only === 1
-                  ? "winner"
-                  : only !== undefined
-                    ? `#${only}`
-                    : undefined
-                : topN
-                  ? `top ${source.ranks.length}`
-                  : `${source.ranks.length} seeds`,
-          });
-        }
-        [...aggregations.values()].forEach((acc, i) => {
-          intakes.push({
-            id: `${stage.id}-${group.id}-agg${i + 1}`,
-            card: acc.card,
-            from: acc.from,
-            take: `top ${acc.count}`,
-          });
-        });
-
-        const inflowLines = intakes
-          .filter((intake) => intake.from.length > 0)
-          .map((intake) => `${intake.take ?? "all"} of ${intake.card.title}`);
-        const run = group.run;
-        if (isPool(run)) {
-          const concrete = concretifyPool(run, entrants, registry);
-          const roundsLabel = concrete.rounds.open
-            ? "n"
-            : String(concrete.rounds.items.length);
-          return {
-            id: group.id,
-            entrants,
-            header: {
-              kind: "group",
-              title: group.name ?? group.id,
-              badge: `${concrete.system} · ${roundsLabel} rounds`,
-              lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
-            },
-            intakes,
-            run: concrete,
-          };
-        }
-        const [first, second] = open ? [] : group.entries;
-        const sides: SideNames =
-          first === undefined || second === undefined
-            ? EXEMPLAR_SIDES
-            : {
-                a: entryName(first, def, registry),
-                b: entryName(second, def, registry),
-                white: 0,
-              };
-        return {
-          id: group.id,
-          entrants,
-          header: {
-            kind: "group",
-            title: group.name ?? group.id,
-            badge: undefined,
-            lines: [entrantsLine, ...inflowLines],
-          },
-          intakes,
-          run: {
-            kind: "encounter",
-            node: concretifyNode(run, { sides, drawn: false }, registry),
-          },
-        };
-      });
-
-      return {
-        id: stage.id,
-        intakes: groups.flatMap((group) => group.intakes),
-        card: {
-          kind: "stage",
-          title: stage.name ?? stage.id,
-          badge: groups.length > 1 ? `${groups.length} groups` : undefined,
-          lines: groups.map(
-            (group) =>
-              `${group.id} · ${
-                group.entrants === "open"
-                  ? "open entry"
-                  : `${group.entrants} entrants`
-              }`,
-          ),
-        },
-        groups,
-      };
-    },
-  );
-
-  // Dependency depth: a stage sits one tier past the deepest stage it seeds
-  // from; no inflows means tier 0. Sources always precede (validated).
-  const tierOf = new Map<string, number>();
-  for (const stage of built) {
-    const inflows = stage.intakes.flatMap((intake) =>
-      intake.from.map((source) => source.stage),
-    );
-    const tier = inflows.reduce(
-      (max, source) => Math.max(max, (tierOf.get(source) ?? 0) + 1),
-      0,
-    );
-    tierOf.set(stage.id, tier);
-  }
+  const names = new Map<string, string>();
+  const collect = (comp: CompetitionDef): void => {
+    names.set(comp.id, comp.name ?? comp.id);
+    if (isContainer(comp.run)) {
+      for (const child of comp.run.competitions) collect(child);
+    }
+  };
+  collect(def.competition);
+  const nameOf = (id: string): string => names.get(id) ?? id;
   return {
-    stages: built.map((stage) => ({
-      ...stage,
-      tier: tierOf.get(stage.id) ?? 0,
-    })),
+    root: concretifyCompetition(def.competition, def, registry, nameOf),
   };
 }

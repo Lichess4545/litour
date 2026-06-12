@@ -4,7 +4,7 @@ import { norwayChess, olympiad } from "@/chess/formats";
 import { chessRegistry, parseEventDef } from "@/chess/registry";
 import type { ParsedEventDef } from "@/tournament/registry";
 import { expectStandings, runEvent as runEventWith } from "./builder";
-import { groupRootPath, pairPath } from "./core";
+import { compRootPath, pairPath } from "./core";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
   runEventWith(def, chessRegistry);
@@ -21,7 +21,7 @@ describe("encounterForfeit", () => {
       ["India", "USA"],
       ["China", "Uzbekistan"],
     ]);
-    const pair = pairPath(groupRootPath("main", "swiss"), 1, 1);
+    const pair = pairPath(compRootPath("swiss"), 1, 1);
     run.submit({ kind: "encounterForfeit", node: pair, winner: 0 });
 
     expect(run.outcome(pair).decision).toMatchObject({
@@ -45,7 +45,7 @@ describe("encounterForfeit", () => {
     const run = runEvent(norwayChess).pairRound();
     run.submit({
       kind: "encounterForfeit",
-      node: pairPath(groupRootPath("main", "rr"), 1, 1),
+      node: pairPath(compRootPath("rr"), 1, 1),
       winner: 0,
     });
     expectStandings(run).competitor("Magnus").points(3);
@@ -61,31 +61,24 @@ const duelPool = (): ParsedEventDef =>
       { id: "a", name: "Ann" },
       { id: "b", name: "Ben" },
     ],
-    stages: [
-      {
-        id: "main",
-        groups: [
-          {
-            id: "p",
-            entries: [
-              { kind: "registration", seed: 1 },
-              { kind: "registration", seed: 2 },
-            ],
-            run: {
-              kind: "pool",
-              pairing: { system: "manual" },
-              rounds: 2,
-              encounter: {
-                kind: "game",
-                clock: { initial: 300, increment: 2 },
-              },
-              score: { kind: "table", draw: 1, legs: [{ win: 2, loss: 0 }] },
-              tiebreaks: [],
-            },
-          },
-        ],
+    competition: {
+      id: "p",
+      entries: [
+        { kind: "registration", seed: 1 },
+        { kind: "registration", seed: 2 },
+      ],
+      run: {
+        kind: "pool",
+        pairing: { system: "manual" },
+        rounds: 2,
+        encounter: {
+          kind: "game",
+          clock: { initial: 300, increment: 2 },
+        },
+        score: { kind: "table", draw: 1, legs: [{ win: 2, loss: 0 }] },
+        tiebreaks: [],
       },
-    ],
+    },
   });
 
 describe("forfeit-shaped results under match points", () => {
@@ -117,30 +110,23 @@ const rrWithTiebreaks = (
       id: name.toLowerCase(),
       name,
     })),
-    stages: [
-      {
-        id: "main",
-        groups: [
-          {
-            id: "rr",
-            entries: [1, 2, 3, 4].map((seed) => ({
-              kind: "registration",
-              seed,
-            })),
-            run: {
-              kind: "pool",
-              pairing: { system: "roundRobin", cycles: 1 },
-              encounter: {
-                kind: "game",
-                clock: { initial: 300, increment: 2 },
-              },
-              score: { kind: "passThrough" },
-              tiebreaks,
-            },
-          },
-        ],
+    competition: {
+      id: "rr",
+      entries: [1, 2, 3, 4].map((seed) => ({
+        kind: "registration",
+        seed,
+      })),
+      run: {
+        kind: "pool",
+        pairing: { system: "roundRobin", cycles: 1 },
+        encounter: {
+          kind: "game",
+          clock: { initial: 300, increment: 2 },
+        },
+        score: { kind: "passThrough" },
+        tiebreaks,
       },
-    ],
+    },
   });
 
 describe("head-to-head", () => {
@@ -190,32 +176,25 @@ describe("buchholz cut", () => {
         id: name.toLowerCase(),
         name,
       })),
-      stages: [
-        {
-          id: "main",
-          groups: [
-            {
-              id: "swiss",
-              entries: [1, 2, 3, 4, 5].map((seed) => ({
-                kind: "registration",
-                seed,
-              })),
-              run: {
-                kind: "pool",
-                pairing: { system: "swiss" },
-                rounds: 3,
-                encounter: {
-                  kind: "game",
-                  clock: { initial: 300, increment: 2 },
-                },
-                score: { kind: "passThrough" },
-                bye: { kind: "points", standings: 1, encounter: 1 },
-                tiebreaks: [{ metric: "buchholz", cut: 1 }],
-              },
-            },
-          ],
+      competition: {
+        id: "swiss",
+        entries: [1, 2, 3, 4, 5].map((seed) => ({
+          kind: "registration",
+          seed,
+        })),
+        run: {
+          kind: "pool",
+          pairing: { system: "swiss" },
+          rounds: 3,
+          encounter: {
+            kind: "game",
+            clock: { initial: 300, increment: 2 },
+          },
+          score: { kind: "passThrough" },
+          bye: { kind: "points", standings: 1, encounter: 1 },
+          tiebreaks: [{ metric: "buchholz", cut: 1 }],
         },
-      ],
+      },
     });
     // The LoneWolf script with pinned pairings.
     const run = runEvent(def)

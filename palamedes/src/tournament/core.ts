@@ -10,7 +10,7 @@ import { z } from "zod";
  * - the seat algebra (how the white-ish seat flows to children);
  * - the input/work vocabulary — the wire protocol between the engine and
  *   the host (game results in, games-to-create out);
- * - the Event → stages → groups → Pool spine, the one non-recursive layer.
+ * - the event spine: ONE recursive competition node, all the way down.
  */
 
 // ---------------------------------------------------------------------------
@@ -41,16 +41,18 @@ export const otherSide = (side: Side): Side => (side === 0 ? 1 : 0);
 // ---------------------------------------------------------------------------
 // Node paths
 //
-// `stage-<id>/group-<id>` roots a group; `/round-<n>/pair-<n>` addresses a
-// pool pairing; below that, encounter kinds mint their own child segments
-// (`leg-2`, `board-1`, anything `<label>-<n>`).
+// `comp-<id>` roots a leaf competition — competition ids are globally unique
+// within an event, so addressing is flat and containers never appear in
+// paths; `/round-<n>/pair-<n>` addresses a pool pairing; below that,
+// encounter kinds mint their own child segments (`leg-2`, `board-1`,
+// anything `<label>-<n>`).
 
 const PATH_ID = "[a-z0-9][a-z0-9-]*";
 const PATH_N = "[1-9][0-9]*";
 // Child segment labels are kind-chosen but may not shadow the spine's own.
-const CHILD_LABEL = "(?!(?:stage|group|round|pair)-)[a-z]+";
+const CHILD_LABEL = "(?!(?:comp|round|pair)-)[a-z]+";
 const NODE_PATH_REGEX = new RegExp(
-  `^stage-${PATH_ID}/group-${PATH_ID}(?:/round-${PATH_N}(?:/pair-${PATH_N})?)?(?:/${CHILD_LABEL}-${PATH_N})*$`,
+  `^comp-${PATH_ID}(?:/round-${PATH_N}(?:/pair-${PATH_N})?)?(?:/${CHILD_LABEL}-${PATH_N})*$`,
 );
 
 export const nodePathSchema = z
@@ -60,17 +62,15 @@ export const nodePathSchema = z
 export type NodePath = z.infer<typeof nodePathSchema>;
 
 export type PathSegment =
-  | { readonly kind: "stage"; readonly id: string }
-  | { readonly kind: "group"; readonly id: string }
+  | { readonly kind: "comp"; readonly id: string }
   | { readonly kind: "round"; readonly n: number }
   | { readonly kind: "pair"; readonly n: number }
   | { readonly kind: "child"; readonly label: string; readonly n: number };
 
 const segmentToString = (segment: PathSegment): string => {
   switch (segment.kind) {
-    case "stage":
-    case "group":
-      return `${segment.kind}-${segment.id}`;
+    case "comp":
+      return `comp-${segment.id}`;
     case "round":
     case "pair":
       return `${segment.kind}-${segment.n}`;
@@ -85,11 +85,8 @@ export const nodePath = (segments: readonly PathSegment[]): NodePath =>
 export const appendPath = (parent: NodePath, segment: PathSegment): NodePath =>
   nodePathSchema.parse(`${parent}/${segmentToString(segment)}`);
 
-export const groupRootPath = (stageId: string, groupId: string): NodePath =>
-  nodePath([
-    { kind: "stage", id: stageId },
-    { kind: "group", id: groupId },
-  ]);
+export const compRootPath = (competitionId: string): NodePath =>
+  nodePath([{ kind: "comp", id: competitionId }]);
 
 /** Address of pairing `pair` (1-based) of round `round` within a pool. */
 export const pairPath = (
@@ -111,8 +108,7 @@ export function pathSegments(path: NodePath): readonly PathSegment[] {
     const dash = raw.indexOf("-");
     const label = raw.slice(0, dash);
     const rest = raw.slice(dash + 1);
-    if (label === "stage" || label === "group")
-      return { kind: label, id: rest };
+    if (label === "comp") return { kind: "comp", id: rest };
     const n = Number.parseInt(rest, 10);
     if (label === "round" || label === "pair") return { kind: label, n };
     return { kind: "child", label, n };
@@ -366,7 +362,7 @@ export type Slot = {
 };
 
 // ---------------------------------------------------------------------------
-// The event spine — the only non-recursive structure
+// The event spine — one recursive node
 
 /** An encounter def is its kind name plus a kind-owned payload. */
 export type AnyEncounterDef = { readonly kind: string } & Record<
@@ -408,11 +404,17 @@ export type PoolDef = {
     | undefined;
 };
 
-export type RunDef = PoolDef | AnyEncounterDef;
+/** A container's run: sub-competitions, recursively. */
+export type CompetitionsDef = {
+  readonly kind: "competitions";
+  readonly competitions: readonly CompetitionDef[];
+};
+
+export type RunDef = PoolDef | AnyEncounterDef | CompetitionsDef;
 
 /**
- * A group either knows its field (a seed list) or is open: entrants arrive
- * by registration, so the definition cannot assume a count. Open groups stay
+ * A leaf's field is either known (a seed list) or open: entrants arrive by
+ * registration, so the definition cannot assume a count. Open leaves stay
  * unresolved (no pairings, no standings) until entries are bound.
  */
 export type OpenEntries = { readonly open: true };
@@ -421,19 +423,20 @@ export type EntriesDef = readonly SeedRef[] | OpenEntries;
 export const isOpenEntries = (entries: EntriesDef): entries is OpenEntries =>
   !Array.isArray(entries);
 
-export type GroupDef = {
+/**
+ * THE spine node. A "leaf" runs a pool or an encounter and intakes its own
+ * entrants; a "container" runs sub-competitions and intakes nothing. Same
+ * attributes at every level, so a whole tournament drops into another
+ * tournament unchanged. Ids are globally unique within an event — flat
+ * addressing; containers never appear in node paths.
+ */
+export type CompetitionDef = {
   readonly id: string;
   /** Display name; the id stays the structural key. */
   readonly name?: string | undefined;
-  readonly entries: EntriesDef;
+  /** Intake; REQUIRED on leaves, FORBIDDEN on containers. */
+  readonly entries?: EntriesDef | undefined;
   readonly run: RunDef;
-};
-
-export type StageDef = {
-  readonly id: string;
-  /** Display name; the id stays the structural key. */
-  readonly name?: string | undefined;
-  readonly groups: readonly GroupDef[];
 };
 
 export type CompetitorDef = {
@@ -447,7 +450,8 @@ export type EventDef = {
   readonly id: string;
   readonly name: string;
   readonly competitors: readonly CompetitorDef[];
-  readonly stages: readonly StageDef[];
+  /** The root (usually a container). */
+  readonly competition: CompetitionDef;
 };
 
 // Quarter-point granularity: decisions compare point sums exactly, so
