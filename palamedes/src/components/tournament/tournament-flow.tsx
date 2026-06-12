@@ -70,10 +70,41 @@ function SideChips({ white, black }: { white: string; black: string }) {
   );
 }
 
+/** All four hookups, addressable per edge: in from left/top, out right/bottom. */
+function CardHandles() {
+  return (
+    <>
+      <Handle
+        type="target"
+        id="l"
+        position={Position.Left}
+        className="!bg-border"
+      />
+      <Handle
+        type="target"
+        id="t"
+        position={Position.Top}
+        className="!bg-border"
+      />
+      <Handle
+        type="source"
+        id="r"
+        position={Position.Right}
+        className="!bg-border"
+      />
+      <Handle
+        type="source"
+        id="b"
+        position={Position.Bottom}
+        className="!bg-border"
+      />
+    </>
+  );
+}
+
 function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
-  const horizontal = data.flow === "right";
   return (
     <div
       className={`rounded-lg border bg-card text-card-foreground shadow-sm ${
@@ -83,11 +114,7 @@ function FlowCard(props: NodeProps<CardNode>) {
       }`}
       style={{ width: data.step ? STEP_W : CARD_W }}
     >
-      <Handle
-        type="target"
-        position={horizontal ? Position.Left : Position.Top}
-        className="!bg-border"
-      />
+      <CardHandles />
       {data.step ? (
         <>
           <div className="flex items-center justify-between gap-1.5">
@@ -159,11 +186,6 @@ function FlowCard(props: NodeProps<CardNode>) {
           )}
         </>
       )}
-      <Handle
-        type="source"
-        position={horizontal ? Position.Right : Position.Bottom}
-        className="!bg-border"
-      />
     </div>
   );
 }
@@ -172,7 +194,7 @@ function Frame(props: NodeProps<FrameNode>) {
   const data = frameDataSchema.parse(props.data);
   return (
     <div className="h-full w-full rounded-xl border border-blue-400/50 border-dashed bg-white/90">
-      <Handle type="target" position={Position.Left} className="!bg-border" />
+      <CardHandles />
       <div className="flex items-center gap-2 px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {data.title}
         {data.collapsible && (
@@ -185,7 +207,6 @@ function Frame(props: NodeProps<FrameNode>) {
           </button>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-border" />
     </div>
   );
 }
@@ -272,6 +293,8 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        sourceHandle: edge.fromHandle,
+        targetHandle: edge.toHandle,
         ...(edge.label === undefined ? {} : { label: edge.label }),
         labelStyle: { fontSize: 10 },
         ...(edge.kind === "seed"

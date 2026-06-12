@@ -47,8 +47,6 @@ export const flowCardDataSchema = z.object({
   count: z.number().optional(),
   /** Clicking expands this card in place. */
   drill: z.boolean(),
-  /** Edge direction at this node: timeline (right) or top-down. */
-  flow: z.enum(["right", "down"]),
   /** Compact step rendering (round chips on the timeline). */
   step: z.boolean(),
   /** Faded illustration of an open size ("… pairing n") — not interactive. */
@@ -89,6 +87,10 @@ export type FlowGraphEdge = {
   readonly source: string;
   readonly target: string;
   readonly label?: string | undefined;
+  /** Which side the edge leaves from (right or bottom). */
+  readonly fromHandle: "r" | "b";
+  /** Which side the edge arrives at (left or top). */
+  readonly toHandle: "l" | "t";
   readonly kind: "chain" | "seed";
 };
 
@@ -117,7 +119,6 @@ const card = (
     sides?: { white: string; black: string } | undefined;
     count?: number | undefined;
     drill?: boolean;
-    flow?: "right" | "down";
     step?: boolean;
     ghost?: boolean;
   },
@@ -129,7 +130,6 @@ const card = (
   ...(options?.sides === undefined ? {} : { sides: options.sides }),
   ...(options?.count === undefined ? {} : { count: options.count }),
   drill: options?.drill ?? false,
-  flow: options?.flow ?? "right",
   step: options?.step ?? false,
   ghost: options?.ghost ?? false,
 });
@@ -137,7 +137,7 @@ const card = (
 /** The card face of a non-encounter concrete card (scoring, standings, …). */
 const plainCard = (
   concrete: ConcreteCard,
-  options?: { flow?: "right" | "down"; step?: boolean; drill?: boolean },
+  options?: { step?: boolean; drill?: boolean },
 ): FlowCardData =>
   card(concrete.kind, concrete.title, concrete.lines, {
     badge: concrete.badge,
@@ -150,7 +150,6 @@ const nodeCard = (
   label: string | undefined,
   options: {
     drill: boolean;
-    flow: "right" | "down";
     ghost?: boolean;
   },
 ): FlowCardData =>
@@ -349,6 +348,8 @@ export function buildGraph(
           source: `s:${link.stage}`,
           target: id,
           label: link.label,
+          fromHandle: "r",
+          toHandle: "l",
           kind: "seed",
         });
       });
@@ -359,6 +360,8 @@ export function buildGraph(
           id: `c:s:${previous.id}->${id}`,
           source: `s:${previous.id}`,
           target: id,
+          fromHandle: "r",
+          toHandle: "l",
           kind: "chain",
         });
       }
@@ -439,14 +442,11 @@ function laneSub(
         ? item(
             runId,
             node.title,
-            nodeCard(node, undefined, { drill: true, flow: "right" }),
+            nodeCard(node, undefined, { drill: true }),
             () => childrenSub(node, runId, expanded),
             expanded,
           )
-        : cardSub(
-            runId,
-            nodeCard(node, undefined, { drill: false, flow: "right" }),
-          ),
+        : cardSub(runId, nodeCard(node, undefined, { drill: false })),
     );
   }
 
@@ -455,6 +455,8 @@ function laneSub(
     id: `c:${ids[i] ?? ""}->${target}`,
     source: ids[i] ?? "",
     target,
+    fromHandle: "r",
+    toHandle: "l",
     kind: "chain",
   }));
   return { ...laid, edges: [...laid.edges, ...edges] };
@@ -477,7 +479,9 @@ function processSub(process: ConcreteProcess, pid: string): Sub {
             id: `c:${pid}/standings->${pid}/repair`,
             source: `${pid}/standings`,
             target: `${pid}/repair`,
-            kind: "chain",
+            fromHandle: "r" as const,
+            toHandle: "l" as const,
+            kind: "chain" as const,
           },
         ];
   return { ...laid, edges: [...laid.edges, ...edges] };
@@ -500,20 +504,13 @@ function roundSub(
         ? item(
             pairId,
             `${pairing.label} — ${pairing.node.title}`,
-            nodeCard(pairing.node, pairing.label, {
-              drill: true,
-              flow: "down",
-            }),
+            nodeCard(pairing.node, pairing.label, { drill: true }),
             () => childrenSub(pairing.node, pairId, expanded),
             expanded,
           )
         : cardSub(
             pairId,
-            nodeCard(pairing.node, pairing.label, {
-              drill: false,
-              flow: "down",
-              ghost,
-            }),
+            nodeCard(pairing.node, pairing.label, { drill: false, ghost }),
           );
     }),
     GAP,
@@ -530,7 +527,9 @@ function roundSub(
     id: `c:${pairId}->${scoringId}`,
     source: pairId,
     target: scoringId,
-    kind: "chain",
+    fromHandle: "r" as const,
+    toHandle: "l" as const,
+    kind: "chain" as const,
   }));
   const laid = merge(
     [stack, placedScoring],
@@ -541,66 +540,77 @@ function roundSub(
 }
 
 /**
- * One node's immediate children, each its own item — no compression. In a
- * sequence, a child with a gate gets a logic-gate node before it: continue
- * on "yes", take the labeled exit otherwise — so a first-to-7.5 set shows
- * that the match can end right there.
+ * One node's immediate children, each its own item — no compression.
+ *
+ * An ungated sequence chains left-to-right with "then" edges; a parallel
+ * arrangement stacks. A GATED sequence snakes down the page: each leg gets
+ * its own row ending in the gate that decides what's next — the "no" exit
+ * continues the row, the "yes" continuation drops to the next leg's row —
+ * so a first-to-7.5 set shows that the match can end after every game.
  */
 function childrenSub(
   node: ConcreteNode,
   pid: string,
   expanded: ReadonlySet<string>,
 ): Sub {
-  const sequence = node.arrangement === "sequence";
-  const flow = sequence ? ("right" as const) : ("down" as const);
   const drillableCount = node.children.filter(
     (child) => child.children.length > 0,
   ).length;
+  const childItem = (child: ConcreteNode, i: number): Sub => {
+    const childId = `${pid}/c${i + 1}`;
+    return child.children.length === 0
+      ? cardSub(childId, nodeCard(child, child.role, { drill: false }))
+      : item(
+          childId,
+          `${child.role ?? child.title} — ${child.title}`,
+          nodeCard(child, child.role, { drill: true }),
+          () => childrenSub(child, childId, expanded),
+          expanded,
+          node.children.length === 1 && drillableCount === 1,
+        );
+  };
 
-  const pieces: Sub[] = [];
+  if (node.arrangement === "parallel") {
+    return column(node.children.map(childItem), GAP);
+  }
+
+  const gated = node.children.some((child) => child.gate !== undefined);
+  if (!gated) {
+    const laid = row(node.children.map(childItem), GAP);
+    const edges: FlowGraphEdge[] = node.children.slice(1).map((_, i) => ({
+      id: `c:${pid}/c${i + 1}->${pid}/c${i + 2}`,
+      source: `${pid}/c${i + 1}`,
+      target: `${pid}/c${i + 2}`,
+      label: "then",
+      fromHandle: "r" as const,
+      toHandle: "l" as const,
+      kind: "chain" as const,
+    }));
+    return { ...laid, edges: [...laid.edges, ...edges] };
+  }
+
+  const rows: Sub[] = [];
   const edges: FlowGraphEdge[] = [];
   node.children.forEach((child, i) => {
     const childId = `${pid}/c${i + 1}`;
-    const previousId = `${pid}/c${i}`;
-    if (sequence && i > 0) {
-      if (child.gate === undefined) {
-        edges.push({
-          id: `c:${previousId}->${childId}`,
-          source: previousId,
-          target: childId,
-          label: "then",
-          kind: "chain",
-        });
-      } else {
-        const gateId = `${childId}/gate`;
-        const exitId = `${childId}/exit`;
+    const pieces: Sub[] = [childItem(child, i)];
+    const next = node.children[i + 1];
+    const nextId = `${pid}/c${i + 2}`;
+    if (next !== undefined) {
+      if (next.gate !== undefined) {
+        const gateId = `${nextId}/gate`;
+        const exitId = `${nextId}/exit`;
         pieces.push(
-          column(
-            [
-              cardSub(
-                gateId,
-                card("gate", child.gate.when, [], { step: true }),
-              ),
-              cardSub(
-                exitId,
-                card("end", child.gate.otherwise, [], { step: true }),
-              ),
-            ],
-            GAP,
-          ),
+          cardSub(gateId, card("gate", next.gate.when, [], { step: true })),
+          cardSub(exitId, card("end", next.gate.otherwise, [], { step: true })),
         );
         edges.push(
           {
-            id: `c:${previousId}->${gateId}`,
-            source: previousId,
+            id: `c:${childId}->${gateId}`,
+            source: childId,
             target: gateId,
-            kind: "chain",
-          },
-          {
-            id: `c:${gateId}->${childId}`,
-            source: gateId,
-            target: childId,
-            label: "yes",
+            fromHandle: "r",
+            toHandle: "l",
             kind: "chain",
           },
           {
@@ -608,25 +618,34 @@ function childrenSub(
             source: gateId,
             target: exitId,
             label: "no",
+            fromHandle: "r",
+            toHandle: "l",
+            kind: "chain",
+          },
+          {
+            id: `c:${gateId}->${nextId}`,
+            source: gateId,
+            target: nextId,
+            label: "yes",
+            fromHandle: "b",
+            toHandle: "t",
             kind: "chain",
           },
         );
+      } else {
+        edges.push({
+          id: `c:${childId}->${nextId}`,
+          source: childId,
+          target: nextId,
+          label: "then",
+          fromHandle: "b",
+          toHandle: "t",
+          kind: "chain",
+        });
       }
     }
-    pieces.push(
-      child.children.length === 0
-        ? cardSub(childId, nodeCard(child, child.role, { drill: false, flow }))
-        : item(
-            childId,
-            `${child.role ?? child.title} — ${child.title}`,
-            nodeCard(child, child.role, { drill: true, flow }),
-            () => childrenSub(child, childId, expanded),
-            expanded,
-            node.children.length === 1 && drillableCount === 1,
-          ),
-    );
+    rows.push(row(pieces, GAP));
   });
-
-  const laid = sequence ? row(pieces, GAP) : column(pieces, GAP);
+  const laid = column(rows, GAP * 1.5);
   return { ...laid, edges: [...laid.edges, ...edges] };
 }
