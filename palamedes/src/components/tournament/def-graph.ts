@@ -326,11 +326,12 @@ function item(
   return frameSub(id, title, inner(), !force);
 }
 
-/** An administrative node: an icon by default, the full card when opened. */
+/** An administrative node: an icon by default, its detail when opened. */
 function iconItem(
   id: string,
   concrete: ConcreteCard,
   expanded: ReadonlySet<string>,
+  inner?: () => Sub,
 ): Sub {
   if (!expanded.has(id)) {
     return cardSub(
@@ -341,7 +342,9 @@ function iconItem(
   return frameSub(
     id,
     concrete.title,
-    cardSub(`${id}/detail`, plainCard(concrete)),
+    inner === undefined
+      ? cardSub(`${id}/detail`, plainCard(concrete))
+      : inner(),
     true,
   );
 }
@@ -471,6 +474,8 @@ function laneSub(
 ): Sub {
   const ids: string[] = [`${pid}/hdr`];
   const items: Sub[] = [cardSub(`${pid}/hdr`, plainCard(group.header))];
+  /** Cycle edges (the between-rounds process looping back to the rounds). */
+  const loops: FlowGraphEdge[] = [];
 
   if (group.run.kind === "rounds") {
     const run = group.run;
@@ -494,22 +499,32 @@ function laneSub(
             expanded,
           );
     };
-    const processItem = (last: boolean, i: number): Sub => {
-      const processId = `${pid}/after${i + 1}`;
-      return item(
+    // Standings update and re-pairing happen between EVERY round; after the
+    // last round only the standings remain. Both render as icons — the
+    // between one wears the pairing system's icon.
+    const processIcon = (last: boolean, processId: string): Sub =>
+      iconItem(
         processId,
-        last ? "Final standings" : "Between rounds",
-        card("standings", last ? "standings" : "standings · pair", [], {
-          drill: true,
-          step: true,
-        }),
-        () => processSub(last ? run.final : run.between, processId, expanded),
+        last
+          ? {
+              kind: "standings",
+              title: "Final standings",
+              badge: undefined,
+              lines: [],
+            }
+          : {
+              kind: run.between.repair?.kind ?? "standings",
+              title: "standings · pair next round",
+              badge: undefined,
+              lines: [],
+            },
         expanded,
+        () => processSub(last ? run.final : run.between, processId, expanded),
       );
-    };
 
-    // Identical rounds fold into one ×N step, unfoldable to the full chain;
-    // the recurring between-rounds process shows once.
+    // Identical rounds fold into one ×N step whose repeating unit INCLUDES
+    // the between-rounds process: collapsed, the process icon loops back to
+    // the rounds ("next round"); unfolded, the full interleaved chain shows.
     const signature = (round: ConcreteRound): string =>
       JSON.stringify({ ...round, label: "" });
     const firstRound = rounds[0];
@@ -524,52 +539,72 @@ function laneSub(
       const lastRound = rounds[rounds.length - 1];
       const runId = `${pid}/rs`;
       const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
-      ids.push(runId);
-      items.push(
-        foldedRun(
-          runId,
-          {
+      if (!expanded.has(runId)) {
+        ids.push(runId);
+        items.push(
+          cardSub(runId, {
             ...card("round", range, [], { drill: true, step: true }),
             count: rounds.length,
-          },
-          `${range} ×${rounds.length}`,
-          () => {
-            const steps = rounds.map(({ item: round, ghost }, i) =>
-              roundItem(round, ghost, i),
-            );
-            const chain = row(steps, GAP);
-            const chainEdges: FlowGraphEdge[] = rounds.slice(1).map((_, i) => ({
-              id: `c:${pid}/r${i + 1}->${pid}/r${i + 2}`,
-              source: `${pid}/r${i + 1}`,
-              target: `${pid}/r${i + 2}`,
-              fromHandle: "r" as const,
-              toHandle: "l" as const,
-              kind: "chain" as const,
-            }));
-            return { ...chain, edges: [...chain.edges, ...chainEdges] };
-          },
-          expanded,
-        ),
-      );
-      ids.push(`${pid}/after1`);
-      items.push(processItem(false, 0));
-      ids.push(`${pid}/afterlast`);
-      items.push(
-        item(
-          `${pid}/afterlast`,
-          "Final standings",
-          card("standings", "standings", [], { drill: true, step: true }),
-          () => processSub(run.final, `${pid}/afterlast`, expanded),
-          expanded,
-        ),
-      );
+          }),
+        );
+        const betweenId = `${pid}/between`;
+        ids.push(betweenId);
+        items.push(processIcon(false, betweenId));
+        loops.push({
+          id: `c:${betweenId}->${runId}`,
+          source: betweenId,
+          target: runId,
+          label: "next round",
+          fromHandle: "b",
+          toHandle: "t",
+          kind: "chain",
+        });
+      } else {
+        ids.push(runId);
+        items.push(
+          frameSub(
+            runId,
+            `${range} ×${rounds.length}`,
+            (() => {
+              const chainIds: string[] = [];
+              const pieces: Sub[] = [];
+              rounds.forEach(({ item: round, ghost }, i) => {
+                chainIds.push(`${pid}/r${i + 1}`);
+                pieces.push(roundItem(round, ghost, i));
+                if (i < rounds.length - 1) {
+                  const betweenId = `${pid}/after${i + 1}`;
+                  chainIds.push(betweenId);
+                  pieces.push(processIcon(false, betweenId));
+                }
+              });
+              const chain = row(pieces, GAP);
+              const chainEdges: FlowGraphEdge[] = chainIds
+                .slice(1)
+                .map((target, i) => ({
+                  id: `c:${chainIds[i] ?? ""}->${target}`,
+                  source: chainIds[i] ?? "",
+                  target,
+                  fromHandle: "r" as const,
+                  toHandle: "l" as const,
+                  kind: "chain" as const,
+                }));
+              return { ...chain, edges: [...chain.edges, ...chainEdges] };
+            })(),
+            true,
+          ),
+        );
+      }
+      const finalId = `${pid}/afterlast`;
+      ids.push(finalId);
+      items.push(processIcon(true, finalId));
     } else {
       rounds.forEach(({ item: round, ghost }, i) => {
         ids.push(`${pid}/r${i + 1}`);
         items.push(roundItem(round, ghost, i));
         const last = i === rounds.length - 1;
-        ids.push(`${pid}/after${i + 1}`);
-        items.push(processItem(last, i));
+        const processId = `${pid}/after${i + 1}`;
+        ids.push(processId);
+        items.push(processIcon(last, processId));
       });
     }
   } else {
@@ -598,7 +633,7 @@ function laneSub(
     toHandle: "l",
     kind: "chain",
   }));
-  return { ...laid, edges: [...laid.edges, ...edges] };
+  return { ...laid, edges: [...laid.edges, ...edges, ...loops] };
 }
 
 /** Between rounds: standings update, then pair what's next. */
