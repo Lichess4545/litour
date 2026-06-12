@@ -2,6 +2,7 @@
 
 import {
   Background,
+  BackgroundVariant,
   Controls,
   type Edge,
   Handle,
@@ -168,7 +169,7 @@ function FlowCard(props: NodeProps<CardNode>) {
 function Frame(props: NodeProps<FrameNode>) {
   const data = frameDataSchema.parse(props.data);
   return (
-    <div className="h-full w-full rounded-xl border border-dashed bg-muted/20">
+    <div className="h-full w-full rounded-xl border border-blue-400/50 border-dashed bg-white/40">
       <Handle type="target" position={Position.Left} className="!bg-border" />
       <div className="flex items-center gap-2 px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {data.title}
@@ -324,7 +325,20 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
           }}
           proOptions={{ hideAttribution: false }}
         >
-          <Background gap={24} />
+          {/* Blueprint paper: fine grid plus stronger major lines. */}
+          <Background
+            id="grid-minor"
+            variant={BackgroundVariant.Lines}
+            gap={24}
+            color="#dbeafe"
+            bgColor="#eff6ff"
+          />
+          <Background
+            id="grid-major"
+            variant={BackgroundVariant.Lines}
+            gap={120}
+            color="#bfdbfe"
+          />
           <Controls showInteractive={false} />
           <MiniMap
             pannable
