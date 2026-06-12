@@ -4,26 +4,28 @@ import { notFound } from "next/navigation";
 import { TournamentFlow } from "@/components/tournament/tournament-flow";
 import { FORMAT_EXAMPLES } from "@/tournament/formats";
 
+// The slug universe is a closed compile-time set; 404 unknown ones without
+// rendering.
+export const dynamicParams = false;
+
 export function generateStaticParams() {
   return FORMAT_EXAMPLES.map((format) => ({ slug: format.slug }));
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
-  const { slug } = await params;
+export async function generateMetadata(
+  props: PageProps<"/tournaments/[slug]">,
+): Promise<Metadata> {
+  const { slug } = await props.params;
   const format = FORMAT_EXAMPLES.find((f) => f.slug === slug);
-  return { title: format === undefined ? "Tournament" : format.title };
+  return format === undefined
+    ? { title: "Tournament" }
+    : { title: format.title, description: format.blurb };
 }
 
-export default async function TournamentPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
+export default async function TournamentPage(
+  props: PageProps<"/tournaments/[slug]">,
+) {
+  const { slug } = await props.params;
   const format = FORMAT_EXAMPLES.find((f) => f.slug === slug);
   if (format === undefined) notFound();
 
@@ -44,7 +46,8 @@ export default async function TournamentPage({
         </div>
       </header>
       <div className="min-h-0 flex-1">
-        <TournamentFlow def={format.def} />
+        {/* Keyed by slug: the collapse state inside is meaningful only for this def. */}
+        <TournamentFlow key={format.slug} def={format.def} />
       </div>
     </main>
   );

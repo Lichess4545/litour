@@ -48,7 +48,9 @@ export function KindChip({ kind }: { kind: FlowCardData["kind"] }) {
   );
 }
 
-function FlowCard(props: NodeProps) {
+type CardNode = Node<FlowCardData, "card">;
+
+function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
   return (
@@ -79,9 +81,11 @@ function FlowCard(props: NodeProps) {
         </div>
       )}
       <div className="mt-1 space-y-0.5">
-        {data.lines.map((line) => (
+        {data.lines.map((line, i) => (
           <div
-            key={line}
+            // Static per data object — replaced wholesale, never reordered.
+            // biome-ignore lint/suspicious/noArrayIndexKey: see above
+            key={i}
             className="text-muted-foreground text-xs leading-snug"
           >
             {line}
@@ -105,7 +109,7 @@ export function TournamentFlow({ def }: { def: EventDef }) {
 
   const graph = useMemo(() => buildFlowGraph(def, collapsed), [def, collapsed]);
 
-  const nodes = useMemo<Node[]>(
+  const nodes = useMemo<CardNode[]>(
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
@@ -146,8 +150,7 @@ export function TournamentFlow({ def }: { def: EventDef }) {
       minZoom={0.15}
       nodesConnectable={false}
       onNodeClick={(_, node) => {
-        const target = graph.nodes.find((n) => n.id === node.id);
-        if (target === undefined || !target.data.expandable) return;
+        if (!node.data.expandable) return;
         setCollapsed((current) => {
           const next = new Set(current);
           if (next.has(node.id)) next.delete(node.id);
