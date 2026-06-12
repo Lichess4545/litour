@@ -1,11 +1,16 @@
 // @vitest-environment node
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { type EventRun, runEvent } from "./builder";
-import { groupRootPath, type ParsedEventDef, parseEventDef } from "./def";
+import { norwayChess } from "@/chess/formats";
+import { chessRegistry, parseEventDef } from "@/chess/registry";
+import type { ParsedEventDef } from "@/tournament/registry";
+import { type EventRun, runEvent as runEventWith } from "./builder";
+import type { GameResultCode } from "./core";
+import { groupRootPath } from "./core";
 import { pairingsAt, proposePairings } from "./engine";
-import { norwayChess } from "./formats";
-import type { GameResultCode } from "./inputs";
+
+const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
+  runEventWith(def, chessRegistry);
 
 const rrEvent = (n: number, cycles: 1 | 2): ParsedEventDef =>
   parseEventDef({
@@ -32,7 +37,7 @@ const rrEvent = (n: number, cycles: 1 | 2): ParsedEventDef =>
                 kind: "game",
                 clock: { initial: 180, increment: 2 },
               },
-              score: { kind: "encounterPoints" },
+              score: { kind: "passThrough" },
               bye: { kind: "points", standings: 0, encounter: 0 },
               tiebreaks: [],
             },
@@ -208,7 +213,7 @@ const swissEvent = (): ParsedEventDef =>
                 kind: "game",
                 clock: { initial: 180, increment: 2 },
               },
-              score: { kind: "encounterPoints" },
+              score: { kind: "passThrough" },
               bye: { kind: "points", standings: 1, encounter: 1 },
               tiebreaks: [],
             },
@@ -291,7 +296,7 @@ const knockout16 = (): ParsedEventDef =>
                 clock: { initial: 180, increment: 2 },
                 tie: { kind: "drawOdds", color: "black" },
               },
-              score: { kind: "encounterPoints" },
+              score: { kind: "passThrough" },
               tiebreaks: [],
             },
           },
@@ -342,7 +347,7 @@ describe("traditional knockout bracket", () => {
                   clock: { initial: 180, increment: 2 },
                   tie: { kind: "drawOdds", color: "black" },
                 },
-                score: { kind: "encounterPoints" },
+                score: { kind: "passThrough" },
                 tiebreaks: [],
               },
             },

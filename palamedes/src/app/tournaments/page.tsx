@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FORMAT_EXAMPLES } from "@/chess/formats";
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FORMAT_EXAMPLES } from "@/tournament/formats";
 
 export const metadata: Metadata = {
   title: "Tournament formats",

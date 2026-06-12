@@ -1,8 +1,5 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { expectStandings, runEvent } from "./builder";
-import { groupRootPath } from "./def";
-import { pairingsAt } from "./engine";
 import {
   armageddonShowdown,
   candidates,
@@ -13,11 +10,19 @@ import {
   olympiad,
   quads,
   scheveningen,
+  teamSwissCascade,
   worldChampionship,
   worldCup,
   wuccKnockoutLockstep,
   wuccKnockoutUpfront,
-} from "./formats";
+} from "@/chess/formats";
+import { chessRegistry } from "@/chess/registry";
+import { expectStandings, runEvent as runEventWith } from "./builder";
+import { groupRootPath } from "./core";
+import { pairingsAt } from "./engine";
+
+const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
+  runEventWith(def, chessRegistry);
 
 describe("armageddon showdown", () => {
   it("schedules one game with asymmetric clocks, white side first by default", () => {
@@ -674,5 +679,45 @@ describe("quads", () => {
     expect(run.actions()).toContainEqual(
       expect.objectContaining({ kind: "awaitPairings", pool: q2 }),
     );
+  });
+});
+
+describe("the cascade round (two rapid games, blitz tiebreak, board armageddon)", () => {
+  it("plays one full cascade: tied games, drawn-color blitz tie, armageddon decides", () => {
+    const run = runEvent(teamSwissCascade).pairManual([
+      ["Anchors", "Bolts"],
+      ["Cogs", "Dynamos"],
+      ["Embers", "Flames"],
+      ["Griffins", "Huskies"],
+    ]);
+
+    // Both rapid games exist up front; the blitz and armageddon legs do not.
+    run.lineup("Anchors", ["ank1", "ank2"]);
+    run.lineup("Anchors", ["ank1", "ank2"]);
+    run.lineup("Bolts", ["bol1", "bol2"]);
+    run.lineup("Bolts", ["bol1", "bol2"]);
+
+    // Game one (Anchors hold the seat): each team wins on one board — 1-1.
+    run.match("Anchors", "Bolts", "1-0", "1-0");
+    // Game two, colors swapped: 1-1 again. Aggregate 2-2.
+    run.match("Anchors", "Bolts", "1-0", "1-0");
+
+    // Tied: the blitz leg appears, colors drawn by lot.
+    run.drawColors("Bolts");
+    run.lineup("Anchors", ["ank1", "ank2"]);
+    run.lineup("Bolts", ["bol1", "bol2"]);
+    run.match("Anchors", "Bolts", "1-0", "1-0"); // blitz also 1-1
+
+    // Still tied: the single-board armageddon, colors drawn again.
+    run.drawColors("Anchors");
+    run.lineup("Anchors", ["ank1"]);
+    run.lineup("Bolts", ["bol1"]);
+    run.match("Anchors", "Bolts", "1/2-1/2"); // black holds the draw
+
+    const pair = run.standings().find((row) => row.competitor === "bol");
+    // Anchors drew the armageddon as white: Bolts take the round.
+    expect(pair?.standingsPoints).toBe(2);
+    expectStandings(run).competitor("Anchors").points(0);
+    expectStandings(run).competitor("Bolts").metric("matchWins", 1);
   });
 });

@@ -1,15 +1,5 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { runEvent } from "./builder";
-import {
-  competitorId,
-  groupRootPath,
-  nodePathSchema,
-  type ParsedEventDef,
-  parseEventDef,
-  playerId,
-} from "./def";
-import { materialize, proposePairings, withInput } from "./engine";
 import {
   armageddonShowdown,
   lichess4545,
@@ -18,13 +8,21 @@ import {
   norwayChess,
   scheveningen,
   worldChampionship,
-} from "./formats";
-import type { Input } from "./inputs";
+} from "@/chess/formats";
+import { chessRegistry, parseEventDef } from "@/chess/registry";
+import type { ParsedEventDef } from "@/tournament/registry";
+import { runEvent as runEventWith } from "./builder";
+import type { Input } from "./core";
+import { competitorId, groupRootPath, nodePathSchema, playerId } from "./core";
+import { materialize, proposePairings, withInput } from "./engine";
+
+const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
+  runEventWith(def, chessRegistry);
 
 const path = (raw: string) => nodePathSchema.parse(raw);
 
 const errorsOf = (def: ParsedEventDef, inputs: Input[]) =>
-  materialize(def, inputs).errors.map((e) => e.reason);
+  materialize(def, inputs, chessRegistry).errors.map((e) => e.reason);
 
 describe("input validation", () => {
   it("rejects a result for a game whose colors are not drawn yet", () => {
@@ -99,15 +97,17 @@ describe("input validation", () => {
     expect(reasons).toEqual([expect.stringContaining("no bye rule")]);
   });
 
-  it("rejects a color draw where colors are not drawn (fixed-color series leg)", () => {
-    const run = runEvent(norwayChess).pairRound();
+  it("rejects a color draw on a seat that is not drawn by lot", () => {
+    const run = runEvent(norwayChess)
+      .pairRound()
+      .game("Magnus", "Praggnanandhaa", "1/2-1/2"); // armageddon leg materializes
     const state = withInput(run.state(), {
       kind: "colorDraw",
       node: path("stage-main/group-rr/round-1/pair-1/leg-2"),
       whiteSeat: 1,
     });
     expect(state.errors.map((e) => e.reason)).toEqual([
-      expect.stringContaining("does not draw colors per leg"),
+      expect.stringContaining("is not drawn by lot"),
     ]);
   });
 
@@ -179,18 +179,22 @@ describe("corrections (last write wins, everything re-derives)", () => {
 
 describe("audit trail", () => {
   it("keeps rejected inputs in the log with their reasons", () => {
-    const state = materialize(armageddonShowdown, [
-      {
-        kind: "manualDecision",
-        node: groupRootPath("main", "duel"),
-        winner: 0,
-      },
-      {
-        kind: "gameResult",
-        game: groupRootPath("main", "duel"),
-        result: "1-0",
-      },
-    ]);
+    const state = materialize(
+      armageddonShowdown,
+      [
+        {
+          kind: "manualDecision",
+          node: groupRootPath("main", "duel"),
+          winner: 0,
+        },
+        {
+          kind: "gameResult",
+          game: groupRootPath("main", "duel"),
+          result: "1-0",
+        },
+      ],
+      chessRegistry,
+    );
     expect(state.inputs).toHaveLength(2);
     expect(state.errors).toHaveLength(1);
     expect(state.errors[0]?.index).toBe(0);
@@ -268,7 +272,7 @@ describe("review-driven regressions", () => {
                   clock: { initial: 300, increment: 2 },
                   tie: { kind: "drawOdds", color: "black" },
                 },
-                score: { kind: "encounterPoints" },
+                score: { kind: "passThrough" },
                 tiebreaks: [],
               },
             },

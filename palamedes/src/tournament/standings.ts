@@ -1,190 +1,42 @@
 import {
-  type Color,
   type CompetitorId,
-  defaultedByeRule,
-  defaultedRank,
-  type MetricRef,
+  DECIDED_BY,
   type NodePath,
   otherSide,
+  type PairingPlan,
   type PoolDef,
   pairPath,
-  type ScoreRule,
+  resultUnplayed,
   type Side,
-} from "./def";
-import { type PairingPlan, resultUnplayed } from "./inputs";
-import {
-  type Decision,
-  type EngineIndexes,
-  type EvalNode,
-  evalEncounter,
-  type Outcome,
-} from "./outcome";
+} from "./core";
+import { type EngineIndexes, type EvalNode, evalNode } from "./evaluate";
+import type {
+  MetricRow,
+  ModelRegistry,
+  RoundLine,
+  ScoredLine,
+} from "./registry";
 
 /**
  * Standings keep both points channels per line: the raw encounter outcome
- * (game/board points) and the pool's score rule applied to it (match
- * points). Tiebreak metrics are pure functions over these lines — they never
- * re-walk encounter trees (per-board and games-won detail is precomputed
- * onto the line).
+ * (game/board points) and the pool's scoring kind applied to it (match
+ * points). Tiebreak metrics are registry instances over these lines — they
+ * never re-walk encounter trees (per-board and games-won detail is
+ * precomputed onto the line, kind-agnostically).
  */
 
-export type PlayedLine = {
-  readonly kind: "played";
-  readonly round: number;
-  readonly opponent: CompetitorId;
-  /** My side within the encounter, in definition order. */
-  readonly side: Side;
-  /** My color at the encounter level (the "team color" for matches). */
-  readonly color: Color;
-  readonly outcome: Outcome;
-  readonly standingsPoints: number;
-  readonly encounterPoints: number;
-  readonly opponentEncounterPoints: number;
-  readonly gamesWon: number;
-  /** My points per board (index b-1 = board b); empty for non-match encounters. */
-  readonly boardPoints: readonly number[];
-  /** Decided without play (forfeits, scheduling draws) — what pairing engines mark unplayed. */
-  readonly unplayed: boolean;
-};
-
-export type RoundLine =
-  | PlayedLine
-  | {
-      readonly kind: "bye";
-      readonly round: number;
-      readonly standingsPoints: number;
-      readonly encounterPoints: number;
-    }
-  | { readonly kind: "absent"; readonly round: number };
-
-export type StandingsRow = {
-  readonly competitor: CompetitorId;
-  readonly standingsPoints: number;
-  readonly encounterPoints: number;
-  readonly lines: readonly RoundLine[];
-  /** Tiebreak values keyed by `metricLabel`, in the pool's declared order. */
+export type StandingsRow = MetricRow & {
+  /** Tiebreak values keyed by each metric's label, in declared order. */
   readonly metrics: ReadonlyMap<string, number>;
   /** Competition ranking (ties share a rank). */
   readonly rank: number;
 };
 
-export function metricLabel(ref: MetricRef): string {
-  switch (ref.metric) {
-    case "boardPoints":
-      return `boardPoints-${ref.board}`;
-    case "buchholz":
-      return ref.cut === undefined ? "buchholz" : `buchholz-cut${ref.cut}`;
-    case "extendedSB": {
-      const code = (basis: "standings" | "encounter"): string =>
-        basis === "standings" ? "m" : "g";
-      return `extendedSB-${code(ref.opponentTotal)}${code(ref.scored)}`;
-    }
-    default:
-      return ref.metric;
-  }
-}
-
-export function scoreRulePoints(
-  rule: ScoreRule,
-  outcome: Outcome,
-  side: Side,
-): number {
-  switch (rule.kind) {
-    case "encounterPoints":
-      return outcome.points[side];
-    case "perEncounter":
-      return perEncounterPoints(rule, outcome.decision, side);
-    case "byLeg":
-      return byLegPoints(rule, outcome.decision, side);
-  }
-}
-
-function perEncounterPoints(
-  rule: Extract<ScoreRule, { kind: "perEncounter" }>,
-  d: Decision,
-  side: Side,
-): number {
-  switch (d.kind) {
-    case "pending":
-      return 0;
-    case "draw":
-      return rule.draw;
-    case "doubleLoss":
-      return rule.loss;
-    case "win":
-      return d.winner === side ? rule.win : rule.loss;
-  }
-}
-
-function byLegPoints(
-  rule: Extract<ScoreRule, { kind: "byLeg" }>,
-  d: Decision,
-  side: Side,
-): number {
-  switch (d.kind) {
-    case "pending":
-    case "doubleLoss":
-      return 0;
-    case "draw":
-      return rule.draw ?? 0;
-    case "win": {
-      // Wins without a deciding leg (forfeits, manual decisions) pay the
-      // FIRST leg's schedule — a Norway no-show concedes the full 3, not the
-      // armageddon consolation.
-      const leg = rule.legs[d.leg ?? 0];
-      if (leg === undefined) return 0;
-      return d.winner === side ? leg.win : leg.loss;
-    }
-  }
-}
-
-/**
- * Leaf games won by `side`: played wins, forfeit and adjudicated wins count;
- * drawOdds decisions don't (the game itself was drawn). A whole-encounter
- * forfeit materializes no games, so it contributes none.
- */
-export function countGameWins(node: EvalNode, side: Side): number {
-  if (node.ctx.def.kind === "game") {
-    const d = node.outcome.decision;
-    return d.kind === "win" && d.winner === side && d.by !== "drawOdds" ? 1 : 0;
-  }
-  return node.children.reduce(
-    (sum, child) => sum + countGameWins(child, side),
-    0,
-  );
-}
-
-/** My points per board, summed across all match nodes in the encounter (legs of a multi-match tie add up). */
-export function boardPointsFor(node: EvalNode, side: Side): readonly number[] {
-  const acc: number[] = [];
-  const walk = (n: EvalNode): void => {
-    if (n.ctx.def.kind === "match") {
-      n.children.forEach((board, i) => {
-        acc[i] = (acc[i] ?? 0) + board.outcome.points[side];
-      });
-      return;
-    }
-    for (const child of n.children) walk(child);
-  };
-  walk(node);
-  return acc;
-}
-
-const isForfeitDecision = (d: Decision): boolean =>
-  (d.kind === "win" && d.by === "forfeit") || d.kind === "doubleLoss";
-
-function lineUnplayed(indexes: EngineIndexes, node: EvalNode): boolean {
-  if (node.ctx.def.kind === "game") {
-    const result = indexes.results.get(node.ctx.path);
-    return result !== undefined && resultUnplayed(result);
-  }
-  return isForfeitDecision(node.outcome.decision);
-}
-
 export type PoolRoundPlans = ReadonlyMap<number, readonly PairingPlan[]>;
 
 /** The one way a pairing plan addresses and seats its encounter tree. */
 export function evalPair(
+  registry: ModelRegistry,
   indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
@@ -192,34 +44,111 @@ export function evalPair(
   index: number,
   plan: Extract<PairingPlan, { kind: "pair" }>,
 ): EvalNode {
-  return evalEncounter(indexes, {
+  return evalNode(registry, indexes, {
     def: pool.encounter,
     path: pairPath(poolPath, round, index + 1),
     whiteSeat: plan.whiteSeat,
+    participants: [plan.a, plan.b],
   });
 }
+
+// ---------------------------------------------------------------------------
+// Kind-agnostic line detail
+
+/**
+ * Leaf games won by `side`: a structural leaf (no children in its
+ * definition) decided for the side by anything except draw odds. A
+ * whole-encounter forfeit on a composite contributes none (no leaves
+ * materialize), while a forfeited leaf counts — matching over-the-board
+ * practice.
+ */
+export function gamesWonFor(
+  registry: ModelRegistry,
+  node: EvalNode,
+  side: Side,
+): number {
+  if (registry.ops.structure(node.def).length === 0) {
+    const d = node.outcome.decision;
+    return d.kind === "win" && d.winner === side && d.by !== DECIDED_BY.drawOdds
+      ? 1
+      : 0;
+  }
+  return node.children.reduce(
+    (sum, child) => sum + gamesWonFor(registry, child.node, side),
+    0,
+  );
+}
+
+/** Points per board slot ("board-n" segments), summed across the whole tree. */
+export function boardPointsFor(node: EvalNode, side: Side): readonly number[] {
+  const acc: number[] = [];
+  const walk = (n: EvalNode): void => {
+    for (const child of n.children) {
+      if (child.slot.segment.label === "board") {
+        const i = child.slot.segment.n - 1;
+        acc[i] = (acc[i] ?? 0) + child.node.outcome.points[side];
+      } else {
+        walk(child.node);
+      }
+    }
+  };
+  walk(node);
+  return acc;
+}
+
+function lineUnplayed(indexes: EngineIndexes, node: EvalNode): boolean {
+  if (node.children.length === 0 && !node.forfeited) {
+    const result = indexes.results.get(node.path);
+    return result !== undefined && resultUnplayed(result);
+  }
+  const d = node.outcome.decision;
+  return (
+    node.forfeited ||
+    (d.kind === "win" && d.by === DECIDED_BY.forfeit) ||
+    d.kind === "doubleLoss"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Row building
 
 type RowDraft = {
   readonly competitor: CompetitorId;
   standingsPoints: number;
   encounterPoints: number;
   readonly lines: RoundLine[];
+  readonly scored: ScoredLine[];
 };
 
 function buildRowDrafts(
+  registry: ModelRegistry,
   indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
   entrants: readonly CompetitorId[],
   rounds: PoolRoundPlans,
 ): Map<CompetitorId, RowDraft> {
+  const scoring = registry.scorings.get(pool.score.kind);
+  if (scoring === undefined) {
+    throw new Error(
+      `unknown scoring kind "${pool.score.kind}" — the def was not parsed against this registry`,
+    );
+  }
+  const byeRule =
+    pool.bye ?? registry.pairings.get(pool.pairing.system)?.defaultBye;
+
   const drafts = new Map<CompetitorId, RowDraft>(
     entrants.map((competitor) => [
       competitor,
-      { competitor, standingsPoints: 0, encounterPoints: 0, lines: [] },
+      {
+        competitor,
+        standingsPoints: 0,
+        encounterPoints: 0,
+        lines: [],
+        scored: [],
+      },
     ]),
   );
-  const byeRule = defaultedByeRule(pool);
 
   for (const round of [...rounds.keys()].sort((a, b) => a - b)) {
     const plans = rounds.get(round) ?? [];
@@ -245,7 +174,15 @@ function buildRowDrafts(
         return;
       }
 
-      const node = evalPair(indexes, pool, poolPath, round, index, plan);
+      const node = evalPair(
+        registry,
+        indexes,
+        pool,
+        poolPath,
+        round,
+        index,
+        plan,
+      );
       const sides: readonly (readonly [CompetitorId, Side])[] = [
         [plan.a, 0],
         [plan.b, 1],
@@ -256,7 +193,9 @@ function buildRowDrafts(
         // state.errors, so here it is only skipped, not swallowed.
         const draft = drafts.get(competitor);
         if (draft === undefined) continue;
-        const standingsPoints = scoreRulePoints(pool.score, node.outcome, side);
+        const line = { outcome: node.outcome, side };
+        const standingsPoints = scoring.points(pool.score, line, draft.scored);
+        draft.scored.push({ ...line, points: standingsPoints });
         const encounterPoints = node.outcome.points[side];
         draft.lines.push({
           kind: "played",
@@ -268,7 +207,7 @@ function buildRowDrafts(
           standingsPoints,
           encounterPoints,
           opponentEncounterPoints: node.outcome.points[otherSide(side)],
-          gamesWon: countGameWins(node, side),
+          gamesWon: gamesWonFor(registry, node, side),
           boardPoints: boardPointsFor(node, side),
           unplayed: lineUnplayed(indexes, node),
         });
@@ -286,110 +225,6 @@ function buildRowDrafts(
   }
 
   return drafts;
-}
-
-// ---------------------------------------------------------------------------
-// Tiebreak metrics
-
-function computeMetric(
-  ref: MetricRef,
-  draft: RowDraft,
-  all: ReadonlyMap<CompetitorId, RowDraft>,
-): number {
-  const played = draft.lines.filter(
-    (line): line is PlayedLine => line.kind === "played",
-  );
-  switch (ref.metric) {
-    case "encounterPoints":
-      return draft.encounterPoints;
-    case "matchWins":
-      return played.filter(
-        (line) =>
-          line.outcome.decision.kind === "win" &&
-          line.outcome.decision.winner === line.side,
-      ).length;
-    case "gamesWon":
-      return played.reduce((sum, line) => sum + line.gamesWon, 0);
-    case "boardPoints":
-      return played.reduce(
-        (sum, line) => sum + (line.boardPoints[ref.board - 1] ?? 0),
-        0,
-      );
-    case "buchholz": {
-      const values: number[] = [];
-      for (const line of draft.lines) {
-        if (line.kind === "bye") values.push(draft.standingsPoints);
-        if (line.kind === "played") {
-          const opponent = all.get(line.opponent);
-          if (opponent !== undefined) values.push(opponent.standingsPoints);
-        }
-      }
-      values.sort((a, b) => a - b);
-      return values.slice(ref.cut ?? 0).reduce((sum, v) => sum + v, 0);
-    }
-    case "sonnebornBerger": {
-      let sum = 0;
-      for (const line of played) {
-        const opponent = all.get(line.opponent);
-        if (opponent === undefined) continue;
-        const d = line.outcome.decision;
-        if (d.kind === "win" && d.winner === line.side)
-          sum += opponent.standingsPoints;
-        else if (d.kind === "draw") sum += opponent.standingsPoints / 2;
-      }
-      return sum;
-    }
-    case "extendedSB": {
-      const total = (
-        row: RowDraft,
-        basis: "standings" | "encounter",
-      ): number =>
-        basis === "standings" ? row.standingsPoints : row.encounterPoints;
-      const scored = (line: PlayedLine): number =>
-        ref.scored === "standings"
-          ? line.standingsPoints
-          : line.encounterPoints;
-      let sum = 0;
-      for (const line of draft.lines) {
-        if (line.kind === "bye") {
-          // FIDE Art. 16.4: the virtual opponent has the participant's own
-          // total — applied to the game-points × game-points variant only.
-          if (ref.opponentTotal === "encounter" && ref.scored === "encounter") {
-            sum += draft.encounterPoints * line.encounterPoints;
-          }
-          continue;
-        }
-        if (line.kind !== "played") continue;
-        const opponent = all.get(line.opponent);
-        if (opponent === undefined) continue;
-        sum += total(opponent, ref.opponentTotal) * scored(line);
-      }
-      return sum;
-    }
-    case "headToHead": {
-      // FIDE direct encounter applies to everyone on equal SCORE (standings
-      // points); secondary channels stay out of the tie key.
-      const tied = [...all.values()].filter(
-        (row) => row.standingsPoints === draft.standingsPoints,
-      );
-      if (tied.length < 2) return 0;
-      const tiedIds = new Set(tied.map((row) => row.competitor));
-      // Only meaningful when every tied pair has actually met.
-      for (const row of tied) {
-        const met = new Set(
-          row.lines
-            .filter((line): line is PlayedLine => line.kind === "played")
-            .map((line) => line.opponent),
-        );
-        for (const other of tiedIds) {
-          if (other !== row.competitor && !met.has(other)) return 0;
-        }
-      }
-      return played
-        .filter((line) => tiedIds.has(line.opponent))
-        .reduce((sum, line) => sum + line.standingsPoints, 0);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -429,15 +264,17 @@ const FINAL_KEYS = {
 } as const;
 
 /**
- * Knockout progression key: champion, runner-up, bronze winner/loser (or tied
- * semifinalists), then by rounds survived. Larger is better. Assumes the last
- * round lists the final as pair 1 and the bronze playoff (if any) as pair 2 —
- * the order `proposePairings` emits and manual pairings must follow.
+ * Progression key for eliminative pairings: champion, runner-up, bronze
+ * winner/loser (or tied semifinalists), then by rounds survived. Assumes the
+ * last round lists the final as pair 1 and the bronze playoff (if any) as
+ * pair 2 — the order the built-in knockout proposer emits and manual
+ * pairings must follow.
  */
 function progressionKeys(
+  registry: ModelRegistry,
+  indexes: EngineIndexes,
   drafts: ReadonlyMap<CompetitorId, RowDraft>,
   rounds: PoolRoundPlans,
-  indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
   totalRounds: number,
@@ -454,7 +291,15 @@ function progressionKeys(
         raise(plan.competitor, round);
         return;
       }
-      const node = evalPair(indexes, pool, poolPath, round, index, plan);
+      const node = evalPair(
+        registry,
+        indexes,
+        pool,
+        poolPath,
+        round,
+        index,
+        plan,
+      );
       const d = node.outcome.decision;
       const winner =
         d.kind === "win" ? (d.winner === 0 ? plan.a : plan.b) : undefined;
@@ -497,10 +342,11 @@ function progressionKeys(
 
 /**
  * Live standings for one pool. `rounds` may be partial (mid-event tables are
- * fine); `totalRounds` is the full schedule — progression ranking needs it to
- * recognize the final round.
+ * fine); `totalRounds` is the full schedule — progression ranking needs it
+ * to recognize the final round.
  */
 export function poolStandings(
+  registry: ModelRegistry,
   indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
@@ -508,23 +354,40 @@ export function poolStandings(
   rounds: PoolRoundPlans,
   totalRounds: number,
 ): readonly StandingsRow[] {
-  const drafts = buildRowDrafts(indexes, pool, poolPath, entrants, rounds);
+  const drafts = buildRowDrafts(
+    registry,
+    indexes,
+    pool,
+    poolPath,
+    entrants,
+    rounds,
+  );
 
   const metrics = new Map<CompetitorId, Map<string, number>>();
+  const metricRows: ReadonlyMap<CompetitorId, MetricRow> = drafts;
   for (const draft of drafts.values()) {
     const values = new Map<string, number>();
     for (const ref of pool.tiebreaks) {
-      values.set(metricLabel(ref), computeMetric(ref, draft, drafts));
+      const metric = registry.metrics.get(ref.metric);
+      if (metric === undefined) {
+        throw new Error(
+          `unknown tiebreak metric "${ref.metric}" — the def was not parsed against this registry`,
+        );
+      }
+      values.set(metric.label(ref), metric.value(ref, draft, metricRows));
     }
     metrics.set(draft.competitor, values);
   }
 
   const sortKeys = new Map<CompetitorId, readonly number[]>();
-  if (defaultedRank(pool) === "progression") {
+  const progression =
+    registry.pairings.get(pool.pairing.system)?.progression === true;
+  if (progression) {
     const keys = progressionKeys(
+      registry,
+      indexes,
       drafts,
       rounds,
-      indexes,
       pool,
       poolPath,
       totalRounds,
@@ -534,7 +397,7 @@ export function poolStandings(
     for (const draft of drafts.values()) {
       sortKeys.set(draft.competitor, [
         draft.standingsPoints,
-        ...[...(metrics.get(draft.competitor)?.values() ?? [])],
+        ...(metrics.get(draft.competitor)?.values() ?? []),
       ]);
     }
   }

@@ -1,14 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { FORMAT_EXAMPLES } from "@/chess/formats";
+import { safeParseEventDef } from "@/chess/registry";
 import {
   appendPath,
   groupRootPath,
   nodePath,
   nodePathSchema,
   pathSegments,
-  safeParseEventDef,
-} from "./def";
-import { FORMAT_EXAMPLES } from "./formats";
+} from "./core";
 
 // A minimal valid event the rejection cases below mutate.
 const baseEvent = (overrides: Record<string, unknown>) => ({
@@ -72,7 +72,7 @@ describe("parseEventDef", () => {
                     kind: "game",
                     clock: { initial: 300, increment: 2 },
                   },
-                  score: { kind: "encounterPoints" },
+                  score: { kind: "passThrough" },
                   tiebreaks: [],
                 },
               },
@@ -90,7 +90,7 @@ describe("parseEventDef", () => {
       pairing,
       ...(rounds === undefined ? {} : { rounds }),
       encounter: { kind: "game", clock: { initial: 300, increment: 2 } },
-      score: { kind: "encounterPoints" },
+      score: { kind: "passThrough" },
       tiebreaks: [],
     });
     const group = (run: object) =>
@@ -134,11 +134,12 @@ describe("parseEventDef", () => {
                     legs: [
                       { kind: "game", clock: { initial: 300, increment: 2 } },
                     ],
-                    stop: { kind: "untilDecisive" },
-                    colors: "fixed",
+                    stop: { untilDecided: true },
+                    seats: { source: "inherit", cycle: ["keep"] },
                   },
                   score: {
-                    kind: "byLeg",
+                    kind: "table",
+                    draw: 0,
                     legs: [
                       { win: 3, loss: 0 },
                       { win: 1.5, loss: 1 },
@@ -152,7 +153,9 @@ describe("parseEventDef", () => {
         ],
       }),
     );
-    expect(messages).toContain("byLeg declares 2 legs but the series has 1");
+    expect(messages).toContain(
+      "leg-keyed table declares 2 rows but the encounter has 1 legs",
+    );
   });
 
   it("rejects rank seeds that reference the same or a later stage", () => {
@@ -209,8 +212,8 @@ describe("parseEventDef", () => {
                       { kind: "game", clock: { initial: 300, increment: 2 } },
                       { kind: "game", clock: { initial: 300, increment: 2 } },
                     ],
-                    stop: { kind: "firstTo", points: 7.5 },
-                    colors: "alternate",
+                    stop: { untilScore: 7.5 },
+                    seats: { source: "inherit", cycle: ["keep", "flip"] },
                   },
                 },
               ],
@@ -242,7 +245,7 @@ describe("parseEventDef", () => {
                     kind: "game",
                     clock: { initial: 300, increment: 2 },
                   },
-                  colors: "zigzag",
+                  seats: { cycle: ["keep", "flip"] },
                 },
               },
             ],

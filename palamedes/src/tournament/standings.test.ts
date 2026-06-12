@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { expectStandings, runEvent } from "./builder";
-import {
-  groupRootPath,
-  type ParsedEventDef,
-  pairPath,
-  parseEventDef,
-} from "./def";
-import { norwayChess, olympiad } from "./formats";
+import { norwayChess, olympiad } from "@/chess/formats";
+import { chessRegistry, parseEventDef } from "@/chess/registry";
+import type { ParsedEventDef } from "@/tournament/registry";
+import { expectStandings, runEvent as runEventWith } from "./builder";
+import { groupRootPath, pairPath } from "./core";
+
+const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
+  runEventWith(def, chessRegistry);
 
 /**
  * Scoring semantics the format scripts don't reach: whole-encounter
@@ -79,7 +79,7 @@ const duelPool = (): ParsedEventDef =>
                 kind: "game",
                 clock: { initial: 300, increment: 2 },
               },
-              score: { kind: "perEncounter", win: 2, draw: 1, loss: 0 },
+              score: { kind: "table", draw: 1, legs: [{ win: 2, loss: 0 }] },
               tiebreaks: [],
             },
           },
@@ -134,7 +134,7 @@ const rrWithTiebreaks = (
                 kind: "game",
                 clock: { initial: 300, increment: 2 },
               },
-              score: { kind: "encounterPoints" },
+              score: { kind: "passThrough" },
               tiebreaks,
             },
           },
@@ -208,7 +208,7 @@ describe("buchholz cut", () => {
                   kind: "game",
                   clock: { initial: 300, increment: 2 },
                 },
-                score: { kind: "encounterPoints" },
+                score: { kind: "passThrough" },
                 bye: { kind: "points", standings: 1, encounter: 1 },
                 tiebreaks: [{ metric: "buchholz", cut: 1 }],
               },

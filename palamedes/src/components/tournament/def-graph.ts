@@ -1,33 +1,28 @@
 import { z } from "zod";
-import {
-  type Clock,
-  type EncounterDef,
-  type EventDef,
-  type GameDef,
-  type GroupDef,
-  type PoolDef,
-  poolTotalRounds,
-  type SeriesDef,
-} from "@/tournament/def";
-import { metricLabel } from "@/tournament/standings";
+import type { AnyEncounterDef, EventDef, PoolDef } from "@/tournament/core";
+import { isPool, type ModelRegistry } from "@/tournament/registry";
 
 /**
- * Pure projection of an EventDef into a laid-out graph for React Flow: one
- * node per definition concept, tree edges downward, dashed seed edges
- * between stages. Collapsing a node hides its subtree; consecutive
- * structurally-identical series legs (the 14 classical games of a WC match)
- * compress into one node with a ×N badge.
+ * Pure projections of an EventDef into laid-out graphs for React Flow, in
+ * two altitudes: the OVERVIEW (event → stages → groups → round steps, with
+ * dashed seed edges between stages) and the ENCOUNTER view you drill into
+ * from any round — the recursive definition of what one pairing plays,
+ * rendered through each kind's registry card. Nothing here knows a specific
+ * kind: titles, badges and child structure all come from the registry.
  */
 
 export const flowCardDataSchema = z.object({
-  kind: z.enum(["event", "stage", "group", "pool", "series", "match", "game"]),
+  /** The colored chip: spine concepts or the encounter kind's name. */
+  chip: z.string(),
   title: z.string(),
   badge: z.string().optional(),
   lines: z.array(z.string()),
-  /** Compression multiplier: this node stands for N identical siblings/boards. */
+  /** Compression multiplier: this node stands for N identical siblings. */
   count: z.number().optional(),
   expandable: z.boolean(),
   collapsed: z.boolean(),
+  /** Overview nodes that open the encounter view when clicked. */
+  drill: z.boolean(),
 });
 export type FlowCardData = z.infer<typeof flowCardDataSchema>;
 
@@ -45,97 +40,24 @@ export type FlowGraphEdge = {
   readonly kind: "tree" | "seed";
 };
 
+export type DrillTarget = {
+  readonly title: string;
+  readonly def: AnyEncounterDef;
+};
+
 export type FlowGraph = {
   readonly nodes: readonly FlowGraphNode[];
   readonly edges: readonly FlowGraphEdge[];
+  /** node id → the encounter definition that node opens. */
+  readonly drills: ReadonlyMap<string, DrillTarget>;
 };
 
 // ---------------------------------------------------------------------------
-// Labels
+// Layout (tidy tree, fixed node width)
 
-const minutes = (seconds: number): string =>
-  seconds % 60 === 0 ? `${seconds / 60}m` : `${seconds}s`;
-
-function clockLabel(clock: Clock): string {
-  if (clock.whiteInitial !== undefined && clock.blackInitial !== undefined) {
-    return `${minutes(clock.whiteInitial)} vs ${minutes(clock.blackInitial)} +${clock.increment}s`;
-  }
-  return `${minutes(clock.initial)} +${clock.increment}s`;
-}
-
-function gameLines(def: GameDef): string[] {
-  const lines = [clockLabel(def.clock)];
-  if (def.points !== undefined) {
-    lines.push(
-      `points ${def.points.win}/${def.points.draw}/${def.points.loss}`,
-    );
-  }
-  if (def.tie?.kind === "manual") lines.push("ties: arbiter decides");
-  return lines;
-}
-
-function seriesBadge(def: SeriesDef): string {
-  switch (def.stop.kind) {
-    case "all":
-      return `all ${def.legs.length} legs`;
-    case "firstTo":
-      return `first to ${def.stop.points}`;
-    case "untilDecisive":
-      return "until decisive";
-  }
-}
-
-const SERIES_COLORS_LABEL = {
-  alternate: "colors alternate per leg",
-  fixed: "colors fixed",
-  redraw: "colors redrawn per leg",
-} as const;
-
-const MATCH_COLORS_LABEL = {
-  zigzag: "boards zigzag from the team color",
-  uniform: "all boards take the team color",
-} as const;
-
-function pairingTitle(pool: PoolDef): string {
-  switch (pool.pairing.system) {
-    case "roundRobin":
-      return pool.pairing.cycles === 2 ? "Double round robin" : "Round robin";
-    case "swiss":
-      return "Swiss";
-    case "knockout":
-      return `Knockout (${pool.pairing.seeding}${pool.pairing.thirdPlace === true ? ", bronze final" : ""})`;
-    case "manual":
-      return "Manual pairing";
-  }
-}
-
-function scoreLine(pool: PoolDef): string {
-  switch (pool.score.kind) {
-    case "encounterPoints":
-      return "score: game points";
-    case "perEncounter":
-      return `match points ${pool.score.win}/${pool.score.draw}/${pool.score.loss}`;
-    case "byLeg":
-      return `points by deciding leg: ${pool.score.legs.map((l) => `${l.win}/${l.loss}`).join(" then ")}`;
-  }
-}
-
-function poolLines(pool: PoolDef, entrants: number): string[] {
-  const lines = [
-    `${entrants} entrants · ${poolTotalRounds(pool, entrants)} rounds`,
-    scoreLine(pool),
-  ];
-  if (pool.tiebreaks.length > 0) {
-    lines.push(`tiebreaks: ${pool.tiebreaks.map(metricLabel).join(" · ")}`);
-  }
-  if (pool.legRelease === "lockstep") {
-    lines.push("legs released in lockstep across pairs");
-  }
-  return lines;
-}
-
-// ---------------------------------------------------------------------------
-// Tree construction
+export const FLOW_NODE_WIDTH = 244;
+const GAP_X = 28;
+const LEVEL_HEIGHT = 168;
 
 type TreeNode = {
   readonly id: string;
@@ -143,186 +65,6 @@ type TreeNode = {
   readonly children: readonly TreeNode[];
   readonly edgeLabel?: string | undefined;
 };
-
-const card = (
-  kind: FlowCardData["kind"],
-  title: string,
-  lines: string[],
-  options?: { badge?: string | undefined; count?: number | undefined },
-): Omit<FlowCardData, "expandable" | "collapsed"> => ({
-  kind,
-  title,
-  lines,
-  ...(options?.badge === undefined ? {} : { badge: options.badge }),
-  ...(options?.count === undefined ? {} : { count: options.count }),
-});
-
-function withState(
-  id: string,
-  data: Omit<FlowCardData, "expandable" | "collapsed">,
-  children: readonly TreeNode[],
-  collapsed: ReadonlySet<string>,
-  edgeLabel?: string,
-): TreeNode {
-  const isCollapsed = collapsed.has(id);
-  return {
-    id,
-    data: { ...data, expandable: children.length > 0, collapsed: isCollapsed },
-    children: isCollapsed ? [] : children,
-    edgeLabel,
-  };
-}
-
-/** Consecutive structurally identical legs become one entry with a count. */
-function compressLegs(
-  legs: readonly EncounterDef[],
-): readonly { def: EncounterDef; count: number; from: number; to: number }[] {
-  const groups: {
-    def: EncounterDef;
-    count: number;
-    from: number;
-    to: number;
-  }[] = [];
-  legs.forEach((leg, index) => {
-    const previous = groups[groups.length - 1];
-    if (
-      previous !== undefined &&
-      JSON.stringify(previous.def) === JSON.stringify(leg)
-    ) {
-      previous.count += 1;
-      previous.to = index + 1;
-      return;
-    }
-    groups.push({ def: leg, count: 1, from: index + 1, to: index + 1 });
-  });
-  return groups;
-}
-
-function encounterTree(
-  id: string,
-  def: EncounterDef,
-  collapsed: ReadonlySet<string>,
-  edgeLabel?: string,
-  count?: number,
-): TreeNode {
-  switch (def.kind) {
-    case "game": {
-      const drawOdds = def.tie?.kind === "drawOdds" ? def.tie : undefined;
-      return withState(
-        id,
-        card(
-          "game",
-          drawOdds === undefined ? "Game" : "Armageddon",
-          gameLines(def),
-          {
-            badge:
-              drawOdds === undefined
-                ? undefined
-                : `${drawOdds.color} wins draws`,
-            count,
-          },
-        ),
-        [],
-        collapsed,
-        edgeLabel,
-      );
-    }
-    case "series": {
-      const children = compressLegs(def.legs).map((group, index) =>
-        encounterTree(
-          `${id}/l${index + 1}`,
-          group.def,
-          collapsed,
-          group.count > 1
-            ? `legs ${group.from}–${group.to}`
-            : `leg ${group.from}`,
-          group.count > 1 ? group.count : undefined,
-        ),
-      );
-      return withState(
-        id,
-        card("series", "Series", [SERIES_COLORS_LABEL[def.colors]], {
-          badge: seriesBadge(def),
-          count,
-        }),
-        children,
-        collapsed,
-        edgeLabel,
-      );
-    }
-    case "match": {
-      const board = encounterTree(
-        `${id}/b`,
-        def.board,
-        collapsed,
-        "per board",
-        def.boards,
-      );
-      return withState(
-        id,
-        card("match", "Team match", [MATCH_COLORS_LABEL[def.colors]], {
-          badge: `${def.boards} boards`,
-          count,
-        }),
-        [board],
-        collapsed,
-        edgeLabel,
-      );
-    }
-  }
-}
-
-function groupTree(
-  stageId: string,
-  group: GroupDef,
-  collapsed: ReadonlySet<string>,
-): { tree: TreeNode; seeds: readonly FlowGraphEdge[] } {
-  const id = `g:${stageId}/${group.id}`;
-  const run = group.run;
-  const runChild =
-    run.kind === "pool"
-      ? withState(
-          `${id}/run`,
-          card("pool", pairingTitle(run), poolLines(run, group.entries.length)),
-          [
-            encounterTree(
-              `${id}/run/enc`,
-              run.encounter,
-              collapsed,
-              "each pairing",
-            ),
-          ],
-          collapsed,
-        )
-      : encounterTree(`${id}/run`, run, collapsed);
-
-  const seeds: FlowGraphEdge[] = [];
-  group.entries.forEach((entry, index) => {
-    if (entry.kind !== "rank") return;
-    seeds.push({
-      id: `seed:${id}:${index}`,
-      source: `g:${entry.stage}/${entry.group}`,
-      target: id,
-      label: entry.rank === 1 ? "winner" : `#${entry.rank}`,
-      kind: "seed",
-    });
-  });
-
-  const tree = withState(
-    id,
-    card("group", group.id, [`${group.entries.length} entrants`]),
-    [runChild],
-    collapsed,
-  );
-  return { tree, seeds };
-}
-
-// ---------------------------------------------------------------------------
-// Layout (tidy tree, fixed node width)
-
-export const FLOW_NODE_WIDTH = 244;
-const GAP_X = 28;
-const LEVEL_HEIGHT = 188;
 
 type Placed = {
   readonly tree: TreeNode;
@@ -377,40 +119,235 @@ function place(
   }
 }
 
-export function buildFlowGraph(
-  def: EventDef,
-  collapsed: ReadonlySet<string>,
+function finishGraph(
+  root: TreeNode,
+  seeds: readonly FlowGraphEdge[],
+  drills: ReadonlyMap<string, DrillTarget>,
 ): FlowGraph {
-  const seeds: FlowGraphEdge[] = [];
-  const stageTrees = def.stages.map((stage) => {
-    const groups = stage.groups.map((group) => {
-      const built = groupTree(stage.id, group, collapsed);
-      seeds.push(...built.seeds);
-      return built.tree;
-    });
-    return withState(
-      `s:${stage.id}`,
-      card("stage", stage.id, [
-        `${stage.groups.length} group${stage.groups.length === 1 ? "" : "s"}`,
-      ]),
-      groups,
-      collapsed,
-    );
-  });
-  const root = withState(
-    "event",
-    card("event", def.name, [`${def.competitors.length} competitors`]),
-    stageTrees,
-    collapsed,
-  );
-
   const nodes: FlowGraphNode[] = [];
   const edges: FlowGraphEdge[] = [];
   place(measure(root), 0, 0, undefined, nodes, edges);
-
   const visible = new Set(nodes.map((n) => n.id));
   const visibleSeeds = seeds.filter(
     (s) => visible.has(s.source) && visible.has(s.target),
   );
-  return { nodes, edges: [...edges, ...visibleSeeds] };
+  return { nodes, edges: [...edges, ...visibleSeeds], drills };
+}
+
+const card = (
+  chip: string,
+  title: string,
+  lines: readonly string[],
+  options?: {
+    badge?: string | undefined;
+    count?: number | undefined;
+    expandable?: boolean;
+    collapsed?: boolean;
+    drill?: boolean;
+  },
+): FlowCardData => ({
+  chip,
+  title,
+  lines: [...lines],
+  ...(options?.badge === undefined ? {} : { badge: options.badge }),
+  ...(options?.count === undefined ? {} : { count: options.count }),
+  expandable: options?.expandable ?? false,
+  collapsed: options?.collapsed ?? false,
+  drill: options?.drill ?? false,
+});
+
+// ---------------------------------------------------------------------------
+// Overview: stages → groups → rounds, with drill targets
+
+function poolLines(
+  pool: PoolDef,
+  entrants: number,
+  registry: ModelRegistry,
+): string[] {
+  const lines = [`${entrants} entrants`, `score: ${pool.score.kind}`];
+  if (pool.tiebreaks.length > 0) {
+    const labels = pool.tiebreaks.map((ref) => {
+      const metric = registry.metrics.get(ref.metric);
+      return metric === undefined ? ref.metric : metric.label(ref);
+    });
+    lines.push(`tiebreaks: ${labels.join(" · ")}`);
+  }
+  if (pool.legRelease === "lockstep") lines.push("legs released in lockstep");
+  return lines;
+}
+
+export function buildOverviewGraph(
+  def: EventDef,
+  registry: ModelRegistry,
+): FlowGraph {
+  const seeds: FlowGraphEdge[] = [];
+  const drills = new Map<string, DrillTarget>();
+
+  const stageTrees = def.stages.map((stage): TreeNode => {
+    const groups = stage.groups.map((group): TreeNode => {
+      const groupId = `g:${stage.id}/${group.id}`;
+
+      group.entries.forEach((entry, index) => {
+        const sourceStage = entry["stage"];
+        const sourceGroup = entry["group"];
+        const rank = entry["rank"];
+        if (typeof sourceStage !== "string" || typeof sourceGroup !== "string")
+          return;
+        seeds.push({
+          id: `seed:${groupId}:${index}`,
+          source: `g:${sourceStage}/${sourceGroup}`,
+          target: groupId,
+          label:
+            rank === 1
+              ? "winner"
+              : typeof rank === "number"
+                ? `#${rank}`
+                : undefined,
+          kind: "seed",
+        });
+      });
+
+      let runChild: TreeNode;
+      if (isPool(group.run)) {
+        const pool = group.run;
+        const pairing = registry.pairings.get(pool.pairing.system);
+        const rounds =
+          pairing?.totalRounds?.(pool.pairing, group.entries.length) ??
+          pool.rounds ??
+          0;
+        // Rounds render as a chain of steps; each drills into the encounter
+        // definition that every pairing of that round plays.
+        let next: TreeNode | undefined;
+        for (let r = rounds; r >= 1; r -= 1) {
+          const id = `${groupId}/round-${r}`;
+          drills.set(id, {
+            title: `Round ${r} — what each pairing plays`,
+            def: pool.encounter,
+          });
+          next = {
+            id,
+            data: card("round", `Round ${r}`, [], { drill: true }),
+            children: next === undefined ? [] : [next],
+          };
+        }
+        runChild = {
+          id: `${groupId}/pool`,
+          data: card(
+            "pool",
+            pool.pairing.system,
+            poolLines(pool, group.entries.length, registry),
+            { badge: `${rounds} rounds` },
+          ),
+          children: next === undefined ? [] : [next],
+        };
+      } else {
+        const id = `${groupId}/run`;
+        const info = registry.ops.card(group.run);
+        drills.set(id, { title: "The deciding encounter", def: group.run });
+        runChild = {
+          id,
+          data: card(
+            "encounter",
+            info.title,
+            ["click to open the definition"],
+            {
+              badge: info.badge,
+              drill: true,
+            },
+          ),
+          children: [],
+        };
+      }
+
+      return {
+        id: groupId,
+        data: card("group", group.id, [`${group.entries.length} entrants`]),
+        children: [runChild],
+      };
+    });
+
+    return {
+      id: `s:${stage.id}`,
+      data: card("stage", stage.id, [
+        `${stage.groups.length} group${stage.groups.length === 1 ? "" : "s"}`,
+      ]),
+      children: groups,
+    };
+  });
+
+  const root: TreeNode = {
+    id: "event",
+    data: card("event", def.name, [`${def.competitors.length} competitors`]),
+    children: stageTrees,
+  };
+  return finishGraph(root, seeds, drills);
+}
+
+// ---------------------------------------------------------------------------
+// Encounter view: the recursive definition, one card per node
+
+export function buildEncounterGraph(
+  def: AnyEncounterDef,
+  registry: ModelRegistry,
+  collapsed: ReadonlySet<string>,
+): FlowGraph {
+  const build = (
+    node: AnyEncounterDef,
+    id: string,
+    role: string | undefined,
+    count: number | undefined,
+  ): TreeNode => {
+    const info = registry.ops.card(node);
+    const structure = registry.ops.structure(node);
+
+    // Consecutive structurally-identical children compress into one card
+    // with a ×N badge (the 14 classical games of a WC match).
+    const groups: {
+      child: (typeof structure)[number];
+      count: number;
+      from: number;
+      to: number;
+    }[] = [];
+    structure.forEach((child, index) => {
+      const previous = groups[groups.length - 1];
+      if (
+        previous !== undefined &&
+        JSON.stringify(previous.child.def) === JSON.stringify(child.def) &&
+        previous.child.count === child.count
+      ) {
+        previous.count += 1;
+        previous.to = index + 1;
+        return;
+      }
+      groups.push({ child, count: 1, from: index + 1, to: index + 1 });
+    });
+
+    const isCollapsed = collapsed.has(id);
+    const children = isCollapsed
+      ? []
+      : groups.map((group, index) =>
+          build(
+            group.child.def,
+            `${id}/${index + 1}`,
+            group.count > 1
+              ? `${group.child.role} ${group.from}–${group.to}`
+              : group.child.role,
+            group.count > 1 ? group.count : group.child.count,
+          ),
+        );
+
+    return {
+      id,
+      data: card(node.kind, info.title, info.lines, {
+        badge: info.badge,
+        count,
+        expandable: structure.length > 0,
+        collapsed: isCollapsed,
+      }),
+      children,
+      edgeLabel: role,
+    };
+  };
+
+  return finishGraph(build(def, "e", undefined, undefined), [], new Map());
 }

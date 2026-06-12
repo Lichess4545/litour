@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FORMAT_EXAMPLES } from "@/chess/formats";
 import { TournamentFlow } from "@/components/tournament/tournament-flow";
-import { FORMAT_EXAMPLES } from "@/tournament/formats";
 
 // The slug universe is a closed compile-time set; 404 unknown ones without
 // rendering.

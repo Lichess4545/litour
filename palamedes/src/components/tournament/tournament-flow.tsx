@@ -14,39 +14,36 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMemo, useState } from "react";
-import type { EventDef } from "@/tournament/def";
+import { chessRegistry } from "@/chess/registry";
+import type { AnyEncounterDef, EventDef } from "@/tournament/core";
 import {
-  buildFlowGraph,
+  buildEncounterGraph,
+  buildOverviewGraph,
   FLOW_NODE_WIDTH,
   type FlowCardData,
+  type FlowGraph,
   flowCardDataSchema,
 } from "./def-graph";
 
 /**
- * Interactive view of a tournament definition. Every node is one concept of
- * the meta-model; click a composite node to fold/unfold its recursion (a
- * knockout's encounter chain, a series' legs, a match's boards).
+ * Two-altitude view of a tournament definition. The overview shows the
+ * staging spine — stages, groups, and each pool's rounds as steps. Clicking
+ * a round (or a deciding match) zooms into the ENCOUNTER view: the recursive
+ * definition of what that round's pairings play, where clicking any
+ * composite folds/unfolds its recursion.
  */
 
-const KIND_STYLES: Record<FlowCardData["kind"], string> = {
+const CHIP_STYLES: Record<string, string> = {
   event: "bg-foreground text-background",
   stage: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
   group: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
   pool: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  round: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   series: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   match: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   game: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
 };
-
-export function KindChip({ kind }: { kind: FlowCardData["kind"] }) {
-  return (
-    <span
-      className={`rounded px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${KIND_STYLES[kind]}`}
-    >
-      {kind}
-    </span>
-  );
-}
+const DEFAULT_CHIP = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
 
 type CardNode = Node<FlowCardData, "card">;
 
@@ -55,12 +52,18 @@ function FlowCard(props: NodeProps<CardNode>) {
   const data = flowCardDataSchema.parse(props.data);
   return (
     <div
-      className="rounded-lg border bg-card p-3 text-card-foreground shadow-sm"
+      className={`rounded-lg border bg-card p-3 text-card-foreground shadow-sm ${
+        data.drill ? "border-dashed hover:border-foreground/40" : ""
+      }`}
       style={{ width: FLOW_NODE_WIDTH }}
     >
       <Handle type="target" position={Position.Top} className="!bg-border" />
       <div className="flex items-center gap-2">
-        <KindChip kind={data.kind} />
+        <span
+          className={`rounded px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
+        >
+          {data.chip}
+        </span>
         {data.count !== undefined && (
           <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground">
             ×{data.count}
@@ -70,6 +73,9 @@ function FlowCard(props: NodeProps<CardNode>) {
           <span className="ml-auto text-muted-foreground text-xs">
             {data.collapsed ? "▸" : "▾"}
           </span>
+        )}
+        {data.drill && (
+          <span className="ml-auto text-muted-foreground text-xs">⤵</span>
         )}
       </div>
       <div className="mt-1.5 font-semibold text-sm leading-tight">
@@ -92,11 +98,6 @@ function FlowCard(props: NodeProps<CardNode>) {
           </div>
         ))}
       </div>
-      {data.collapsed && (
-        <div className="mt-1 text-muted-foreground text-xs">
-          click to expand
-        </div>
-      )}
       <Handle type="source" position={Position.Bottom} className="!bg-border" />
     </div>
   );
@@ -104,10 +105,25 @@ function FlowCard(props: NodeProps<CardNode>) {
 
 const nodeTypes: NodeTypes = { card: FlowCard };
 
+type View =
+  | { readonly mode: "overview" }
+  | {
+      readonly mode: "encounter";
+      readonly title: string;
+      readonly def: AnyEncounterDef;
+    };
+
 export function TournamentFlow({ def }: { def: EventDef }) {
+  const [view, setView] = useState<View>({ mode: "overview" });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
-  const graph = useMemo(() => buildFlowGraph(def, collapsed), [def, collapsed]);
+  const graph: FlowGraph = useMemo(
+    () =>
+      view.mode === "overview"
+        ? buildOverviewGraph(def, chessRegistry)
+        : buildEncounterGraph(view.def, chessRegistry, collapsed),
+    [def, view, collapsed],
+  );
 
   const nodes = useMemo<CardNode[]>(
     () =>
@@ -141,28 +157,65 @@ export function TournamentFlow({ def }: { def: EventDef }) {
   );
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.12 }}
-      minZoom={0.15}
-      nodesConnectable={false}
-      onNodeClick={(_, node) => {
-        if (!node.data.expandable) return;
-        setCollapsed((current) => {
-          const next = new Set(current);
-          if (next.has(node.id)) next.delete(node.id);
-          else next.add(node.id);
-          return next;
-        });
-      }}
-      proOptions={{ hideAttribution: false }}
-    >
-      <Background gap={24} />
-      <Controls showInteractive={false} />
-      <MiniMap pannable zoomable />
-    </ReactFlow>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-3 border-b px-4 py-2">
+        {view.mode === "encounter" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setView({ mode: "overview" })}
+              className="rounded border px-2 py-0.5 text-muted-foreground text-xs hover:text-foreground"
+            >
+              ← stages
+            </button>
+            <span className="text-muted-foreground text-xs">{view.title}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground text-xs">
+            Stage overview — click a round to zoom into its recursive
+            definition.
+          </span>
+        )}
+      </div>
+      <div className="min-h-0 flex-1">
+        <ReactFlow
+          // Remount per view so fitView re-frames the new graph.
+          key={view.mode === "overview" ? "overview" : `enc:${view.title}`}
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.12 }}
+          minZoom={0.15}
+          nodesConnectable={false}
+          onNodeClick={(_, node) => {
+            if (view.mode === "overview") {
+              const drill = graph.drills.get(node.id);
+              if (drill !== undefined) {
+                setCollapsed(new Set());
+                setView({
+                  mode: "encounter",
+                  title: drill.title,
+                  def: drill.def,
+                });
+              }
+              return;
+            }
+            if (!node.data.expandable) return;
+            setCollapsed((current) => {
+              const next = new Set(current);
+              if (next.has(node.id)) next.delete(node.id);
+              else next.add(node.id);
+              return next;
+            });
+          }}
+          proOptions={{ hideAttribution: false }}
+        >
+          <Background gap={24} />
+          <Controls showInteractive={false} />
+          <MiniMap pannable zoomable />
+        </ReactFlow>
+      </div>
+    </div>
   );
 }

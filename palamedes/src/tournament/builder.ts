@@ -1,11 +1,14 @@
 import {
   type CompetitorDef,
+  type GameResultCode,
   groupRootPath,
+  type Input,
   type NodePath,
-  type ParsedEventDef,
+  type Outcome,
+  type PairingPlan,
   type ParticipantId,
   pathSegments,
-} from "./def";
+} from "./core";
 import {
   type Action,
   type EventState,
@@ -17,8 +20,7 @@ import {
   type ScheduledGame,
   standingsOf,
 } from "./engine";
-import type { GameResultCode, Input, PairingPlan } from "./inputs";
-import type { Outcome } from "./outcome";
+import { isPool, type ModelRegistry, type ParsedEventDef } from "./registry";
 import type { StandingsRow } from "./standings";
 
 /**
@@ -31,20 +33,22 @@ import type { StandingsRow } from "./standings";
 
 export class EventRun {
   readonly def: ParsedEventDef;
+  readonly registry: ModelRegistry;
   private readonly log: Input[] = [];
   private cache:
     | { readonly length: number; readonly state: EventState }
     | undefined;
 
-  constructor(def: ParsedEventDef) {
+  constructor(def: ParsedEventDef, registry: ModelRegistry) {
     this.def = def;
+    this.registry = registry;
   }
 
   state(): EventState {
     if (this.cache === undefined || this.cache.length !== this.log.length) {
       this.cache = {
         length: this.log.length,
-        state: materialize(this.def, this.log),
+        state: materialize(this.def, this.log, this.registry),
       };
     }
     return this.cache.state;
@@ -103,8 +107,7 @@ export class EventRun {
     const pools: NodePath[] = [];
     for (const stage of this.def.stages) {
       for (const group of stage.groups) {
-        if (group.run.kind === "pool")
-          pools.push(groupRootPath(stage.id, group.id));
+        if (isPool(group.run)) pools.push(groupRootPath(stage.id, group.id));
       }
     }
     const sole = pools[0];
@@ -227,7 +230,7 @@ export class EventRun {
       if (!isOurs) continue;
       const segments = pathSegments(g.path);
       const last = segments[segments.length - 1];
-      if (last?.kind !== "board") continue;
+      if (last?.kind !== "child" || last.label !== "board") continue;
       const matchPath = g.path.split("/").slice(0, -1).join("/");
       const list = byMatch.get(matchPath) ?? [];
       list.push(g);
@@ -311,7 +314,10 @@ export class EventRun {
   }
 }
 
-export const runEvent = (def: ParsedEventDef): EventRun => new EventRun(def);
+export const runEvent = (
+  def: ParsedEventDef,
+  registry: ModelRegistry,
+): EventRun => new EventRun(def, registry);
 
 // ---------------------------------------------------------------------------
 // Assertions

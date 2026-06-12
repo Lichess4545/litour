@@ -1,15 +1,16 @@
-import { type ParsedEventDef, parseEventDef } from "./def";
+import type { ParsedEventDef } from "@/tournament/registry";
+import { parseEventDef } from "./registry";
 
 /**
  * The acceptance table of design/tournament-model.md as executable
- * definitions. Everything here is plain data pushed through `parseEventDef`,
- * exactly the way an arbiter would author an event — if one of these stops
+ * definitions, authored the way an arbiter or tournament designer would:
+ * plain data parsed against the chess registry — if one of these stops
  * validating, the model broke. Several defs are miniaturized (fewer players
  * or boards, auto-pairable seeding) so the test suite can drive them
  * end-to-end; each notes its deltas from the published format.
  */
 
-// --- game building blocks (plain data, validated on parse) -----------------
+// --- authoring vocabulary (plain data; the registry validates on parse) ----
 
 const classical = { kind: "game", clock: { initial: 5400, increment: 30 } };
 const rapid = (initial: number, increment: number) => ({
@@ -21,12 +22,22 @@ const armageddon = {
   clock: { initial: 600, increment: 0, whiteInitial: 600, blackInitial: 420 },
   tie: { kind: "drawOdds", color: "black" },
 };
+
+const alternate = { source: "inherit", cycle: ["keep", "flip"] };
+const sameSeats = { source: "inherit", cycle: ["keep"] };
+const drawnSeats = { source: "draw" };
+const zigzag = { cycle: ["keep", "flip"] };
+const uniformBoards = { cycle: ["keep"] };
+
+const untilDecided = { untilDecided: true };
+const gamePoints = { kind: "passThrough" };
+const matchPoints = { kind: "table", draw: 1, legs: [{ win: 2, loss: 0 }] };
+
 /** Two games, colors alternating — the World Cup's basic tiebreak unit. */
 const duel = (game: unknown) => ({
   kind: "series",
   legs: [game, game],
-  stop: { kind: "all" },
-  colors: "alternate",
+  seats: alternate,
 });
 
 const players = (...names: readonly string[]) =>
@@ -81,15 +92,15 @@ export const worldChampionship: ParsedEventDef = parseEventDef({
               {
                 kind: "series",
                 legs: Array.from({ length: 14 }, () => classical),
-                stop: { kind: "firstTo", points: 7.5 },
-                colors: "alternate",
+                stop: { untilScore: 7.5 },
+                seats: alternate,
               },
               duel(rapid(600, 5)),
               duel(rapid(300, 3)),
               armageddon,
             ],
-            stop: { kind: "untilDecisive" },
-            colors: "redraw",
+            stop: untilDecided,
+            seats: drawnSeats,
           },
         },
       ],
@@ -134,10 +145,10 @@ export const worldCup: ParsedEventDef = parseEventDef({
                 duel(rapid(300, 3)),
                 armageddon,
               ],
-              stop: { kind: "untilDecisive" },
-              colors: "redraw",
+              stop: untilDecided,
+              seats: drawnSeats,
             },
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             tiebreaks: [],
           },
         },
@@ -163,7 +174,7 @@ export const loneWolf: ParsedEventDef = parseEventDef({
             pairing: { system: "swiss" },
             rounds: 3,
             encounter: rapid(2700, 45),
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             bye: { kind: "points", standings: 1, encounter: 1 },
             tiebreaks: [
               { metric: "sonnebornBerger" },
@@ -205,9 +216,9 @@ export const olympiad: ParsedEventDef = parseEventDef({
               kind: "match",
               boards: 4,
               board: classical,
-              colors: "zigzag",
+              seats: zigzag,
             },
-            score: { kind: "perEncounter", win: 2, draw: 1, loss: 0 },
+            score: matchPoints,
             bye: { kind: "points", standings: 1, encounter: 2 },
             tiebreaks: [
               {
@@ -250,9 +261,9 @@ export const lichess4545: ParsedEventDef = parseEventDef({
               kind: "match",
               boards: 4,
               board: rapid(2700, 45),
-              colors: "zigzag",
+              seats: zigzag,
             },
-            score: { kind: "perEncounter", win: 2, draw: 1, loss: 0 },
+            score: matchPoints,
             bye: { kind: "points", standings: 1, encounter: 2 },
             tiebreaks: [
               { metric: "matchWins" },
@@ -268,9 +279,9 @@ export const lichess4545: ParsedEventDef = parseEventDef({
 });
 
 /**
- * Norway Chess: round robin where a drawn classical game goes to armageddon.
- * Win 3 / armageddon win 1.5 / armageddon loss 1 / loss 0 — path-dependent
- * points via byLeg, while the games themselves stay normally scored.
+ * Norway Chess: round robin where a drawn classical game goes to armageddon
+ * with the same colors. Win 3 / armageddon win 1.5 / armageddon loss 1 /
+ * loss 0 — the leg-keyed scoring table, while games stay normally scored.
  */
 export const norwayChess: ParsedEventDef = parseEventDef({
   id: "norway-chess",
@@ -289,11 +300,12 @@ export const norwayChess: ParsedEventDef = parseEventDef({
             encounter: {
               kind: "series",
               legs: [classical, armageddon],
-              stop: { kind: "untilDecisive" },
-              colors: "fixed",
+              stop: untilDecided,
+              seats: sameSeats,
             },
             score: {
-              kind: "byLeg",
+              kind: "table",
+              draw: 0,
               legs: [
                 { win: 3, loss: 0 },
                 { win: 1.5, loss: 1 },
@@ -323,7 +335,7 @@ export const candidates: ParsedEventDef = parseEventDef({
             kind: "pool",
             pairing: { system: "roundRobin", cycles: 2 },
             encounter: classical,
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             tiebreaks: [
               { metric: "headToHead" },
               { metric: "gamesWon" },
@@ -363,20 +375,19 @@ const wuccKnockout = (legRelease: "lockstep" | "independent", suffix: string) =>
                     kind: "match",
                     boards: 2,
                     board: rapid(600, 5),
-                    colors: "zigzag",
+                    seats: zigzag,
                   },
                   {
                     kind: "match",
                     boards: 2,
                     board: rapid(600, 5),
-                    colors: "zigzag",
+                    seats: zigzag,
                   },
                 ],
-                stop: { kind: "all" },
-                colors: "alternate",
+                seats: alternate,
                 tie: { kind: "manual" },
               },
-              score: { kind: "encounterPoints" },
+              score: gamePoints,
               legRelease,
               tiebreaks: [],
             },
@@ -425,7 +436,7 @@ export const miniChampionship: ParsedEventDef = parseEventDef({
             kind: "pool",
             pairing: { system: "roundRobin", cycles: 1 },
             encounter: rapid(900, 10),
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             bye: { kind: "points", standings: 0, encounter: 0 },
             tiebreaks: [{ metric: "sonnebornBerger" }],
           },
@@ -441,7 +452,7 @@ export const miniChampionship: ParsedEventDef = parseEventDef({
             kind: "pool",
             pairing: { system: "roundRobin", cycles: 1 },
             encounter: rapid(900, 10),
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             bye: { kind: "points", standings: 0, encounter: 0 },
             tiebreaks: [{ metric: "sonnebornBerger" }],
           },
@@ -476,7 +487,7 @@ export const miniChampionship: ParsedEventDef = parseEventDef({
               },
               tie: { kind: "drawOdds", color: "black" },
             },
-            score: { kind: "encounterPoints" },
+            score: gamePoints,
             tiebreaks: [],
           },
         },
@@ -503,11 +514,20 @@ export const scheveningen: ParsedEventDef = parseEventDef({
           run: {
             kind: "series",
             legs: [
-              { kind: "match", boards: 2, board: classical, colors: "uniform" },
-              { kind: "match", boards: 2, board: classical, colors: "uniform" },
+              {
+                kind: "match",
+                boards: 2,
+                board: classical,
+                seats: uniformBoards,
+              },
+              {
+                kind: "match",
+                boards: 2,
+                board: classical,
+                seats: uniformBoards,
+              },
             ],
-            stop: { kind: "all" },
-            colors: "alternate",
+            seats: alternate,
           },
         },
       ],
@@ -533,10 +553,108 @@ export const quads: ParsedEventDef = parseEventDef({
           kind: "pool",
           pairing: { system: "roundRobin", cycles: 1 },
           encounter: rapid(900, 5),
-          score: { kind: "encounterPoints" },
+          score: gamePoints,
           tiebreaks: [{ metric: "sonnebornBerger" }],
         },
       })),
+    },
+  ],
+});
+
+/**
+ * The cascade round: an 8-round team swiss where every round is two rapid
+ * team games with swapped colors (match points only — game points never
+ * matter), a tied round goes to one full-team blitz match with drawn
+ * colors, and a still-tied round is decided by a single-board armageddon
+ * with drawn colors. Everything below is composition: the per-leg "random
+ * color" is a singleton series wrapper whose seats are drawn by lot.
+ */
+export const teamSwissCascade: ParsedEventDef = parseEventDef({
+  id: "team-swiss-cascade",
+  name: "Team swiss with blitz and armageddon cascade",
+  competitors: [
+    team("ank", "Anchors", 2),
+    team("bol", "Bolts", 2),
+    team("cog", "Cogs", 2),
+    team("dyn", "Dynamos", 2),
+    team("emb", "Embers", 2),
+    team("fla", "Flames", 2),
+    team("gri", "Griffins", 2),
+    team("hus", "Huskies", 2),
+  ],
+  stages: [
+    {
+      id: "season",
+      groups: [
+        {
+          id: "swiss",
+          entries: seeds(8),
+          run: {
+            kind: "pool",
+            pairing: { system: "swiss" },
+            rounds: 8,
+            encounter: {
+              kind: "series",
+              stop: untilDecided,
+              seats: sameSeats,
+              legs: [
+                {
+                  // Two rapid team games, colors swapped between them.
+                  kind: "series",
+                  legs: [
+                    {
+                      kind: "match",
+                      boards: 2,
+                      board: rapid(600, 5),
+                      seats: zigzag,
+                    },
+                    {
+                      kind: "match",
+                      boards: 2,
+                      board: rapid(600, 5),
+                      seats: zigzag,
+                    },
+                  ],
+                  seats: alternate,
+                },
+                {
+                  // Tied after both games: one full-team blitz, colors drawn.
+                  kind: "series",
+                  legs: [
+                    {
+                      kind: "match",
+                      boards: 2,
+                      board: rapid(180, 2),
+                      seats: zigzag,
+                    },
+                  ],
+                  stop: untilDecided,
+                  seats: drawnSeats,
+                },
+                {
+                  // Still tied: a single nominated board plays armageddon,
+                  // colors drawn; the match inherits the draw-odds decision.
+                  kind: "series",
+                  legs: [
+                    {
+                      kind: "match",
+                      boards: 1,
+                      board: armageddon,
+                      seats: uniformBoards,
+                      tie: { kind: "drawOdds", color: "black" },
+                    },
+                  ],
+                  stop: untilDecided,
+                  seats: drawnSeats,
+                },
+              ],
+            },
+            score: matchPoints,
+            bye: { kind: "points", standings: 1, encounter: 1 },
+            tiebreaks: [{ metric: "matchWins" }],
+          },
+        },
+      ],
     },
   ],
 });
@@ -621,5 +739,12 @@ export const FORMAT_EXAMPLES: readonly FormatExample[] = [
     title: "Quads",
     blurb: "Parallel round-robin groups of four.",
     def: quads,
+  },
+  {
+    slug: "team-swiss-cascade",
+    title: "Team swiss with cascading tiebreaks",
+    blurb:
+      "Eight rounds; each round: two color-swapped rapid games, then full-team blitz with drawn colors, then a one-board armageddon.",
+    def: teamSwissCascade,
   },
 ];
