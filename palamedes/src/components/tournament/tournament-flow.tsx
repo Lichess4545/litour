@@ -169,7 +169,7 @@ function FlowCard(props: NodeProps<CardNode>) {
 function Frame(props: NodeProps<FrameNode>) {
   const data = frameDataSchema.parse(props.data);
   return (
-    <div className="h-full w-full rounded-xl border border-blue-400/50 border-dashed bg-white/40">
+    <div className="h-full w-full rounded-xl border border-blue-400/50 border-dashed bg-white/90">
       <Handle type="target" position={Position.Left} className="!bg-border" />
       <div className="flex items-center gap-2 px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {data.title}
