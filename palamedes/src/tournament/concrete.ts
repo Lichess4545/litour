@@ -76,12 +76,11 @@ export type ConcreteCard = {
 };
 
 /**
- * What happens after a round's encounters resolve: outcomes go through the
- * scoring rule, standings update, and (unless this was the last round) the
- * pairing system pairs the next round from them.
+ * What happens between rounds: standings update from the scored points and
+ * (unless the schedule is over) the pairing system pairs the next round.
+ * The round itself owns none of this — it outputs scored points.
  */
 export type ConcreteProcess = {
-  readonly scoring: ConcreteCard;
   readonly standings: ConcreteCard;
   /** Undefined after the final round: nothing left to pair. */
   readonly repair: ConcreteCard | undefined;
@@ -90,7 +89,8 @@ export type ConcreteProcess = {
 export type ConcreteRound = {
   readonly label: string;
   readonly pairings: Many<ConcretePairing>;
-  readonly process: ConcreteProcess;
+  /** The round's output: its outcomes through the scoring rule. */
+  readonly scoring: ConcreteCard;
 };
 
 export type ConcreteRun =
@@ -100,6 +100,10 @@ export type ConcreteRun =
       readonly system: string;
       readonly score: string;
       readonly rounds: Many<ConcreteRound>;
+      /** Between two rounds: standings update, then pair the next round. */
+      readonly between: ConcreteProcess;
+      /** After the last round: the final standings — the group's output. */
+      readonly final: ConcreteProcess;
     }
   | { readonly kind: "encounter"; readonly node: ConcreteNode };
 
@@ -268,39 +272,31 @@ function concretifyPool(
     badge: undefined,
     lines: ["from these standings"],
   };
-  const processOf = (last: boolean): ConcreteProcess => ({
-    scoring,
-    standings,
-    repair: last ? undefined : repair,
-  });
 
   const roundCount =
     pool.rounds ??
     (entrants !== "open" && pairing?.totalRounds !== undefined
       ? pairing.totalRounds(pool.pairing, entrants)
       : "open");
+  const roundOf = (round: number, label: string): ConcreteRound => ({
+    label,
+    pairings: pairingsOf(round),
+    scoring,
+  });
   const rounds: Many<ConcreteRound> =
     roundCount === "open"
       ? {
           open: true,
-          items: Array.from({ length: OPEN_EXAMPLES }, (_, i) => ({
-            label: `Round ${i + 1}`,
-            pairings: pairingsOf(i + 1),
-            process: processOf(false),
-          })),
-          more: {
-            label: "… Round n",
-            pairings: pairingsOf(OPEN_EXAMPLES + 1),
-            process: processOf(true),
-          },
+          items: Array.from({ length: OPEN_EXAMPLES }, (_, i) =>
+            roundOf(i + 1, `Round ${i + 1}`),
+          ),
+          more: roundOf(OPEN_EXAMPLES + 1, "… Round n"),
         }
       : {
           open: false,
-          items: Array.from({ length: roundCount }, (_, i) => ({
-            label: `Round ${i + 1}`,
-            pairings: pairingsOf(i + 1),
-            process: processOf(i === roundCount - 1),
-          })),
+          items: Array.from({ length: roundCount }, (_, i) =>
+            roundOf(i + 1, `Round ${i + 1}`),
+          ),
         };
 
   return {
@@ -308,6 +304,8 @@ function concretifyPool(
     system: pool.pairing.system,
     score: pool.score.kind,
     rounds,
+    between: { standings, repair },
+    final: { standings, repair: undefined },
   };
 }
 

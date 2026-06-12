@@ -213,22 +213,31 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
           ...run.rounds.items.map((round) => ({ round, ghost: false })),
           ...(run.rounds.open ? [{ round: run.rounds.more, ghost: true }] : []),
         ];
-        // Round steps, interleaved with what happens between them: score,
-        // update standings, pair the next round.
+        // Every round is followed by its process step: standings update and
+        // re-pair between rounds, the final standings after the last.
         const steps: readonly (
           | { kind: "round"; round: ConcreteRound; ghost: boolean }
-          | { kind: "process"; process: ConcreteProcess; after: string }
+          | {
+              kind: "process";
+              process: ConcreteProcess;
+              title: string;
+              label: string;
+            }
         )[] = rounds.flatMap(({ round, ghost }, i) => [
           { kind: "round" as const, round, ghost },
-          ...(i < rounds.length - 1
-            ? [
-                {
-                  kind: "process" as const,
-                  process: round.process,
-                  after: round.label,
-                },
-              ]
-            : []),
+          i < rounds.length - 1
+            ? {
+                kind: "process" as const,
+                process: run.between,
+                title: `After ${round.label}`,
+                label: "standings · pair",
+              }
+            : {
+                kind: "process" as const,
+                process: run.final,
+                title: "Final standings",
+                label: "standings",
+              },
         ]);
         let previous = headerId;
         steps.forEach((step, slot) => {
@@ -249,7 +258,7 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
                     step: true,
                     ghost,
                   })
-                : card("standings", "score · pair", [], {
+                : card("standings", step.label, [], {
                     drill: true,
                     step: true,
                   }),
@@ -270,7 +279,7 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
           if (step.kind === "process") {
             drills.set(stepId, {
               kind: "process",
-              title: `After ${step.after}`,
+              title: step.title,
               process: step.process,
             });
           }
@@ -370,8 +379,8 @@ export function buildLevelGraph(target: DrillTarget): FlowGraph {
 
 /**
  * A round is its pairings, stacked — open sizes end in a faded exemplar —
- * feeding the scoring process: every outcome goes through the scoring rule
- * into the standings, which the pairing system pairs from next.
+ * and its output: every outcome through the scoring rule. Standings and
+ * re-pairing belong to the process step between rounds, not here.
  */
 function buildRoundLevel(round: ConcreteRound): FlowGraph {
   const nodes: FlowGraphNode[] = [];
@@ -407,53 +416,34 @@ function buildRoundLevel(round: ConcreteRound): FlowGraph {
     }
   });
 
-  // The process chain, to the right: outcomes → scoring → standings (→ pair).
-  const chain: readonly ConcreteCard[] = [
-    round.process.scoring,
-    round.process.standings,
-    ...(round.process.repair === undefined ? [] : [round.process.repair]),
-  ];
-  const chainY = ((pairings.length - 1) * STACK_H) / 2;
-  chain.forEach((concrete, i) => {
-    const id = `proc:${i + 1}`;
-    nodes.push({
-      id,
-      type: "card",
-      position: {
-        x: CARD_W + 3 * GAP_X + i * (CARD_W + GAP_X),
-        y: chainY,
-      },
-      data: plainCard(concrete, { flow: "right" }),
+  // The round's output, to the right: every outcome through the scoring rule.
+  const scoringId = "scoring";
+  nodes.push({
+    id: scoringId,
+    type: "card",
+    position: {
+      x: CARD_W + 3 * GAP_X,
+      y: ((pairings.length - 1) * STACK_H) / 2,
+    },
+    data: plainCard(round.scoring, { flow: "right" }),
+  });
+  pairings.forEach((_, slot) => {
+    edges.push({
+      id: `c:lvl:${slot + 1}->${scoringId}`,
+      source: `lvl:${slot + 1}`,
+      target: scoringId,
+      kind: "chain",
     });
-    if (i === 0) {
-      pairings.forEach((_, slot) => {
-        edges.push({
-          id: `c:lvl:${slot + 1}->proc:1`,
-          source: `lvl:${slot + 1}`,
-          target: id,
-          kind: "chain",
-        });
-      });
-    } else {
-      edges.push({
-        id: `c:proc:${i}->proc:${i + 1}`,
-        source: `proc:${i}`,
-        target: id,
-        label: i === 1 ? "points" : undefined,
-        kind: "chain",
-      });
-    }
   });
 
   return { nodes, edges, drills };
 }
 
-/** Between rounds: score the outcomes, update standings, pair the next round. */
+/** Between rounds: standings update from the points, then pair what's next. */
 function buildProcessLevel(process: ConcreteProcess): FlowGraph {
   const nodes: FlowGraphNode[] = [];
   const edges: FlowGraphEdge[] = [];
   const chain: readonly ConcreteCard[] = [
-    process.scoring,
     process.standings,
     ...(process.repair === undefined ? [] : [process.repair]),
   ];
@@ -469,7 +459,6 @@ function buildProcessLevel(process: ConcreteProcess): FlowGraph {
         id: `c:proc:${i}->proc:${i + 1}`,
         source: `proc:${i}`,
         target: `proc:${i + 1}`,
-        label: i === 1 ? "points" : undefined,
         kind: "chain",
       });
     }

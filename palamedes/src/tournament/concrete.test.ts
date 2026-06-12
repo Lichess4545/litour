@@ -58,24 +58,24 @@ describe("concretify — sizes are explicit", () => {
     ]);
   });
 
-  it("each round carries its process: scoring, standings, re-pair until the last", () => {
+  it("a round outputs its scoring; standings and re-pairing live between rounds", () => {
     const event = concretify(lichess4545Season, chessRegistry);
     const run = event.stages[0]?.groups[0]?.run;
     if (run?.kind !== "rounds") throw new Error("expected a rounds run");
-    const [first, last] = run.rounds.items;
-    expect(first?.process.scoring.title).toBe("Points table");
-    expect(first?.process.scoring.lines).toEqual([
+    expect(run.rounds.items[0]?.scoring.title).toBe("Points table");
+    expect(run.rounds.items[0]?.scoring.lines).toEqual([
       "win → 2 · loss → 0",
       "draw → 1",
     ]);
-    expect(first?.process.standings.lines).toEqual([
+    expect(run.between.standings.lines).toEqual([
       "tie: matchWins",
       "tie: gamesWon",
       "tie: boardPoints-1",
       "tie: boardPoints-2",
     ]);
-    expect(first?.process.repair?.kind).toBe("swiss");
-    expect(last?.process.repair).toBeUndefined();
+    expect(run.between.repair?.kind).toBe("swiss");
+    // After the final round only the standings remain — nothing to pair.
+    expect(run.final.repair).toBeUndefined();
   });
 
   it("an eliminative pool shrinks per round and seats the bronze final", () => {
