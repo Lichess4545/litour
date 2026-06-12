@@ -13,6 +13,10 @@ export const passThroughScoring: ScoringKind = defineScoringKind({
   kind: "passThrough",
   schema: z.object({ kind: z.literal("passThrough") }),
   points: (_rule, line) => line.outcome.points[line.side],
+  card: () => ({
+    title: "Game points",
+    lines: ["each side keeps its points"],
+  }),
 });
 
 type TableRule = {
@@ -57,6 +61,19 @@ export const tableScoring: ScoringKind = defineScoringKind<TableRule>({
       }
     }
   },
+  card: (rule) => ({
+    title: "Points table",
+    lines: [
+      ...(rule.legs.length === 1
+        ? [
+            `win → ${rule.legs[0]?.win ?? 0} · loss → ${rule.legs[0]?.loss ?? 0}`,
+          ]
+        : rule.legs.map(
+            (row, i) => `won by leg ${i + 1} → ${row.win} · loss → ${row.loss}`,
+          )),
+      `draw → ${rule.draw}`,
+    ],
+  }),
 });
 
 export const builtinScorings: readonly ScoringKind[] = [

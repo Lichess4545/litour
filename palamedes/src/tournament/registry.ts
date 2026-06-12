@@ -296,6 +296,8 @@ export type ScoringKind = {
     ops: EncounterOps,
     issue: Issue,
   ) => void;
+  /** How this rule describes itself (outcome → points mapping, for viewers). */
+  readonly card?: (rule: ScoreRef) => CardInfo;
 };
 
 export type MetricKind = {
@@ -490,11 +492,13 @@ export type ScoringKindSpec<R> = {
     ops: EncounterOps,
     issue: Issue,
   ): void;
+  card?(rule: R): CardInfo;
 };
 
 export function defineScoringKind<R>(spec: ScoringKindSpec<R>): ScoringKind {
   const decode = memoDecode(spec.schema);
   const validate = spec.validate;
+  const cardOf = spec.card;
   return {
     kind: spec.kind,
     schema: spec.schema,
@@ -509,6 +513,9 @@ export function defineScoringKind<R>(spec: ScoringKindSpec<R>): ScoringKind {
             issue: Issue,
           ) => validate(decode(rule), encounter, ops, issue),
         }),
+    ...(cardOf === undefined
+      ? {}
+      : { card: (rule: ScoreRef) => cardOf(decode(rule)) }),
   };
 }
 

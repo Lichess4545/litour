@@ -58,6 +58,26 @@ describe("concretify — sizes are explicit", () => {
     ]);
   });
 
+  it("each round carries its process: scoring, standings, re-pair until the last", () => {
+    const event = concretify(lichess4545Season, chessRegistry);
+    const run = event.stages[0]?.groups[0]?.run;
+    if (run?.kind !== "rounds") throw new Error("expected a rounds run");
+    const [first, last] = run.rounds.items;
+    expect(first?.process.scoring.title).toBe("Points table");
+    expect(first?.process.scoring.lines).toEqual([
+      "win → 2 · loss → 0",
+      "draw → 1",
+    ]);
+    expect(first?.process.standings.lines).toEqual([
+      "tie: matchWins",
+      "tie: gamesWon",
+      "tie: boardPoints-1",
+      "tie: boardPoints-2",
+    ]);
+    expect(first?.process.repair?.kind).toBe("swiss");
+    expect(last?.process.repair).toBeUndefined();
+  });
+
   it("an eliminative pool shrinks per round and seats the bronze final", () => {
     const event = concretify(miniChampionship, chessRegistry);
     const finals = event.stages[1]?.groups[0];

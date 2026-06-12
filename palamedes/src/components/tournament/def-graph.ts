@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type {
+  ConcreteCard,
   ConcreteEvent,
   ConcreteNode,
   ConcretePairing,
+  ConcreteProcess,
   ConcreteRound,
 } from "@/tournament/concrete";
 
@@ -81,6 +83,11 @@ export type DrillTarget =
       readonly kind: "node";
       readonly title: string;
       readonly node: ConcreteNode;
+    }
+  | {
+      readonly kind: "process";
+      readonly title: string;
+      readonly process: ConcreteProcess;
     };
 
 export type FlowGraph = {
@@ -125,6 +132,16 @@ const card = (
   step: options?.step ?? false,
   ghost: options?.ghost ?? false,
 });
+
+/** The card face of a non-encounter concrete card (scoring, standings, …). */
+const plainCard = (
+  concrete: ConcreteCard,
+  options: { flow: "right" | "down"; step?: boolean },
+): FlowCardData =>
+  card(concrete.kind, concrete.title, concrete.lines, {
+    badge: concrete.badge,
+    ...options,
+  });
 
 /** The card face of one concrete node, with an optional leading label line. */
 const nodeCard = (
@@ -192,16 +209,31 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
           }),
         });
 
-        const steps: readonly {
-          round: ConcreteRound;
-          ghost: boolean;
-        }[] = [
+        const rounds: readonly { round: ConcreteRound; ghost: boolean }[] = [
           ...run.rounds.items.map((round) => ({ round, ghost: false })),
           ...(run.rounds.open ? [{ round: run.rounds.more, ghost: true }] : []),
         ];
+        // Round steps, interleaved with what happens between them: score,
+        // update standings, pair the next round.
+        const steps: readonly (
+          | { kind: "round"; round: ConcreteRound; ghost: boolean }
+          | { kind: "process"; process: ConcreteProcess; after: string }
+        )[] = rounds.flatMap(({ round, ghost }, i) => [
+          { kind: "round" as const, round, ghost },
+          ...(i < rounds.length - 1
+            ? [
+                {
+                  kind: "process" as const,
+                  process: round.process,
+                  after: round.label,
+                },
+              ]
+            : []),
+        ]);
         let previous = headerId;
-        steps.forEach(({ round, ghost }, slot) => {
+        steps.forEach((step, slot) => {
           const stepId = `${headerId}/step-${slot + 1}`;
+          const ghost = step.kind === "round" && step.ghost;
           laneNodes.push({
             id: stepId,
             type: "card",
@@ -210,11 +242,17 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
               x: FRAME_PAD + CARD_W + GAP_X + slot * (STEP_W + GAP_X),
               y: laneY + STEP_Y_NUDGE,
             },
-            data: card("round", round.label, [], {
-              drill: !ghost,
-              step: true,
-              ghost,
-            }),
+            data:
+              step.kind === "round"
+                ? card("round", step.round.label, [], {
+                    drill: !ghost,
+                    step: true,
+                    ghost,
+                  })
+                : card("standings", "score · pair", [], {
+                    drill: true,
+                    step: true,
+                  }),
           });
           edges.push({
             id: `c:${previous}->${stepId}`,
@@ -222,8 +260,19 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
             target: stepId,
             kind: "chain",
           });
-          if (!ghost) {
-            drills.set(stepId, { kind: "round", title: round.label, round });
+          if (step.kind === "round" && !ghost) {
+            drills.set(stepId, {
+              kind: "round",
+              title: step.round.label,
+              round: step.round,
+            });
+          }
+          if (step.kind === "process") {
+            drills.set(stepId, {
+              kind: "process",
+              title: `After ${step.after}`,
+              process: step.process,
+            });
           }
           previous = stepId;
         });
@@ -309,14 +358,24 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
 // Level views: ONE level of resolution per canvas — drill to descend
 
 export function buildLevelGraph(target: DrillTarget): FlowGraph {
-  return target.kind === "round"
-    ? buildRoundLevel(target.round)
-    : buildNodeLevel(target.node);
+  switch (target.kind) {
+    case "round":
+      return buildRoundLevel(target.round);
+    case "node":
+      return buildNodeLevel(target.node);
+    case "process":
+      return buildProcessLevel(target.process);
+  }
 }
 
-/** A round is its pairings, stacked; open sizes end in a faded exemplar. */
+/**
+ * A round is its pairings, stacked — open sizes end in a faded exemplar —
+ * feeding the scoring process: every outcome goes through the scoring rule
+ * into the standings, which the pairing system pairs from next.
+ */
 function buildRoundLevel(round: ConcreteRound): FlowGraph {
   const nodes: FlowGraphNode[] = [];
+  const edges: FlowGraphEdge[] = [];
   const drills = new Map<string, DrillTarget>();
 
   const pairings: readonly { pairing: ConcretePairing; ghost: boolean }[] = [
@@ -347,7 +406,75 @@ function buildRoundLevel(round: ConcreteRound): FlowGraph {
       });
     }
   });
-  return { nodes, edges: [], drills };
+
+  // The process chain, to the right: outcomes → scoring → standings (→ pair).
+  const chain: readonly ConcreteCard[] = [
+    round.process.scoring,
+    round.process.standings,
+    ...(round.process.repair === undefined ? [] : [round.process.repair]),
+  ];
+  const chainY = ((pairings.length - 1) * STACK_H) / 2;
+  chain.forEach((concrete, i) => {
+    const id = `proc:${i + 1}`;
+    nodes.push({
+      id,
+      type: "card",
+      position: {
+        x: CARD_W + 3 * GAP_X + i * (CARD_W + GAP_X),
+        y: chainY,
+      },
+      data: plainCard(concrete, { flow: "right" }),
+    });
+    if (i === 0) {
+      pairings.forEach((_, slot) => {
+        edges.push({
+          id: `c:lvl:${slot + 1}->proc:1`,
+          source: `lvl:${slot + 1}`,
+          target: id,
+          kind: "chain",
+        });
+      });
+    } else {
+      edges.push({
+        id: `c:proc:${i}->proc:${i + 1}`,
+        source: `proc:${i}`,
+        target: id,
+        label: i === 1 ? "points" : undefined,
+        kind: "chain",
+      });
+    }
+  });
+
+  return { nodes, edges, drills };
+}
+
+/** Between rounds: score the outcomes, update standings, pair the next round. */
+function buildProcessLevel(process: ConcreteProcess): FlowGraph {
+  const nodes: FlowGraphNode[] = [];
+  const edges: FlowGraphEdge[] = [];
+  const chain: readonly ConcreteCard[] = [
+    process.scoring,
+    process.standings,
+    ...(process.repair === undefined ? [] : [process.repair]),
+  ];
+  chain.forEach((concrete, i) => {
+    nodes.push({
+      id: `proc:${i + 1}`,
+      type: "card",
+      position: { x: i * (CARD_W + GAP_X), y: 0 },
+      data: plainCard(concrete, { flow: "right" }),
+    });
+    if (i > 0) {
+      edges.push({
+        id: `c:proc:${i}->proc:${i + 1}`,
+        source: `proc:${i}`,
+        target: `proc:${i + 1}`,
+        label: i === 1 ? "points" : undefined,
+        kind: "chain",
+      });
+    }
+  });
+  return { nodes, edges, drills: new Map() };
 }
 
 /** One node's immediate children, each its own card — no compression. */

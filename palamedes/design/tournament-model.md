@@ -191,12 +191,20 @@ hides the holder and resets exemplars below it. When real registrations and
 pairings exist, a state-bound conversion will produce the same shapes with
 every item known and named.
 
+The scoring process is part of the structure: every round carries its
+`ConcreteProcess` — the scoring rule's self-description (a new `card`
+capability on ScoringKind: "win → 2 · loss → 0 · draw → 1"), the standings
+with their tiebreak metric labels, and the pairing system that pairs the
+next round (absent after the last). The overview interleaves "score · pair"
+steps between rounds; the round level fans every pairing's outcome into
+scoring → standings → pair-next.
+
 The viewer only iterates that structure. The overview is a left-to-right
 timeline of stage frames (no "event node"; the page is the event) with
-group lanes and round steps; drilling a round shows its pairings, drilling
-a node shows its immediate children — one level of resolution per canvas,
-sequenced with "then" edges or stacked per the node's arrangement, ghosts
-faded; a breadcrumb walks back up.
+group lanes and round steps; drilling a round shows its pairings feeding
+the process chain, drilling a node shows its immediate children — one
+level of resolution per canvas, sequenced with "then" edges or stacked per
+the node's arrangement, ghosts faded; a breadcrumb walks back up.
 
 ## Out of scope (unchanged)
 

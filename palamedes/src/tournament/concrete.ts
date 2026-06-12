@@ -66,9 +66,31 @@ export type ConcretePairing = {
   readonly node: ConcreteNode;
 };
 
+/** A non-encounter card: a scoring rule, the standings, a pairing step. */
+export type ConcreteCard = {
+  /** Its kind key (display chip). */
+  readonly kind: string;
+  readonly title: string;
+  readonly badge: string | undefined;
+  readonly lines: readonly string[];
+};
+
+/**
+ * What happens after a round's encounters resolve: outcomes go through the
+ * scoring rule, standings update, and (unless this was the last round) the
+ * pairing system pairs the next round from them.
+ */
+export type ConcreteProcess = {
+  readonly scoring: ConcreteCard;
+  readonly standings: ConcreteCard;
+  /** Undefined after the final round: nothing left to pair. */
+  readonly repair: ConcreteCard | undefined;
+};
+
 export type ConcreteRound = {
   readonly label: string;
   readonly pairings: Many<ConcretePairing>;
+  readonly process: ConcreteProcess;
 };
 
 export type ConcreteRun =
@@ -223,6 +245,35 @@ function concretifyPool(
     };
   };
 
+  const scoringKind = registry.scorings.get(pool.score.kind);
+  const scoringInfo = scoringKind?.card?.(pool.score);
+  const scoring: ConcreteCard = {
+    kind: pool.score.kind,
+    title: scoringInfo?.title ?? pool.score.kind,
+    badge: scoringInfo?.badge,
+    lines: scoringInfo?.lines ?? [],
+  };
+  const standings: ConcreteCard = {
+    kind: "standings",
+    title: "Standings",
+    badge: undefined,
+    lines: pool.tiebreaks.map((ref) => {
+      const metric = registry.metrics.get(ref.metric);
+      return `tie: ${metric?.label(ref) ?? ref.metric}`;
+    }),
+  };
+  const repair: ConcreteCard = {
+    kind: pool.pairing.system,
+    title: "Pair next round",
+    badge: undefined,
+    lines: ["from these standings"],
+  };
+  const processOf = (last: boolean): ConcreteProcess => ({
+    scoring,
+    standings,
+    repair: last ? undefined : repair,
+  });
+
   const roundCount =
     pool.rounds ??
     (entrants !== "open" && pairing?.totalRounds !== undefined
@@ -235,14 +286,20 @@ function concretifyPool(
           items: Array.from({ length: OPEN_EXAMPLES }, (_, i) => ({
             label: `Round ${i + 1}`,
             pairings: pairingsOf(i + 1),
+            process: processOf(false),
           })),
-          more: { label: "… Round n", pairings: pairingsOf(OPEN_EXAMPLES + 1) },
+          more: {
+            label: "… Round n",
+            pairings: pairingsOf(OPEN_EXAMPLES + 1),
+            process: processOf(true),
+          },
         }
       : {
           open: false,
           items: Array.from({ length: roundCount }, (_, i) => ({
             label: `Round ${i + 1}`,
             pairings: pairingsOf(i + 1),
+            process: processOf(i === roundCount - 1),
           })),
         };
 
