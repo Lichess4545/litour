@@ -210,8 +210,12 @@ aggregated advancement flows (stages exist as concrete data —
 `ConcreteStage.card`, stage-level `seededFrom`); a stage is its groups as
 lanes of round and process steps; a round is its pairings feeding the
 scoring rule; a node is its immediate children, "then"-chained or stacked
-per arrangement, ghosts faded. Clicking a frame folds it back into its
-card. One stateless rule replaces special cases: an item that is the only
+per arrangement, ghosts faded. Conditional transitions are logic gates:
+kinds surface their stop rules per child (`StructureChild.gate` —
+"still tied?" / "first to 7.5 wins"), and the display draws a gate node
+whose "yes" continues to the next leg and whose "no" exits — so a World
+Championship visibly ends at the first decided gate. Clicking a frame
+folds it back into its card. One stateless rule replaces special cases: an item that is the only
 drillable thing at its level renders pre-expanded and cannot collapse — so
 a single-stage event opens at its rounds structurally.
 

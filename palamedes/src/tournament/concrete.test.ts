@@ -162,6 +162,25 @@ describe("concretify — colors travel the seat algebra as names", () => {
     expect(run.node.sides).toEqual({ white: "Magnus", black: "Hikaru" });
   });
 
+  it("stop rules surface as gates between legs", () => {
+    const event = concretify(worldChampionship, chessRegistry);
+    const run = event.stages[0]?.groups[0]?.run;
+    if (run?.kind !== "encounter") throw new Error("expected an encounter run");
+    const [classicalSet, rapid] = run.node.children;
+    // The first leg always plays; every later leg is gated by the stop rule.
+    expect(classicalSet?.gate).toBeUndefined();
+    expect(rapid?.gate).toEqual({
+      when: "still tied?",
+      otherwise: "winner decided",
+    });
+    // Inside the classical set, first-to-7.5 gates every game after the first.
+    expect(classicalSet?.children[0]?.gate).toBeUndefined();
+    expect(classicalSet?.children[1]?.gate).toEqual({
+      when: "no one at 7.5?",
+      otherwise: "first to 7.5 wins",
+    });
+  });
+
   it("a drawing of lots hides the holder and resets exemplars below", () => {
     const event = concretify(worldChampionship, chessRegistry);
     const run = event.stages[0]?.groups[0]?.run;

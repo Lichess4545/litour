@@ -62,6 +62,14 @@ export type StructureChild = {
   readonly count?: number | undefined;
   /** How this child derives its white-ish seat from the parent. */
   readonly seat?: "keep" | "flip" | "draw" | undefined;
+  /**
+   * This child plays only conditionally: `when` is the condition that
+   * continues here ("still tied?"), `otherwise` the exit taken instead
+   * ("winner decided"). Stop rules surface through this.
+   */
+  readonly gate?:
+    | { readonly when: string; readonly otherwise: string }
+    | undefined;
 };
 
 export type Issue = (

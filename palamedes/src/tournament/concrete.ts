@@ -53,6 +53,14 @@ export type ConcreteSides = {
   readonly black: string;
 };
 
+/** A logic gate before a conditional node: continue here, or take the exit. */
+export type ConcreteGate = {
+  /** The condition that continues into this node ("still tied?"). */
+  readonly when: string;
+  /** The exit taken otherwise ("winner decided"). */
+  readonly otherwise: string;
+};
+
 /** One encounter, concretified: the recursion as explicit data. */
 export type ConcreteNode = {
   /** The encounter kind key (display chip). */
@@ -66,6 +74,8 @@ export type ConcreteNode = {
   readonly sides: ConcreteSides | undefined;
   /** This node stands for N identical siblings. */
   readonly count: number | undefined;
+  /** This node plays only conditionally (its kind's stop rule). */
+  readonly gate: ConcreteGate | undefined;
   readonly arrangement: Arrangement;
   readonly children: readonly ConcreteNode[];
 };
@@ -185,6 +195,7 @@ function concretifyNode(
     readonly sides: SideNames;
     /** This node's own colors come from a drawing of lots. */
     readonly drawn: boolean;
+    readonly gate?: ConcreteGate | undefined;
   },
   registry: ModelRegistry,
 ): ConcreteNode {
@@ -203,7 +214,13 @@ function concretifyNode(
           : opts.sides;
     return concretifyNode(
       child.def,
-      { role: child.role, count: child.count, sides: own, drawn },
+      {
+        role: child.role,
+        count: child.count,
+        sides: own,
+        drawn,
+        gate: child.gate,
+      },
       registry,
     );
   });
@@ -215,6 +232,7 @@ function concretifyNode(
     role: opts.role,
     sides: opts.drawn ? undefined : chips(opts.sides),
     count: opts.count,
+    gate: opts.gate,
     arrangement: registry.ops.arrangement(def),
     children,
   };

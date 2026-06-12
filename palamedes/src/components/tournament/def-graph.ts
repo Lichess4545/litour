@@ -540,7 +540,12 @@ function roundSub(
   return { ...laid, edges: [...laid.edges, ...edges] };
 }
 
-/** One node's immediate children, each its own item — no compression. */
+/**
+ * One node's immediate children, each its own item — no compression. In a
+ * sequence, a child with a gate gets a logic-gate node before it: continue
+ * on "yes", take the labeled exit otherwise — so a first-to-7.5 set shows
+ * that the match can end right there.
+ */
 function childrenSub(
   node: ConcreteNode,
   pid: string,
@@ -551,34 +556,77 @@ function childrenSub(
   const drillableCount = node.children.filter(
     (child) => child.children.length > 0,
   ).length;
-  const ids: string[] = [];
-  const items = node.children.map((child, i) => {
+
+  const pieces: Sub[] = [];
+  const edges: FlowGraphEdge[] = [];
+  node.children.forEach((child, i) => {
     const childId = `${pid}/c${i + 1}`;
-    ids.push(childId);
-    if (child.children.length === 0) {
-      return cardSub(
-        childId,
-        nodeCard(child, child.role, { drill: false, flow }),
-      );
+    const previousId = `${pid}/c${i}`;
+    if (sequence && i > 0) {
+      if (child.gate === undefined) {
+        edges.push({
+          id: `c:${previousId}->${childId}`,
+          source: previousId,
+          target: childId,
+          label: "then",
+          kind: "chain",
+        });
+      } else {
+        const gateId = `${childId}/gate`;
+        const exitId = `${childId}/exit`;
+        pieces.push(
+          column(
+            [
+              cardSub(
+                gateId,
+                card("gate", child.gate.when, [], { step: true }),
+              ),
+              cardSub(
+                exitId,
+                card("end", child.gate.otherwise, [], { step: true }),
+              ),
+            ],
+            GAP,
+          ),
+        );
+        edges.push(
+          {
+            id: `c:${previousId}->${gateId}`,
+            source: previousId,
+            target: gateId,
+            kind: "chain",
+          },
+          {
+            id: `c:${gateId}->${childId}`,
+            source: gateId,
+            target: childId,
+            label: "yes",
+            kind: "chain",
+          },
+          {
+            id: `c:${gateId}->${exitId}`,
+            source: gateId,
+            target: exitId,
+            label: "no",
+            kind: "chain",
+          },
+        );
+      }
     }
-    return item(
-      childId,
-      `${child.role ?? child.title} — ${child.title}`,
-      nodeCard(child, child.role, { drill: true, flow }),
-      () => childrenSub(child, childId, expanded),
-      expanded,
-      node.children.length === 1 && drillableCount === 1,
+    pieces.push(
+      child.children.length === 0
+        ? cardSub(childId, nodeCard(child, child.role, { drill: false, flow }))
+        : item(
+            childId,
+            `${child.role ?? child.title} — ${child.title}`,
+            nodeCard(child, child.role, { drill: true, flow }),
+            () => childrenSub(child, childId, expanded),
+            expanded,
+            node.children.length === 1 && drillableCount === 1,
+          ),
     );
   });
-  const laid = sequence ? row(items, GAP) : column(items, GAP);
-  const edges: FlowGraphEdge[] = sequence
-    ? ids.slice(1).map((target, i) => ({
-        id: `c:${ids[i] ?? ""}->${target}`,
-        source: ids[i] ?? "",
-        target,
-        label: "then",
-        kind: "chain",
-      }))
-    : [];
+
+  const laid = sequence ? row(pieces, GAP) : column(pieces, GAP);
   return { ...laid, edges: [...laid.edges, ...edges] };
 }

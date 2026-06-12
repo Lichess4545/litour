@@ -46,6 +46,8 @@ const CHIP_STYLES: Record<string, string> = {
   match: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   game: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   standings: "bg-lime-500/15 text-lime-700 dark:text-lime-300",
+  gate: "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300",
+  end: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300",
 };
 const DEFAULT_CHIP = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
 

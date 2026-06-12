@@ -327,15 +327,32 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
       );
     });
   },
-  structure: (def) =>
-    def.legs.map((leg, i) => ({
+  structure: (def) => {
+    const stop = def.stop;
+    const gate =
+      stop?.untilScore !== undefined
+        ? {
+            when: `no one at ${stop.untilScore}?`,
+            otherwise: `first to ${stop.untilScore} wins`,
+          }
+        : stop?.untilMargin !== undefined
+          ? {
+              when: `margin under ${stop.untilMargin}?`,
+              otherwise: `won by ${stop.untilMargin}`,
+            }
+          : stop?.untilDecided === true
+            ? { when: "still tied?", otherwise: "winner decided" }
+            : undefined;
+    return def.legs.map((leg, i) => ({
       def: leg,
       role: `leg ${i + 1}`,
       seat:
         def.seats.source === "draw"
           ? "draw"
           : (def.seats.cycle[i % def.seats.cycle.length] ?? "keep"),
-    })),
+      ...(i > 0 && gate !== undefined ? { gate } : {}),
+    }));
+  },
   nominalPoints: (def, ops) =>
     def.legs.reduce(
       (acc, leg) => {
