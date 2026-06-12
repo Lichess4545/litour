@@ -118,7 +118,7 @@ describe("concretify — colors travel the seat algebra as names", () => {
     if (run?.kind !== "encounter") throw new Error("expected an encounter run");
     // Every segment's colors are drawn fresh: no chips on the legs…
     const classicalSet = run.node.children[0];
-    expect(classicalSet?.drawnColors).toBe(true);
+    expect(classicalSet?.lines).toContain("colors drawn by lot");
     expect(classicalSet?.sides).toBeUndefined();
     // …and inside, exemplars relative to that draw alternate per game.
     expect(classicalSet?.children).toHaveLength(14);

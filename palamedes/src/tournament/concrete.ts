@@ -36,6 +36,17 @@ export type Many<T> =
       readonly more: T;
     };
 
+/** Canonical iteration: known items, then the faded continuation if open. */
+export const manyList = <T>(
+  many: Many<T>,
+): readonly { readonly item: T; readonly ghost: boolean }[] =>
+  many.open
+    ? [
+        ...many.items.map((item) => ({ item, ghost: false })),
+        { item: many.more, ghost: true },
+      ]
+    : many.items.map((item) => ({ item, ghost: false }));
+
 /** Who holds which color at a node, by name (exemplar or real). */
 export type ConcreteSides = {
   readonly white: string;
@@ -51,10 +62,8 @@ export type ConcreteNode = {
   readonly lines: readonly string[];
   /** Position among siblings ("board 2", "leg 1"); undefined at a root. */
   readonly role: string | undefined;
-  /** Undefined while a drawing of lots decides who gets white. */
+  /** Undefined while a drawing of lots decides who gets white (the lines say so). */
   readonly sides: ConcreteSides | undefined;
-  /** This node's colors come from a drawing of lots. */
-  readonly drawnColors: boolean;
   /** This node stands for N identical siblings. */
   readonly count: number | undefined;
   readonly arrangement: Arrangement;
@@ -93,30 +102,36 @@ export type ConcreteRound = {
   readonly scoring: ConcreteCard;
 };
 
+export type ConcreteRoundsRun = {
+  readonly kind: "rounds";
+  /** The pairing system key (display chip / badge). */
+  readonly system: string;
+  /** The scoring rule's self-description (each round references it too). */
+  readonly scoring: ConcreteCard;
+  readonly rounds: Many<ConcreteRound>;
+  /** Between two rounds: standings update, then pair the next round. */
+  readonly between: ConcreteProcess;
+  /** After the last round: the final standings — the group's output. */
+  readonly final: ConcreteProcess;
+};
+
 export type ConcreteRun =
-  | {
-      readonly kind: "rounds";
-      /** The pairing system key (display chip / badge). */
-      readonly system: string;
-      readonly score: string;
-      readonly rounds: Many<ConcreteRound>;
-      /** Between two rounds: standings update, then pair the next round. */
-      readonly between: ConcreteProcess;
-      /** After the last round: the final standings — the group's output. */
-      readonly final: ConcreteProcess;
-    }
+  | ConcreteRoundsRun
   | { readonly kind: "encounter"; readonly node: ConcreteNode };
 
 /** A competitor flow from an earlier group (drawn as a seed edge). */
 export type ConcreteSeedLink = {
   readonly stage: string;
   readonly group: string;
-  readonly rank: number | undefined;
+  /** Edge wording ("winner", "#3"); the seed kind's origin decides it. */
+  readonly label: string | undefined;
 };
 
 export type ConcreteGroup = {
   readonly id: string;
   readonly entrants: number | "open";
+  /** The lane's header card (entrants, scoring, schedule badge). */
+  readonly header: ConcreteCard;
   readonly seededFrom: readonly ConcreteSeedLink[];
   readonly run: ConcreteRun;
 };
@@ -153,10 +168,13 @@ const chips = (sides: SideNames): ConcreteSides =>
 
 function concretifyNode(
   def: AnyEncounterDef,
-  role: string | undefined,
-  sides: SideNames,
-  drawnColors: boolean,
-  count: number | undefined,
+  opts: {
+    readonly role?: string | undefined;
+    readonly count?: number | undefined;
+    readonly sides: SideNames;
+    /** This node's own colors come from a drawing of lots. */
+    readonly drawn: boolean;
+  },
   registry: ModelRegistry,
 ): ConcreteNode {
   const info = registry.ops.card(def);
@@ -164,16 +182,17 @@ function concretifyNode(
     const drawn = child.seat === "draw";
     const own: SideNames =
       child.seat === "flip"
-        ? { a: sides.a, b: sides.b, white: sides.white === 0 ? 1 : 0 }
+        ? {
+            a: opts.sides.a,
+            b: opts.sides.b,
+            white: opts.sides.white === 0 ? 1 : 0,
+          }
         : drawn
           ? EXEMPLAR_SIDES
-          : sides;
+          : opts.sides;
     return concretifyNode(
       child.def,
-      child.role,
-      own,
-      drawn,
-      child.count,
+      { role: child.role, count: child.count, sides: own, drawn },
       registry,
     );
   });
@@ -181,11 +200,10 @@ function concretifyNode(
     kind: def.kind,
     title: info.title,
     badge: info.badge,
-    lines: info.lines,
-    role,
-    sides: drawnColors ? undefined : chips(sides),
-    drawnColors,
-    count,
+    lines: opts.drawn ? ["colors drawn by lot", ...info.lines] : info.lines,
+    role: opts.role,
+    sides: opts.drawn ? undefined : chips(opts.sides),
+    count: opts.count,
     arrangement: registry.ops.arrangement(def),
     children,
   };
@@ -218,16 +236,13 @@ function concretifyPool(
   pool: PoolDef,
   entrants: number | "open",
   registry: ModelRegistry,
-): ConcreteRun {
+): ConcreteRoundsRun {
   const pairing = registry.pairings.get(pool.pairing.system);
 
   const pairingsOf = (round: number): Many<ConcretePairing> => {
     const node = concretifyNode(
       pool.encounter,
-      undefined,
-      EXEMPLAR_SIDES,
-      false,
-      undefined,
+      { sides: EXEMPLAR_SIDES, drawn: false },
       registry,
     );
     if (entrants === "open") {
@@ -302,7 +317,7 @@ function concretifyPool(
   return {
     kind: "rounds",
     system: pool.pairing.system,
-    score: pool.score.kind,
+    scoring,
     rounds,
     between: { standings, repair },
     final: { standings, repair: undefined },
@@ -320,6 +335,7 @@ export function concretify(
       groups: stage.groups.map((group): ConcreteGroup => {
         const open = isOpenEntries(group.entries);
         const entrants = open ? ("open" as const) : group.entries.length;
+        const entrantsLine = open ? "open entry" : `${entrants} entrants`;
         const seededFrom = open
           ? []
           : group.entries.flatMap((entry): ConcreteSeedLink[] => {
@@ -330,40 +346,56 @@ export function concretify(
                     {
                       stage: origin.stage,
                       group: origin.group,
-                      rank: origin.rank,
+                      label:
+                        origin.rank === 1
+                          ? "winner"
+                          : origin.rank !== undefined
+                            ? `#${origin.rank}`
+                            : undefined,
                     },
                   ];
             });
         const run = group.run;
         if (isPool(run)) {
+          const concrete = concretifyPool(run, entrants, registry);
+          const roundsLabel = concrete.rounds.open
+            ? "n"
+            : String(concrete.rounds.items.length);
           return {
             id: group.id,
             entrants,
+            header: {
+              kind: "group",
+              title: group.id,
+              badge: `${concrete.system} · ${roundsLabel} rounds`,
+              lines: [entrantsLine, concrete.scoring.title],
+            },
             seededFrom,
-            run: concretifyPool(run, entrants, registry),
+            run: concrete,
           };
         }
-        const sides: SideNames = open
-          ? EXEMPLAR_SIDES
-          : {
-              a: entryName(group.entries[0] ?? { kind: "?" }, def, registry),
-              b: entryName(group.entries[1] ?? { kind: "?" }, def, registry),
-              white: 0,
-            };
+        const [first, second] = open ? [] : group.entries;
+        const sides: SideNames =
+          first === undefined || second === undefined
+            ? EXEMPLAR_SIDES
+            : {
+                a: entryName(first, def, registry),
+                b: entryName(second, def, registry),
+                white: 0,
+              };
         return {
           id: group.id,
           entrants,
+          header: {
+            kind: "group",
+            title: group.id,
+            badge: undefined,
+            lines: [entrantsLine],
+          },
           seededFrom,
           run: {
             kind: "encounter",
-            node: concretifyNode(
-              run,
-              undefined,
-              sides,
-              false,
-              undefined,
-              registry,
-            ),
+            node: concretifyNode(run, { sides, drawn: false }, registry),
           },
         };
       }),

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import type {
-  ConcreteCard,
-  ConcreteEvent,
-  ConcreteNode,
-  ConcretePairing,
-  ConcreteProcess,
-  ConcreteRound,
+import {
+  type ConcreteCard,
+  type ConcreteEvent,
+  type ConcreteNode,
+  type ConcreteProcess,
+  type ConcreteRound,
+  manyList,
 } from "@/tournament/concrete";
 
 /**
@@ -31,7 +31,10 @@ export const flowCardDataSchema = z.object({
   badge: z.string().optional(),
   lines: z.array(z.string()).readonly(),
   /** Who holds which color at this node (white square / black square chips). */
-  sides: z.object({ white: z.string(), black: z.string() }).optional(),
+  sides: z
+    .object({ white: z.string(), black: z.string() })
+    .readonly()
+    .optional(),
   /** This card stands for N identical siblings. */
   count: z.number().optional(),
   /** Clicking descends one level of resolution. */
@@ -156,11 +159,7 @@ const nodeCard = (
   card(
     node.kind,
     node.title,
-    [
-      ...(label === undefined ? [] : [label]),
-      ...(node.drawnColors ? ["colors drawn by lot"] : []),
-      ...node.lines,
-    ],
+    [...(label === undefined ? [] : [label]), ...node.lines],
     {
       badge: node.badge,
       sides: node.sides,
@@ -191,28 +190,18 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
       const key = `${stage.id}/${group.id}`;
       const headerId = `g:${key}`;
       laneHead.set(key, headerId);
-      const entrantsLine =
-        group.entrants === "open" ? "open entry" : `${group.entrants} entrants`;
 
       if (group.run.kind === "rounds") {
         const run = group.run;
-        const roundsLabel = run.rounds.open
-          ? "n"
-          : String(run.rounds.items.length);
         laneNodes.push({
           id: headerId,
           type: "card",
           parentId: frameId,
           position: { x: FRAME_PAD, y: laneY },
-          data: card("group", group.id, [entrantsLine, `score: ${run.score}`], {
-            badge: `${run.system} · ${roundsLabel} rounds`,
-          }),
+          data: plainCard(group.header, { flow: "right" }),
         });
 
-        const rounds: readonly { round: ConcreteRound; ghost: boolean }[] = [
-          ...run.rounds.items.map((round) => ({ round, ghost: false })),
-          ...(run.rounds.open ? [{ round: run.rounds.more, ghost: true }] : []),
-        ];
+        const rounds = manyList(run.rounds);
         // Every round is followed by its process step: standings update and
         // re-pair between rounds, the final standings after the last.
         const steps: readonly (
@@ -223,7 +212,7 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
               title: string;
               label: string;
             }
-        )[] = rounds.flatMap(({ round, ghost }, i) => [
+        )[] = rounds.flatMap(({ item: round, ghost }, i) => [
           { kind: "round" as const, round, ghost },
           i < rounds.length - 1
             ? {
@@ -295,7 +284,7 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
           type: "card",
           parentId: frameId,
           position: { x: FRAME_PAD, y: laneY },
-          data: card("group", group.id, [entrantsLine]),
+          data: plainCard(group.header, { flow: "right" }),
         });
         laneNodes.push({
           id: runId,
@@ -348,12 +337,7 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
           id: `seed:${targetHead}:${index}`,
           source: sourceTail,
           target: targetHead,
-          label:
-            link.rank === 1
-              ? "winner"
-              : link.rank !== undefined
-                ? `#${link.rank}`
-                : undefined,
+          label: link.label,
           kind: "seed",
         });
       });
@@ -387,14 +371,9 @@ function buildRoundLevel(round: ConcreteRound): FlowGraph {
   const edges: FlowGraphEdge[] = [];
   const drills = new Map<string, DrillTarget>();
 
-  const pairings: readonly { pairing: ConcretePairing; ghost: boolean }[] = [
-    ...round.pairings.items.map((pairing) => ({ pairing, ghost: false })),
-    ...(round.pairings.open
-      ? [{ pairing: round.pairings.more, ghost: true }]
-      : []),
-  ];
+  const pairings = manyList(round.pairings);
 
-  pairings.forEach(({ pairing, ghost }, slot) => {
+  pairings.forEach(({ item: pairing, ghost }, slot) => {
     const id = `lvl:${slot + 1}`;
     const drill = !ghost && pairing.node.children.length > 0;
     nodes.push({
