@@ -159,6 +159,12 @@ export type ConcreteStage = {
   /** The stage's own card at the event level. */
   readonly card: ConcreteCard;
   readonly seededFrom: readonly ConcreteStageLink[];
+  /**
+   * Depth in the seed-flow graph: 0 = depends on nothing. Stages sharing a
+   * tier are independent of each other — the five tour events run
+   * concurrently; only what seeds from them comes later.
+   */
+  readonly tier: number;
   readonly groups: readonly ConcreteGroup[];
 };
 
@@ -360,8 +366,8 @@ export function concretify(
   def: ParsedEventDef,
   registry: ModelRegistry,
 ): ConcreteEvent {
-  return {
-    stages: def.stages.map((stage): ConcreteStage => {
+  const built: readonly Omit<ConcreteStage, "tier">[] = def.stages.map(
+    (stage): Omit<ConcreteStage, "tier"> => {
       const groups = stage.groups.map((group): ConcreteGroup => {
         const open = isOpenEntries(group.entries);
         const entrants = open ? ("open" as const) : group.entries.length;
@@ -516,6 +522,23 @@ export function concretify(
         seededFrom,
         groups,
       };
-    }),
+    },
+  );
+
+  // Dependency depth: a stage sits one tier past the deepest stage it seeds
+  // from; no inflows means tier 0. Sources always precede (validated).
+  const tierOf = new Map<string, number>();
+  for (const stage of built) {
+    const tier = stage.seededFrom.reduce(
+      (max, link) => Math.max(max, (tierOf.get(link.stage) ?? 0) + 1),
+      0,
+    );
+    tierOf.set(stage.id, tier);
+  }
+  return {
+    stages: built.map((stage) => ({
+      ...stage,
+      tier: tierOf.get(stage.id) ?? 0,
+    })),
   };
 }

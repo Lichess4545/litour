@@ -327,7 +327,7 @@ export function buildGraph(
   expanded: ReadonlySet<string>,
 ): FlowGraph {
   const force = event.stages.length === 1;
-  const items = event.stages.map((stage) =>
+  const stageItem = (stage: ConcreteEvent["stages"][number]): Sub =>
     item(
       `s:${stage.id}`,
       stage.id,
@@ -338,39 +338,36 @@ export function buildGraph(
       () => stageSub(stage, `s:${stage.id}`, expanded),
       expanded,
       force,
+    );
+
+  // Tiers flow left to right; stages within a tier are independent of each
+  // other (the tour's five events) and stack vertically. The only edges are
+  // real seed flows — no implied order between independents.
+  const tierCount =
+    event.stages.reduce((max, stage) => Math.max(max, stage.tier), 0) + 1;
+  const columns = Array.from({ length: tierCount }, (_, tier) =>
+    column(
+      event.stages.filter((stage) => stage.tier === tier).map(stageItem),
+      LANE_GAP,
+      "center",
     ),
   );
-  const laid = row(items, GAP * 2);
+  const laid = row(columns, GAP * 2);
 
   const edges: FlowGraphEdge[] = [...laid.edges];
-  event.stages.forEach((stage, index) => {
-    const id = `s:${stage.id}`;
-    if (stage.seededFrom.length > 0) {
-      stage.seededFrom.forEach((link, li) => {
-        edges.push({
-          id: `seed:${id}:${li}`,
-          source: `s:${link.stage}`,
-          target: id,
-          label: link.label,
-          fromHandle: "r",
-          toHandle: "l",
-          kind: "seed",
-        });
+  for (const stage of event.stages) {
+    stage.seededFrom.forEach((link, li) => {
+      edges.push({
+        id: `seed:s:${stage.id}:${li}`,
+        source: `s:${link.stage}`,
+        target: `s:${stage.id}`,
+        label: link.label,
+        fromHandle: "r",
+        toHandle: "l",
+        kind: "seed",
       });
-    } else if (index > 0) {
-      const previous = event.stages[index - 1];
-      if (previous !== undefined) {
-        edges.push({
-          id: `c:s:${previous.id}->${id}`,
-          source: `s:${previous.id}`,
-          target: id,
-          fromHandle: "r",
-          toHandle: "l",
-          kind: "chain",
-        });
-      }
-    }
-  });
+    });
+  }
 
   return {
     nodes: laid.nodes,

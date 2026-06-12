@@ -154,6 +154,9 @@ describe("the Grand Chess Tour — terminology and tour standings", () => {
       "Sinquefield Cup",
       "GCT Finals São Paulo",
     ]);
+    // The five events are independent (tier 0, runnable concurrently);
+    // only the finals depend on them.
+    expect(event.stages.map((s) => s.tier)).toEqual([0, 0, 0, 0, 0, 1]);
     const finals = event.stages[5]?.groups[0];
     // The tour aggregation links the finals back to all five events.
     expect(finals?.seededFrom).toHaveLength(5);
