@@ -214,7 +214,7 @@ export const knockoutPairing: PairingKind = definePairingKind({
   progression: true,
   defaultBye: { kind: "advance" },
   validate: (_options, entrants, encounter, ops, _ties, issue) => {
-    if (!isPowerOfTwo(entrants)) {
+    if (entrants !== undefined && !isPowerOfTwo(entrants)) {
       issue(
         `knockout pools need a power-of-two field; got ${entrants} entries`,
       );

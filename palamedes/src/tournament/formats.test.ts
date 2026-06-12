@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   armageddonShowdown,
   candidates,
-  lichess4545,
+  lichess4545Season,
   loneWolf,
   miniChampionship,
   norwayChess,
@@ -332,7 +332,7 @@ describe("olympiad team swiss", () => {
 
 describe("lichess4545 team league", () => {
   it("ranks by match points, then rounds won, games won, and board points", () => {
-    const run = runEvent(lichess4545);
+    const run = runEvent(lichess4545Season);
     const fullRosters = () => {
       for (const [team, prefix] of [
         ["Knights", "kni"],

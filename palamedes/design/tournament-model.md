@@ -21,6 +21,7 @@ src/tournament/   THE SYSTEM — no chess vocabulary
   evaluate.ts     the generic recursive evaluator (asks instances for slots/outcomes/work)
   engine.ts       the input fold, validation, nextActions, public reads
   standings.ts    lines, scoring application, metrics, ranking
+  concrete.ts     definition → concrete structure ("how it works"), the display's input
   builder.ts      fluent test driver
 
 src/chess/        THE STANDARD LIBRARY — built outside the system, using it
@@ -59,7 +60,10 @@ src/chess/        THE STANDARD LIBRARY — built outside the system, using it
   deliberately non-recursive; seed refs carry competitors between stages. A
   Pool is N competitors + a pairing ref + ONE encounter template + a scoring
   ref + tiebreak refs. All refs are open `{ kind/system/metric: string, … }`
-  payloads owned by their instances.
+  payloads owned by their instances. A group's entries are either a seed
+  list (the field is known) or `{ open: true }` — registration-bound, so the
+  definition assumes no count; open groups stay unresolved (awaitSeeding, no
+  pairings) until entries are bound, and entrant-count validation waits.
 
 ## The typeclasses (what `registry.ts` opens)
 
@@ -169,22 +173,30 @@ color-swapped rapid team games (match points only), then a full-team blitz
 with drawn colors, then a one-board armageddon: pure composition, including
 the per-leg "random color" (singleton series wrappers with drawn seats).
 
-## The viewer (`/tournaments`)
+## The concrete domain (`concrete.ts`) and the viewer (`/tournaments`)
 
-One level of resolution per view — the recursion is navigated, not drawn as
-a tree. The first level is the event's own: a left-to-right **timeline** of
-stage frames (there is no "event node"; the page is the event), each frame
-holding its groups as parallel lanes, each pool lane running its rounds as a
-chain of steps (the cascade event shows exactly its 8 rounds), dashed seed
-edges carrying competitors between stages. Each level below shows real
-multiplicity, one card per thing: a **round** is its pairings (one encounter
-card each — `pairsInRound` lets knockouts shrink and seats the bronze final
-beside the final); an **encounter** is its immediate children — every board
-and leg its own card, sequenced left-to-right with "then" edges or stacked
-side by side (the registry's `arrangement` capability), each carrying its
-color derivation from the seat algebra ("board 2 — white side takes black").
-All rendering goes through each kind's registry `card`; composites drill
-again, leaves are the games themselves. A breadcrumb walks back up.
+Two domains, one conversion. The definition says what the rules are;
+`concretify(def, registry)` expands it into the **concrete structure** of
+how the tournament works — stages → groups → rounds → pairings → the
+encounter recursion as explicit data — by asking the registry (structure,
+arrangement, cards, `pairsInRound`, seat derivations, seed origins). Sizes
+are explicit via `Many<T>`: a collection either knows all of its items (a
+bound field materializes every round, pairing, board) or is open and
+carries example items plus one faded continuation ("… pairing n", "… Round
+n"). Colors are names, not prose: each node carries `{white, black}` side
+names — real competitors where the definition knows them, exemplars
+("A" = whoever holds the white seat) where it doesn't — moved through the
+seat algebra, so zigzag boards read ⬜A/⬛B then ⬜B/⬛A; a drawing of lots
+hides the holder and resets exemplars below it. When real registrations and
+pairings exist, a state-bound conversion will produce the same shapes with
+every item known and named.
+
+The viewer only iterates that structure. The overview is a left-to-right
+timeline of stage frames (no "event node"; the page is the event) with
+group lanes and round steps; drilling a round shows its pairings, drilling
+a node shows its immediate children — one level of resolution per canvas,
+sequenced with "then" edges or stacked per the node's arrangement, ghosts
+faded; a breadcrumb walks back up.
 
 ## Out of scope (unchanged)
 

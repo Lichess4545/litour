@@ -10,6 +10,7 @@ import {
   type EventDef,
   finitePoints,
   idSchema,
+  isOpenEntries,
   type MetricRef,
   type NodeView,
   type NodeWork,
@@ -185,7 +186,8 @@ export type SeedValidateContext = {
   readonly stageIndex: number;
   readonly stages: readonly {
     readonly id: string;
-    readonly groupSizes: ReadonlyMap<string, number>;
+    /** "open" — the group's field is registration-bound, size unknown. */
+    readonly groupSizes: ReadonlyMap<string, number | "open">;
   }[];
 };
 
@@ -268,9 +270,10 @@ export type PairingKind = {
   /** Bye rule applied when the def doesn't configure one. */
   readonly defaultBye?: ByeRule;
   propose(options: PairingRef, ctx: PairingContext): PairingResult;
+  /** Design-time checks; `entrants` is undefined for open groups (count checks wait). */
   readonly validate?: (
     options: PairingRef,
-    entrants: number,
+    entrants: number | undefined,
     encounter: AnyEncounterDef,
     ops: EncounterOps,
     ties: BoundTies,
@@ -422,7 +425,7 @@ export type PairingKindSpec<O> = {
   propose(options: O, ctx: PairingContext): PairingResult;
   validate?(
     options: O,
-    entrants: number,
+    entrants: number | undefined,
     encounter: AnyEncounterDef,
     ops: EncounterOps,
     ties: BoundTies,
@@ -463,7 +466,7 @@ export function definePairingKind<O>(spec: PairingKindSpec<O>): PairingKind {
       : {
           validate: (
             options: PairingRef,
-            entrants: number,
+            entrants: number | undefined,
             encounter: AnyEncounterDef,
             ops: EncounterOps,
             ties: BoundTies,
@@ -783,7 +786,10 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
 
   const groupSchema = z.object({
     id: idSchema,
-    entries: z.array(z.looseObject({ kind: z.string() })).min(1),
+    entries: z.union([
+      z.array(z.looseObject({ kind: z.string() })).min(1),
+      z.object({ open: z.literal(true) }),
+    ]),
     run: z.union([poolSchema, registry.encounterSchema]),
   });
 
@@ -791,16 +797,15 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
     .object({
       id: idSchema,
       name: z.string().min(1),
-      competitors: z
-        .array(
-          z.object({
-            id: competitorIdSchema,
-            name: z.string().min(1),
-            rating: z.number().int().positive().optional(),
-            roster: z.array(playerIdSchema).min(1).optional(),
-          }),
-        )
-        .min(1),
+      // May be empty: open events declare no competitors until registration.
+      competitors: z.array(
+        z.object({
+          id: competitorIdSchema,
+          name: z.string().min(1),
+          rating: z.number().int().positive().optional(),
+          roster: z.array(playerIdSchema).min(1).optional(),
+        }),
+      ),
       stages: z
         .array(z.object({ id: idSchema, groups: z.array(groupSchema).min(1) }))
         .min(1),
@@ -856,7 +861,12 @@ function validateEvent(
 
   const stageMeta = event.stages.map((stage) => ({
     id: stage.id,
-    groupSizes: new Map(stage.groups.map((g) => [g.id, g.entries.length])),
+    groupSizes: new Map<string, number | "open">(
+      stage.groups.map((g) => [
+        g.id,
+        isOpenEntries(g.entries) ? "open" : g.entries.length,
+      ]),
+    ),
   }));
 
   const stageIds = new Set<string>();
@@ -878,36 +888,43 @@ function validateEvent(
         });
       groupIds.add(group.id);
 
-      group.entries.forEach((entry, ei) => {
-        const seedKind = registry.seeds.get(entry.kind);
-        if (seedKind === undefined) {
-          found.push({
-            message: `unknown seed kind "${entry.kind}" (registered: ${[...registry.seeds.keys()].join(", ")})`,
-            path: [...base, "entries", ei],
-          });
-          return;
-        }
-        const parsed = seedKind.schema.safeParse(entry);
-        if (!parsed.success) {
-          for (const zi of parsed.error.issues)
+      const entries = group.entries;
+      if (!isOpenEntries(entries)) {
+        entries.forEach((entry, ei) => {
+          const seedKind = registry.seeds.get(entry.kind);
+          if (seedKind === undefined) {
             found.push({
-              message: zi.message,
-              path: [...base, "entries", ei, ...zi.path.map(String)],
+              message: `unknown seed kind "${entry.kind}" (registered: ${[...registry.seeds.keys()].join(", ")})`,
+              path: [...base, "entries", ei],
             });
-          return;
-        }
-        seedKind.validate?.(
-          entry,
-          { competitors: event.competitors, stageIndex: si, stages: stageMeta },
-          issueAt([...base, "entries", ei]),
-        );
-      });
+            return;
+          }
+          const parsed = seedKind.schema.safeParse(entry);
+          if (!parsed.success) {
+            for (const zi of parsed.error.issues)
+              found.push({
+                message: zi.message,
+                path: [...base, "entries", ei, ...zi.path.map(String)],
+              });
+            return;
+          }
+          seedKind.validate?.(
+            entry,
+            {
+              competitors: event.competitors,
+              stageIndex: si,
+              stages: stageMeta,
+            },
+            issueAt([...base, "entries", ei]),
+          );
+        });
+      }
 
       const run = group.run;
       const encounter = isPool(run) ? run.encounter : run;
-      if (!isPool(run) && group.entries.length !== 2) {
+      if (!isPool(run) && (isOpenEntries(entries) || entries.length !== 2)) {
         found.push({
-          message: `a root encounter needs exactly 2 entries; group ${group.id} has ${group.entries.length}`,
+          message: `a root encounter needs exactly 2 entries; group ${group.id} ${isOpenEntries(entries) ? "is open" : `has ${entries.length}`}`,
           path: [...base, "entries"],
         });
       }
@@ -920,15 +937,15 @@ function validateEvent(
       if (isPool(run)) {
         validatePoolDef(
           run,
-          group.entries.length,
+          isOpenEntries(entries) ? undefined : entries.length,
           registry,
           issueAt([...base, "run"]),
         );
       }
 
       const need = known ? registry.ops.rosterNeed(encounter) : 0;
-      if (need > 0) {
-        group.entries.forEach((entry, ei) => {
+      if (need > 0 && !isOpenEntries(entries)) {
+        entries.forEach((entry, ei) => {
           const seedKind = registry.seeds.get(entry.kind);
           const id = seedKind?.resolve(entry, {
             competitors: event.competitors,
@@ -955,7 +972,8 @@ function validateEvent(
 
 function validatePoolDef(
   pool: PoolDef,
-  entrants: number,
+  /** Undefined when the group is open: entrant-count checks wait for binding. */
+  entrants: number | undefined,
   registry: RegistryCore,
   issue: Issue,
 ): void {

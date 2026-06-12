@@ -7,6 +7,7 @@ import {
   type GroupDef,
   groupRootPath,
   type Input,
+  isOpenEntries,
   type NodePath,
   type PairingPlan,
   type PairingsSetInput,
@@ -223,6 +224,8 @@ export function resolveEntrants(
   state: StateView,
   ref: GroupRef,
 ): readonly CompetitorId[] | undefined {
+  // Open groups have no field until registration binds one.
+  if (isOpenEntries(ref.group.entries)) return undefined;
   const entrants: CompetitorId[] = [];
   for (const entry of ref.group.entries) {
     const kind = state.registry.seeds.get(entry.kind);

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   armageddonShowdown,
-  lichess4545,
+  lichess4545Season,
   loneWolf,
   miniChampionship,
   norwayChess,
@@ -125,7 +125,7 @@ describe("input validation", () => {
   });
 
   it("rejects a lineup containing a player from outside the roster", () => {
-    const run = runEvent(lichess4545).pairRound();
+    const run = runEvent(lichess4545Season).pairRound();
     const awaitLineup = run
       .actions()
       .find((a) => a.kind === "awaitLineup" && a.competitor === "kni");
@@ -143,7 +143,7 @@ describe("input validation", () => {
   });
 
   it("rejects board results until both lineups are submitted", () => {
-    const run = runEvent(lichess4545).pairRound();
+    const run = runEvent(lichess4545Season).pairRound();
     const state = withInput(run.state(), {
       kind: "gameResult",
       game: path("stage-season/group-league/round-1/pair-1/board-1"),
@@ -217,7 +217,7 @@ describe("review-driven regressions", () => {
   });
 
   it("locks lineups once the match has results", () => {
-    const run = runEvent(lichess4545).pairManual([
+    const run = runEvent(lichess4545Season).pairManual([
       ["Knights", "Dragons"],
       ["Pawnstars", "Rooks"],
     ]);

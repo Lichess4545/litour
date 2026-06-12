@@ -236,10 +236,48 @@ export const olympiad: ParsedEventDef = parseEventDef({
   ],
 });
 
-/** lichess4545-style team swiss: rounds won, games won, then board points (a 4-board miniature of the 8-board league). */
+/** lichess4545-style team swiss pool: rounds won, games won, then board points (4-board miniature of the 8-board league). */
+const league4545 = (rounds: number) => ({
+  kind: "pool",
+  pairing: { system: "swiss" },
+  rounds,
+  encounter: {
+    kind: "match",
+    boards: 4,
+    board: rapid(2700, 45),
+    seats: zigzag,
+  },
+  score: matchPoints,
+  bye: { kind: "points", standings: 1, encounter: 2 },
+  tiebreaks: [
+    { metric: "matchWins" },
+    { metric: "gamesWon" },
+    { metric: "boardPoints", board: 1 },
+    { metric: "boardPoints", board: 2 },
+  ],
+});
+
+/**
+ * The league as a design: entries are open (teams register), so the view
+ * shows exemplar pairings plus a faded "… pairing n" — the rounds are still
+ * known because the def declares them.
+ */
 export const lichess4545: ParsedEventDef = parseEventDef({
   id: "lichess4545",
   name: "lichess4545 team league",
+  competitors: [],
+  stages: [
+    {
+      id: "season",
+      groups: [{ id: "league", entries: { open: true }, run: league4545(8) }],
+    },
+  ],
+});
+
+/** The same league bound to a concrete season of four teams (the runnable fixture). */
+export const lichess4545Season: ParsedEventDef = parseEventDef({
+  id: "lichess4545-season",
+  name: "lichess4545 team league — season",
   competitors: [
     team("kni", "Knights", 4),
     team("dra", "Dragons", 4),
@@ -249,28 +287,29 @@ export const lichess4545: ParsedEventDef = parseEventDef({
   stages: [
     {
       id: "season",
+      groups: [{ id: "league", entries: seeds(4), run: league4545(2) }],
+    },
+  ],
+});
+
+/** An open club round robin: even the round count depends on who signs up. */
+export const clubRoundRobin: ParsedEventDef = parseEventDef({
+  id: "club-rr",
+  name: "Club round robin",
+  competitors: [],
+  stages: [
+    {
+      id: "night",
       groups: [
         {
-          id: "league",
-          entries: seeds(4),
+          id: "rr",
+          entries: { open: true },
           run: {
             kind: "pool",
-            pairing: { system: "swiss" },
-            rounds: 2,
-            encounter: {
-              kind: "match",
-              boards: 4,
-              board: rapid(2700, 45),
-              seats: zigzag,
-            },
-            score: matchPoints,
-            bye: { kind: "points", standings: 1, encounter: 2 },
-            tiebreaks: [
-              { metric: "matchWins" },
-              { metric: "gamesWon" },
-              { metric: "boardPoints", board: 1 },
-              { metric: "boardPoints", board: 2 },
-            ],
+            pairing: { system: "roundRobin", cycles: 1 },
+            encounter: rapid(900, 10),
+            score: { kind: "passThrough" },
+            tiebreaks: [{ metric: "sonnebornBerger" }],
           },
         },
       ],
@@ -700,8 +739,15 @@ export const FORMAT_EXAMPLES: readonly FormatExample[] = [
   {
     slug: "lichess4545",
     title: "lichess4545 team league",
-    blurb: "Team swiss with rounds-won, games-won and board-points tiebreaks.",
+    blurb:
+      "Open team signup: 8 known rounds, an unknown number of pairings each.",
     def: lichess4545,
+  },
+  {
+    slug: "club-round-robin",
+    title: "Open round robin",
+    blurb: "Entries open — even the round count depends on who signs up.",
+    def: clubRoundRobin,
   },
   {
     slug: "norway-chess",

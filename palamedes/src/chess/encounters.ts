@@ -364,13 +364,11 @@ export const seriesKind: EncounterKind = defineEncounterKind<SeriesDef>({
           : stop?.untilDecided === true
             ? "until decided"
             : `all ${def.legs.length} legs`;
-    const seats =
-      def.seats.source === "draw"
-        ? "colors drawn per leg"
-        : def.seats.cycle.every((s) => s === "keep")
-          ? "colors fixed"
-          : `seat cycle ${def.seats.cycle.join("/")}`;
-    return { title: "Series", badge, lines: [seats] };
+    return {
+      title: "Series",
+      badge,
+      lines: def.seats.source === "draw" ? ["colors drawn per leg"] : [],
+    };
   },
 });
 
@@ -449,11 +447,7 @@ export const matchKind: EncounterKind = defineEncounterKind<MatchDef>({
   card: (def) => ({
     title: "Team match",
     badge: `${def.boards} boards`,
-    lines: [
-      def.seats.cycle.every((s) => s === "keep")
-        ? "all boards take the team color"
-        : `board seat cycle ${def.seats.cycle.join("/")}`,
-    ],
+    lines: [],
   }),
 });
 

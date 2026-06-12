@@ -15,6 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useMemo, useState } from "react";
 import { chessRegistry } from "@/chess/registry";
+import { concretify } from "@/tournament/concrete";
 import type { ParsedEventDef } from "@/tournament/registry";
 import {
   buildLevelGraph,
@@ -50,6 +51,21 @@ type CardNode = Node<FlowCardData, "card">;
 type FrameNode = Node<FrameData, "frame">;
 type AppNode = CardNode | FrameNode;
 
+function SideChips({ white, black }: { white: string; black: string }) {
+  return (
+    <div className="mt-1 flex items-center gap-2 text-xs">
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-zinc-500 bg-white" />
+        {white}
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-zinc-500 bg-zinc-950" />
+        {black}
+      </span>
+    </div>
+  );
+}
+
 function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
@@ -58,7 +74,9 @@ function FlowCard(props: NodeProps<CardNode>) {
     <div
       className={`rounded-lg border bg-card text-card-foreground shadow-sm ${
         data.step ? "px-3 py-2" : "p-3"
-      } ${data.drill ? "border-dashed hover:border-foreground/40" : ""}`}
+      } ${data.drill ? "border-dashed hover:border-foreground/40" : ""} ${
+        data.ghost ? "border-dotted opacity-40" : ""
+      }`}
       style={{ width: data.step ? STEP_W : CARD_W }}
     >
       <Handle
@@ -74,13 +92,15 @@ function FlowCard(props: NodeProps<CardNode>) {
             {data.chip}
           </span>
           <span className="font-semibold text-xs">{data.title}</span>
-          <button
-            type="button"
-            aria-label={`Zoom into ${data.title}`}
-            className="ml-auto text-muted-foreground text-xs"
-          >
-            ⤵
-          </button>
+          {data.drill && (
+            <button
+              type="button"
+              aria-label={`Zoom into ${data.title}`}
+              className="ml-auto text-muted-foreground text-xs"
+            >
+              ⤵
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -107,6 +127,7 @@ function FlowCard(props: NodeProps<CardNode>) {
               {data.badge}
             </div>
           )}
+          {data.sides !== undefined && <SideChips {...data.sides} />}
           <div className="mt-1 space-y-0.5">
             {data.lines.map((line, i) => (
               <div
@@ -153,16 +174,18 @@ function StageFrame(props: NodeProps<FrameNode>) {
 const nodeTypes: NodeTypes = { card: FlowCard, frame: StageFrame };
 
 export function TournamentFlow({ def }: { def: ParsedEventDef }) {
+  // The definition → concrete conversion happens once; everything below
+  // (including every drill level) iterates the resulting structure.
+  const concrete = useMemo(() => concretify(def, chessRegistry), [def]);
+
   // The drill stack: empty = the event's own level (the stage timeline).
   const [stack, setStack] = useState<readonly DrillTarget[]>([]);
   const top = stack[stack.length - 1];
 
   const graph: FlowGraph = useMemo(
     () =>
-      top === undefined
-        ? buildOverviewGraph(def, chessRegistry)
-        : buildLevelGraph(top, chessRegistry),
-    [def, top],
+      top === undefined ? buildOverviewGraph(concrete) : buildLevelGraph(top),
+    [concrete, top],
   );
 
   const nodes = useMemo<AppNode[]>(

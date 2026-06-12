@@ -58,7 +58,7 @@ export const rankSeed: SeedKind = defineSeedKind({
     const size = ctx.stages[sourceIndex]?.groupSizes.get(ref.group);
     if (size === undefined) {
       issue(`unknown group ${ref.group} in stage ${ref.stage}`, ["group"]);
-    } else if (ref.rank > size) {
+    } else if (size !== "open" && ref.rank > size) {
       issue(
         `rank ${ref.rank} exceeds the ${size} entries of ${ref.stage}/${ref.group}`,
         ["rank"],

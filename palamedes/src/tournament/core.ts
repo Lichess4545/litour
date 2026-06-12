@@ -403,9 +403,20 @@ export type PoolDef = {
 
 export type RunDef = PoolDef | AnyEncounterDef;
 
+/**
+ * A group either knows its field (a seed list) or is open: entrants arrive
+ * by registration, so the definition cannot assume a count. Open groups stay
+ * unresolved (no pairings, no standings) until entries are bound.
+ */
+export type OpenEntries = { readonly open: true };
+export type EntriesDef = readonly SeedRef[] | OpenEntries;
+
+export const isOpenEntries = (entries: EntriesDef): entries is OpenEntries =>
+  !Array.isArray(entries);
+
 export type GroupDef = {
   readonly id: string;
-  readonly entries: readonly SeedRef[];
+  readonly entries: EntriesDef;
   readonly run: RunDef;
 };
 
