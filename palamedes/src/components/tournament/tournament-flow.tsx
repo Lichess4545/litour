@@ -18,10 +18,8 @@ import { chessRegistry } from "@/chess/registry";
 import { concretify } from "@/tournament/concrete";
 import type { ParsedEventDef } from "@/tournament/registry";
 import {
-  buildEventGraph,
-  buildLevelGraph,
+  buildGraph,
   CARD_W,
-  type DrillTarget,
   type FlowCardData,
   type FlowGraph,
   type FrameData,
@@ -31,10 +29,11 @@ import {
 } from "./def-graph";
 
 /**
- * One level of resolution per view — that is the recursion, navigated.
- * The first level is the event itself: a timeline of stage frames, group
- * lanes, round steps. Drilling into a round (or any composite) replaces the
- * canvas with that node's immediate children; the breadcrumb walks back up.
+ * In-place zoom: expanding a card swaps it for a bordered frame holding the
+ * next level of resolution while the rest of the canvas stays put, so one
+ * view can mix altitudes — stages beside an opened stage, rounds beside an
+ * opened round — with every arrow still attached. Clicking a frame folds it
+ * back into its card.
  */
 
 const CHIP_STYLES: Record<string, string> = {
@@ -96,7 +95,7 @@ function FlowCard(props: NodeProps<CardNode>) {
             {data.drill && (
               <button
                 type="button"
-                aria-label={`Zoom into ${data.title}`}
+                aria-label={`Expand ${data.title}`}
                 className="text-muted-foreground text-xs"
               >
                 ⤵
@@ -148,7 +147,7 @@ function FlowCard(props: NodeProps<CardNode>) {
           {data.drill && (
             <button
               type="button"
-              aria-label={`Zoom into ${data.title}`}
+              aria-label={`Expand ${data.title}`}
               className="mt-1 text-muted-foreground text-xs"
             >
               click to zoom in
@@ -165,42 +164,42 @@ function FlowCard(props: NodeProps<CardNode>) {
   );
 }
 
-function StageFrame(props: NodeProps<FrameNode>) {
+function Frame(props: NodeProps<FrameNode>) {
   const data = frameDataSchema.parse(props.data);
   return (
     <div className="h-full w-full rounded-xl border border-dashed bg-muted/20">
-      <div className="px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        stage · {data.title}
+      <Handle type="target" position={Position.Left} className="!bg-border" />
+      <div className="flex items-center gap-2 px-4 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        {data.title}
+        {data.collapsible && (
+          <button
+            type="button"
+            aria-label={`Collapse ${data.title}`}
+            className="normal-case"
+          >
+            ⤴ collapse
+          </button>
+        )}
       </div>
+      <Handle type="source" position={Position.Right} className="!bg-border" />
     </div>
   );
 }
 
-const nodeTypes: NodeTypes = { card: FlowCard, frame: StageFrame };
+const nodeTypes: NodeTypes = { card: FlowCard, frame: Frame };
 
 export function TournamentFlow({ def }: { def: ParsedEventDef }) {
   // The definition → concrete conversion happens once; everything below
-  // (including every drill level) iterates the resulting structure.
+  // (including every expansion) iterates the resulting structure.
   const concrete = useMemo(() => concretify(def, chessRegistry), [def]);
 
-  // The drill stack: empty = the event's own level (the stage timeline).
-  const [stack, setStack] = useState<readonly DrillTarget[]>([]);
-  const top = stack[stack.length - 1];
+  /** Ids currently expanded in place (collapsed descendants are remembered). */
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
-  const graph: FlowGraph = useMemo(() => {
-    let level =
-      top === undefined ? buildEventGraph(concrete) : buildLevelGraph(top);
-    // A canvas that is exactly one drillable card opens it — uniformly at
-    // every level, so a single-stage event resolves straight to its rounds.
-    for (;;) {
-      const [only, ...rest] = level.nodes;
-      if (only === undefined || rest.length > 0) break;
-      const into = level.drills.get(only.id);
-      if (into === undefined) break;
-      level = buildLevelGraph(into);
-    }
-    return level;
-  }, [concrete, top]);
+  const graph: FlowGraph = useMemo(
+    () => buildGraph(concrete, expanded),
+    [concrete, expanded],
+  );
 
   const nodes = useMemo<AppNode[]>(
     () =>
@@ -211,11 +210,10 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
             type: "frame",
             position: node.position,
             data: node.data,
+            ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
             style: { width: node.width, height: node.height },
             draggable: false,
-            selectable: false,
             connectable: false,
-            zIndex: -1,
           };
         }
         return {
@@ -248,54 +246,39 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2">
-        <button
-          type="button"
-          onClick={() => setStack([])}
-          className={`rounded border px-2 py-0.5 text-xs ${
-            stack.length === 0
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          stages
-        </button>
-        {stack.map((frame, depth) => (
+      <div className="flex items-center gap-2 border-b px-4 py-2">
+        {expanded.size > 0 && (
           <button
-            key={`${depth}:${frame.title}`}
             type="button"
-            onClick={() => setStack(stack.slice(0, depth + 1))}
-            className={`whitespace-nowrap rounded border px-2 py-0.5 text-xs ${
-              depth === stack.length - 1
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            onClick={() => setExpanded(new Set())}
+            className="rounded border px-2 py-0.5 text-muted-foreground text-xs hover:text-foreground"
           >
-            {frame.title}
+            collapse all
           </button>
-        ))}
-        {top === undefined && (
-          <span className="ml-auto whitespace-nowrap text-muted-foreground text-xs">
-            click a dashed card to zoom in
-          </span>
         )}
+        <span className="ml-auto whitespace-nowrap text-muted-foreground text-xs">
+          click a dashed card to zoom in · click a frame to fold it back
+        </span>
       </div>
       <div className="min-h-0 flex-1">
         <ReactFlow
-          // Remount per level so fitView re-frames the new graph. Distinct
-          // because every navigation op changes the stack depth — if a
-          // replace-top op is ever added, key on a real path identity.
-          key={`${stack.length}:${top?.title ?? "overview"}`}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.15 }}
-          minZoom={0.15}
+          minZoom={0.05}
           nodesConnectable={false}
           onNodeClick={(_, node) => {
-            const drill = graph.drills.get(node.id);
-            if (drill !== undefined) setStack([...stack, drill]);
+            if (graph.collapsibles.has(node.id)) {
+              setExpanded((prev) => {
+                const next = new Set(prev);
+                next.delete(node.id);
+                return next;
+              });
+            } else if (graph.expandables.has(node.id)) {
+              setExpanded((prev) => new Set(prev).add(node.id));
+            }
           }}
           proOptions={{ hideAttribution: false }}
         >

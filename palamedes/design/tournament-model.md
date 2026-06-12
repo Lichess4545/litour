@@ -199,17 +199,21 @@ next round (absent after the last). The overview interleaves "score · pair"
 steps between rounds; the round level fans every pairing's outcome into
 scoring → standings → pair-next.
 
-The viewer only iterates that structure, one level of resolution per
-canvas. The event level is its stages in sequence, one card each, joined
-by aggregated advancement flows ("32 advance") — stages also exist as
-concrete data (`ConcreteStage.card`, stage-level `seededFrom`). Drilling a
-stage shows its groups as parallel lanes of round and process steps;
-drilling a round shows its pairings feeding the scoring rule; drilling a
-node shows its immediate children, sequenced with "then" edges or stacked
-per the node's arrangement, ghosts faded; a breadcrumb walks back up. One
-generic rule connects the levels: a canvas that is exactly one drillable
-card opens it — so a single-stage event resolves straight to its rounds
-with no special case anywhere.
+The viewer only iterates that structure, with in-place zoom: expanding a
+card swaps it for a bordered frame holding the next level of resolution
+while everything else stays put — siblings shift to make room, and every
+edge keeps pointing at the same id, so the "32 advance" arrow lands on the
+expanded knockout frame and one canvas can mix altitudes (stages beside an
+opened stage, rounds beside an opened round, a pairing opened to its
+boards). The levels: the event is its stages in sequence joined by
+aggregated advancement flows (stages exist as concrete data —
+`ConcreteStage.card`, stage-level `seededFrom`); a stage is its groups as
+lanes of round and process steps; a round is its pairings feeding the
+scoring rule; a node is its immediate children, "then"-chained or stacked
+per arrangement, ghosts faded. Clicking a frame folds it back into its
+card. One stateless rule replaces special cases: an item that is the only
+drillable thing at its level renders pre-expanded and cannot collapse — so
+a single-stage event opens at its rounds structurally.
 
 ## Out of scope (unchanged)
 

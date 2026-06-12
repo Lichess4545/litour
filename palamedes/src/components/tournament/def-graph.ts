@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   type ConcreteCard,
   type ConcreteEvent,
+  type ConcreteGroup,
   type ConcreteNode,
   type ConcreteProcess,
   type ConcreteRound,
@@ -11,21 +12,24 @@ import {
 
 /**
  * Layout only: project the concrete structure (`@/tournament/concrete`) onto
- * React Flow nodes and edges, one level of resolution per canvas:
+ * React Flow nodes and edges, with in-place expansion. Every drillable card
+ * can be expanded where it stands: the card is replaced by a bordered frame
+ * containing the next level of resolution — siblings shift to make room and
+ * every edge keeps pointing at the same id — so one canvas can span several
+ * resolutions (the stage sequence with one stage opened to its rounds, a
+ * round opened to its pairings, a pairing opened to its boards).
  *
- * - the EVENT level is its stages in sequence, joined by advancement flows.
- * - a STAGE level is its groups as parallel lanes of round/process steps.
- * - a ROUND level is that round's pairings feeding the scoring rule.
- * - a NODE level is one encounter's immediate children — every board and
- *   leg its own card. Drilling descends; a breadcrumb walks back up.
- *
- * The caller applies one generic rule between levels: a canvas that is
- * exactly one drillable card opens it, so single-stage events resolve
- * straight to their rounds without any special case.
+ * The levels: the EVENT is its stages in sequence joined by advancement
+ * flows; a STAGE is its groups as lanes of round/process steps; a ROUND is
+ * its pairings feeding the scoring rule; a NODE is its immediate children;
+ * a PROCESS is standings → pair-next. One generic rule needs no state: an
+ * item that is the only drillable thing at its level renders pre-expanded
+ * (and cannot collapse), so a single-stage event opens at its rounds
+ * without any special case.
  *
  * Everything domain-shaped — sizes (known or open-with-exemplars), side
- * names, seat-derived colors, roles, seed links — arrives precomputed in the
- * concrete structure. This file iterates it and places cards.
+ * names, seat-derived colors, roles, seed links — arrives precomputed in
+ * the concrete structure. This file iterates it and places cards.
  */
 
 export const flowCardDataSchema = z.object({
@@ -41,7 +45,7 @@ export const flowCardDataSchema = z.object({
     .optional(),
   /** This card stands for N identical siblings. */
   count: z.number().optional(),
-  /** Clicking descends one level of resolution. */
+  /** Clicking expands this card in place. */
   drill: z.boolean(),
   /** Edge direction at this node: timeline (right) or top-down. */
   flow: z.enum(["right", "down"]),
@@ -52,7 +56,11 @@ export const flowCardDataSchema = z.object({
 });
 export type FlowCardData = z.infer<typeof flowCardDataSchema>;
 
-export const frameDataSchema = z.strictObject({ title: z.string() });
+export const frameDataSchema = z.strictObject({
+  title: z.string(),
+  /** Clicking the frame collapses it back to its card. */
+  collapsible: z.boolean(),
+});
 export type FrameData = z.infer<typeof frameDataSchema>;
 
 export type FlowGraphNode =
@@ -70,6 +78,7 @@ export type FlowGraphNode =
       readonly data: FrameData;
       readonly width: number;
       readonly height: number;
+      readonly parentId?: string | undefined;
     };
 
 export type FlowGraphEdge = {
@@ -80,43 +89,21 @@ export type FlowGraphEdge = {
   readonly kind: "chain" | "seed";
 };
 
-export type DrillTarget =
-  | {
-      readonly kind: "stage";
-      readonly title: string;
-      readonly stage: ConcreteStage;
-    }
-  | {
-      readonly kind: "round";
-      readonly title: string;
-      readonly round: ConcreteRound;
-    }
-  | {
-      readonly kind: "node";
-      readonly title: string;
-      readonly node: ConcreteNode;
-    }
-  | {
-      readonly kind: "process";
-      readonly title: string;
-      readonly process: ConcreteProcess;
-    };
-
 export type FlowGraph = {
   readonly nodes: readonly FlowGraphNode[];
   readonly edges: readonly FlowGraphEdge[];
-  /** node id → the next level of resolution it opens. */
-  readonly drills: ReadonlyMap<string, DrillTarget>;
+  /** Card ids that expand in place when clicked. */
+  readonly expandables: ReadonlySet<string>;
+  /** Frame ids that collapse back to their card when clicked. */
+  readonly collapsibles: ReadonlySet<string>;
 };
 
 export const CARD_W = 224;
 export const STEP_W = 148;
-const GAP_X = 36;
-const ROW_H = 150;
-const STACK_H = 190;
+const GAP = 36;
+const LANE_GAP = 44;
 const FRAME_PAD = 20;
 const FRAME_TITLE = 34;
-const STEP_Y_NUDGE = 18;
 
 const card = (
   chip: string,
@@ -147,7 +134,7 @@ const card = (
 /** The card face of a non-encounter concrete card (scoring, standings, …). */
 const plainCard = (
   concrete: ConcreteCard,
-  options: { flow: "right" | "down"; step?: boolean },
+  options?: { flow?: "right" | "down"; step?: boolean; drill?: boolean },
 ): FlowCardData =>
   card(concrete.kind, concrete.title, concrete.lines, {
     badge: concrete.badge,
@@ -177,42 +164,175 @@ const nodeCard = (
   );
 
 // ---------------------------------------------------------------------------
-// Overview: a timeline of stage frames with group lanes and round steps
+// Sized sub-graphs: every level builder returns a relatively-positioned
+// fragment with its footprint, so parents can lay items out around whatever
+// is currently expanded.
+
+type Sub = {
+  readonly nodes: readonly FlowGraphNode[];
+  readonly edges: readonly FlowGraphEdge[];
+  readonly expandables: ReadonlySet<string>;
+  readonly collapsibles: ReadonlySet<string>;
+  readonly w: number;
+  readonly h: number;
+};
+
+/** Rendered height of a card — an estimate the gaps absorb. */
+const cardH = (data: FlowCardData): number =>
+  data.step
+    ? 58
+    : 62 +
+      (data.badge === undefined ? 0 : 18) +
+      (data.sides === undefined ? 0 : 22) +
+      data.lines.length * 17 +
+      (data.drill ? 20 : 0);
+
+function cardSub(id: string, data: FlowCardData): Sub {
+  return {
+    nodes: [{ id, type: "card", position: { x: 0, y: 0 }, data }],
+    edges: [],
+    expandables: data.drill ? new Set([id]) : new Set(),
+    collapsibles: new Set(),
+    w: data.step ? STEP_W : CARD_W,
+    h: cardH(data),
+  };
+}
+
+/** Shift a fragment's root nodes (nested children stay parent-relative). */
+const offset = (sub: Sub, dx: number, dy: number): Sub => ({
+  ...sub,
+  nodes: sub.nodes.map((node) =>
+    node.parentId !== undefined
+      ? node
+      : {
+          ...node,
+          position: { x: node.position.x + dx, y: node.position.y + dy },
+        },
+  ),
+});
+
+const merge = (subs: readonly Sub[], w: number, h: number): Sub => ({
+  nodes: subs.flatMap((sub) => sub.nodes),
+  edges: subs.flatMap((sub) => sub.edges),
+  expandables: new Set(subs.flatMap((sub) => [...sub.expandables])),
+  collapsibles: new Set(subs.flatMap((sub) => [...sub.collapsibles])),
+  w,
+  h,
+});
+
+/** Left-to-right, vertically centered. */
+function row(items: readonly Sub[], gap: number): Sub {
+  const h = items.reduce((max, item) => Math.max(max, item.h), 0);
+  let x = 0;
+  const placed = items.map((item) => {
+    const sub = offset(item, x, (h - item.h) / 2);
+    x += item.w + gap;
+    return sub;
+  });
+  return merge(placed, Math.max(0, x - gap), h);
+}
+
+/** Top-to-bottom, left aligned. */
+function column(items: readonly Sub[], gap: number): Sub {
+  const w = items.reduce((max, item) => Math.max(max, item.w), 0);
+  let y = 0;
+  const placed = items.map((item) => {
+    const sub = offset(item, 0, y);
+    y += item.h + gap;
+    return sub;
+  });
+  return merge(placed, w, Math.max(0, y - gap));
+}
+
+/** Wrap a fragment in a bordered frame that owns its children. */
+function frameSub(
+  id: string,
+  title: string,
+  inner: Sub,
+  collapsible: boolean,
+): Sub {
+  const w = inner.w + FRAME_PAD * 2;
+  const h = inner.h + FRAME_TITLE + FRAME_PAD;
+  const frame: FlowGraphNode = {
+    id,
+    type: "frame",
+    position: { x: 0, y: 0 },
+    data: { title, collapsible },
+    width: w,
+    height: h,
+  };
+  const children = inner.nodes.map(
+    (node): FlowGraphNode =>
+      node.parentId !== undefined
+        ? node
+        : {
+            ...node,
+            parentId: id,
+            position: {
+              x: node.position.x + FRAME_PAD,
+              y: node.position.y + FRAME_TITLE,
+            },
+          },
+  );
+  return {
+    nodes: [frame, ...children],
+    edges: inner.edges,
+    expandables: inner.expandables,
+    collapsibles: collapsible
+      ? new Set([id, ...inner.collapsibles])
+      : inner.collapsibles,
+    w,
+    h,
+  };
+}
 
 /**
- * The event's own level: its stages in sequence, each one card, joined by
- * the flows between them ("32 advance"). A single-stage event never shows
- * this canvas — the generic rule "a canvas of one drillable card opens it"
- * resolves straight into the stage.
+ * A drillable item: its card, or — when expanded (or forced, for the only
+ * drillable thing at its level) — a frame holding the next level down.
  */
-export function buildEventGraph(event: ConcreteEvent): FlowGraph {
-  const nodes: FlowGraphNode[] = [];
-  const edges: FlowGraphEdge[] = [];
-  const drills = new Map<string, DrillTarget>();
+function item(
+  id: string,
+  title: string,
+  data: FlowCardData,
+  inner: () => Sub,
+  expanded: ReadonlySet<string>,
+  force = false,
+): Sub {
+  if (!force && !expanded.has(id)) return cardSub(id, data);
+  return frameSub(id, title, inner(), !force);
+}
 
-  const idOf = new Map<string, string>();
-  event.stages.forEach((stage, index) => {
-    const id = `stage:${stage.id}`;
-    idOf.set(stage.id, id);
-    nodes.push({
-      id,
-      type: "card",
-      position: { x: index * (CARD_W + 2 * GAP_X), y: 0 },
-      data: card(stage.card.kind, stage.card.title, stage.card.lines, {
+// ---------------------------------------------------------------------------
+// The levels
+
+export function buildGraph(
+  event: ConcreteEvent,
+  expanded: ReadonlySet<string>,
+): FlowGraph {
+  const force = event.stages.length === 1;
+  const items = event.stages.map((stage) =>
+    item(
+      `s:${stage.id}`,
+      stage.id,
+      card(stage.card.kind, stage.card.title, stage.card.lines, {
         badge: stage.card.badge,
         drill: true,
-        flow: "right",
       }),
-    });
-    drills.set(id, { kind: "stage", title: stage.id, stage });
+      () => stageSub(stage, `s:${stage.id}`, expanded),
+      expanded,
+      force,
+    ),
+  );
+  const laid = row(items, GAP * 2);
 
+  const edges: FlowGraphEdge[] = [...laid.edges];
+  event.stages.forEach((stage, index) => {
+    const id = `s:${stage.id}`;
     if (stage.seededFrom.length > 0) {
       stage.seededFrom.forEach((link, li) => {
-        const source = idOf.get(link.stage);
-        if (source === undefined) return;
         edges.push({
           id: `seed:${id}:${li}`,
-          source,
+          source: `s:${link.stage}`,
           target: id,
           label: link.label,
           kind: "seed",
@@ -220,11 +340,10 @@ export function buildEventGraph(event: ConcreteEvent): FlowGraph {
       });
     } else if (index > 0) {
       const previous = event.stages[index - 1];
-      const source = previous === undefined ? undefined : idOf.get(previous.id);
-      if (source !== undefined) {
+      if (previous !== undefined) {
         edges.push({
-          id: `c:${source}->${id}`,
-          source,
+          id: `c:s:${previous.id}->${id}`,
+          source: `s:${previous.id}`,
           target: id,
           kind: "chain",
         });
@@ -232,305 +351,220 @@ export function buildEventGraph(event: ConcreteEvent): FlowGraph {
     }
   });
 
-  return { nodes, edges, drills };
+  return {
+    nodes: laid.nodes,
+    edges,
+    expandables: laid.expandables,
+    collapsibles: laid.collapsibles,
+  };
 }
 
 /** One stage: its groups as parallel lanes of round and process steps. */
-function buildStageLevel(stage: ConcreteStage): FlowGraph {
-  const nodes: FlowGraphNode[] = [];
-  const edges: FlowGraphEdge[] = [];
-  const drills = new Map<string, DrillTarget>();
+function stageSub(
+  stage: ConcreteStage,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
+  return column(
+    stage.groups.map((group) => laneSub(group, `${pid}/${group.id}`, expanded)),
+    LANE_GAP,
+  );
+}
 
-  const frameId = `stage:${stage.id}`;
-  const laneNodes: FlowGraphNode[] = [];
-  let laneY = FRAME_TITLE + FRAME_PAD;
-  let widest = CARD_W;
+/** One group's lane: header, then its schedule left-to-right. */
+function laneSub(
+  group: ConcreteGroup,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
+  const ids: string[] = [`${pid}/hdr`];
+  const items: Sub[] = [cardSub(`${pid}/hdr`, plainCard(group.header))];
 
-  for (const group of stage.groups) {
-    const headerId = `g:${group.id}`;
-
-    if (group.run.kind === "rounds") {
-      const run = group.run;
-      laneNodes.push({
-        id: headerId,
-        type: "card",
-        parentId: frameId,
-        position: { x: FRAME_PAD, y: laneY },
-        data: plainCard(group.header, { flow: "right" }),
-      });
-
-      const rounds = manyList(run.rounds);
-      // Every round is followed by its process step: standings update and
-      // re-pair between rounds, the final standings after the last.
-      const steps: readonly (
-        | { kind: "round"; round: ConcreteRound; ghost: boolean }
-        | {
-            kind: "process";
-            process: ConcreteProcess;
-            title: string;
-            label: string;
-          }
-      )[] = rounds.flatMap(({ item: round, ghost }, i) => [
-        { kind: "round" as const, round, ghost },
-        i < rounds.length - 1
-          ? {
-              kind: "process" as const,
-              process: run.between,
-              title: `After ${round.label}`,
-              label: "standings · pair",
-            }
-          : {
-              kind: "process" as const,
-              process: run.final,
-              title: "Final standings",
-              label: "standings",
-            },
-      ]);
-      let previous = headerId;
-      steps.forEach((step, slot) => {
-        const stepId = `${headerId}/step-${slot + 1}`;
-        const ghost = step.kind === "round" && step.ghost;
-        laneNodes.push({
-          id: stepId,
-          type: "card",
-          parentId: frameId,
-          position: {
-            x: FRAME_PAD + CARD_W + GAP_X + slot * (STEP_W + GAP_X),
-            y: laneY + STEP_Y_NUDGE,
-          },
-          data:
-            step.kind === "round"
-              ? card("round", step.round.label, [], {
-                  drill: !ghost,
-                  step: true,
-                  ghost,
-                })
-              : card("standings", step.label, [], {
-                  drill: true,
-                  step: true,
-                }),
-        });
-        edges.push({
-          id: `c:${previous}->${stepId}`,
-          source: previous,
-          target: stepId,
-          kind: "chain",
-        });
-        if (step.kind === "round" && !ghost) {
-          drills.set(stepId, {
-            kind: "round",
-            title: step.round.label,
-            round: step.round,
-          });
-        }
-        if (step.kind === "process") {
-          drills.set(stepId, {
-            kind: "process",
-            title: step.title,
-            process: step.process,
-          });
-        }
-        previous = stepId;
-      });
-      widest = Math.max(widest, CARD_W + (GAP_X + STEP_W) * steps.length);
-    } else {
-      const node = group.run.node;
-      const runId = `${headerId}/run`;
-      laneNodes.push({
-        id: headerId,
-        type: "card",
-        parentId: frameId,
-        position: { x: FRAME_PAD, y: laneY },
-        data: plainCard(group.header, { flow: "right" }),
-      });
-      laneNodes.push({
-        id: runId,
-        type: "card",
-        parentId: frameId,
-        position: { x: FRAME_PAD + CARD_W + GAP_X, y: laneY },
-        data: nodeCard(node, undefined, {
-          drill: node.children.length > 0,
-          flow: "right",
-        }),
-      });
-      edges.push({
-        id: `c:${headerId}->${runId}`,
-        source: headerId,
-        target: runId,
-        kind: "chain",
-      });
-      if (node.children.length > 0) {
-        drills.set(runId, { kind: "node", title: node.title, node });
-      }
-      widest = Math.max(widest, CARD_W + GAP_X + CARD_W);
-    }
-    laneY += ROW_H;
+  if (group.run.kind === "rounds") {
+    const run = group.run;
+    const rounds = manyList(run.rounds);
+    rounds.forEach(({ item: round, ghost }, i) => {
+      const roundId = `${pid}/r${i + 1}`;
+      ids.push(roundId);
+      items.push(
+        ghost
+          ? cardSub(
+              roundId,
+              card("round", round.label, [], { step: true, ghost: true }),
+            )
+          : item(
+              roundId,
+              round.label,
+              card("round", round.label, [], { drill: true, step: true }),
+              () => roundSub(round, roundId, expanded),
+              expanded,
+            ),
+      );
+      const last = i === rounds.length - 1;
+      const processId = `${pid}/after${i + 1}`;
+      ids.push(processId);
+      items.push(
+        item(
+          processId,
+          last ? "Final standings" : `After ${round.label}`,
+          card("standings", last ? "standings" : "standings · pair", [], {
+            drill: true,
+            step: true,
+          }),
+          () => processSub(last ? run.final : run.between, processId),
+          expanded,
+        ),
+      );
+    });
+  } else {
+    const node = group.run.node;
+    const runId = `${pid}/run`;
+    ids.push(runId);
+    items.push(
+      node.children.length > 0
+        ? item(
+            runId,
+            node.title,
+            nodeCard(node, undefined, { drill: true, flow: "right" }),
+            () => childrenSub(node, runId, expanded),
+            expanded,
+          )
+        : cardSub(
+            runId,
+            nodeCard(node, undefined, { drill: false, flow: "right" }),
+          ),
+    );
   }
 
-  const width = FRAME_PAD * 2 + widest;
-  const height = laneY - ROW_H + 130 + FRAME_PAD;
-  nodes.push({
-    id: frameId,
-    type: "frame",
-    position: { x: 0, y: 0 },
-    data: { title: stage.id },
-    width,
-    height,
-  });
-  nodes.push(...laneNodes);
-
-  return { nodes, edges, drills };
+  const laid = row(items, GAP);
+  const edges: FlowGraphEdge[] = ids.slice(1).map((target, i) => ({
+    id: `c:${ids[i] ?? ""}->${target}`,
+    source: ids[i] ?? "",
+    target,
+    kind: "chain",
+  }));
+  return { ...laid, edges: [...laid.edges, ...edges] };
 }
 
-// ---------------------------------------------------------------------------
-// Level views: ONE level of resolution per canvas — drill to descend
-
-export function buildLevelGraph(target: DrillTarget): FlowGraph {
-  switch (target.kind) {
-    case "stage":
-      return buildStageLevel(target.stage);
-    case "round":
-      return buildRoundLevel(target.round);
-    case "node":
-      return buildNodeLevel(target.node);
-    case "process":
-      return buildProcessLevel(target.process);
-  }
-}
-
-/**
- * A round is its pairings, stacked — open sizes end in a faded exemplar —
- * and its output: every outcome through the scoring rule. Standings and
- * re-pairing belong to the process step between rounds, not here.
- */
-function buildRoundLevel(round: ConcreteRound): FlowGraph {
-  const nodes: FlowGraphNode[] = [];
-  const edges: FlowGraphEdge[] = [];
-  const drills = new Map<string, DrillTarget>();
-
-  const pairings = manyList(round.pairings);
-
-  pairings.forEach(({ item: pairing, ghost }, slot) => {
-    const id = `lvl:${slot + 1}`;
-    const drill = !ghost && pairing.node.children.length > 0;
-    nodes.push({
-      id,
-      type: "card",
-      position: { x: 0, y: slot * STACK_H },
-      data: nodeCard(pairing.node, pairing.label, {
-        drill,
-        flow: "down",
-        ghost,
-      }),
-    });
-    if (drill) {
-      drills.set(id, {
-        kind: "node",
-        title: `${pairing.label} — ${pairing.node.title}`,
-        node: pairing.node,
-      });
-    }
-  });
-
-  // The round's output, to the right: every outcome through the scoring rule.
-  const scoringId = "scoring";
-  nodes.push({
-    id: scoringId,
-    type: "card",
-    position: {
-      x: CARD_W + 3 * GAP_X,
-      y: ((pairings.length - 1) * STACK_H) / 2,
-    },
-    data: plainCard(round.scoring, { flow: "right" }),
-  });
-  pairings.forEach((_, slot) => {
-    edges.push({
-      id: `c:lvl:${slot + 1}->${scoringId}`,
-      source: `lvl:${slot + 1}`,
-      target: scoringId,
-      kind: "chain",
-    });
-  });
-
-  return { nodes, edges, drills };
-}
-
-/** Between rounds: standings update from the points, then pair what's next. */
-function buildProcessLevel(process: ConcreteProcess): FlowGraph {
-  const nodes: FlowGraphNode[] = [];
-  const edges: FlowGraphEdge[] = [];
-  const chain: readonly ConcreteCard[] = [
-    process.standings,
-    ...(process.repair === undefined ? [] : [process.repair]),
+/** Between rounds: standings update, then pair what's next. */
+function processSub(process: ConcreteProcess, pid: string): Sub {
+  const items: Sub[] = [
+    cardSub(`${pid}/standings`, plainCard(process.standings)),
+    ...(process.repair === undefined
+      ? []
+      : [cardSub(`${pid}/repair`, plainCard(process.repair))]),
   ];
-  chain.forEach((concrete, i) => {
-    nodes.push({
-      id: `proc:${i + 1}`,
-      type: "card",
-      position: { x: i * (CARD_W + GAP_X), y: 0 },
-      data: plainCard(concrete, { flow: "right" }),
-    });
-    if (i > 0) {
-      edges.push({
-        id: `c:proc:${i}->proc:${i + 1}`,
-        source: `proc:${i}`,
-        target: `proc:${i + 1}`,
-        kind: "chain",
-      });
-    }
-  });
-  return { nodes, edges, drills: new Map() };
+  const laid = row(items, GAP);
+  const edges: FlowGraphEdge[] =
+    process.repair === undefined
+      ? []
+      : [
+          {
+            id: `c:${pid}/standings->${pid}/repair`,
+            source: `${pid}/standings`,
+            target: `${pid}/repair`,
+            kind: "chain",
+          },
+        ];
+  return { ...laid, edges: [...laid.edges, ...edges] };
 }
 
-/** One node's immediate children, each its own card — no compression. */
-function buildNodeLevel(node: ConcreteNode): FlowGraph {
-  const nodes: FlowGraphNode[] = [];
-  const edges: FlowGraphEdge[] = [];
-  const drills = new Map<string, DrillTarget>();
+/** A round: its pairings stacked, feeding the scoring rule. */
+function roundSub(
+  round: ConcreteRound,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
+  const pairings = manyList(round.pairings);
+  const pairIds: string[] = [];
+  const stack = column(
+    pairings.map(({ item: pairing, ghost }, i) => {
+      const pairId = `${pid}/p${i + 1}`;
+      pairIds.push(pairId);
+      const drillable = !ghost && pairing.node.children.length > 0;
+      return drillable
+        ? item(
+            pairId,
+            `${pairing.label} — ${pairing.node.title}`,
+            nodeCard(pairing.node, pairing.label, {
+              drill: true,
+              flow: "down",
+            }),
+            () => childrenSub(pairing.node, pairId, expanded),
+            expanded,
+          )
+        : cardSub(
+            pairId,
+            nodeCard(pairing.node, pairing.label, {
+              drill: false,
+              flow: "down",
+              ghost,
+            }),
+          );
+    }),
+    GAP,
+  );
 
-  // A leaf (single game) has nothing inside: show the thing itself up close.
-  if (node.children.length === 0) {
-    nodes.push({
-      id: "lvl:1",
-      type: "card",
-      position: { x: 0, y: 0 },
-      data: nodeCard(node, undefined, { drill: false, flow: "right" }),
-    });
-    return { nodes, edges, drills };
-  }
+  const scoringId = `${pid}/scoring`;
+  const scoring = cardSub(scoringId, plainCard(round.scoring));
+  const placedScoring = offset(
+    scoring,
+    stack.w + GAP * 3,
+    (stack.h - scoring.h) / 2,
+  );
+  const edges: FlowGraphEdge[] = pairIds.map((pairId) => ({
+    id: `c:${pairId}->${scoringId}`,
+    source: pairId,
+    target: scoringId,
+    kind: "chain",
+  }));
+  const laid = merge(
+    [stack, placedScoring],
+    stack.w + GAP * 3 + scoring.w,
+    Math.max(stack.h, scoring.h),
+  );
+  return { ...laid, edges: [...laid.edges, ...edges] };
+}
 
+/** One node's immediate children, each its own item — no compression. */
+function childrenSub(
+  node: ConcreteNode,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
   const sequence = node.arrangement === "sequence";
-  node.children.forEach((child, index) => {
-    const id = `lvl:${index + 1}`;
-    const drill = child.children.length > 0;
-    nodes.push({
-      id,
-      type: "card",
-      position: sequence
-        ? { x: index * (CARD_W + GAP_X), y: 0 }
-        : { x: 0, y: index * STACK_H },
-      data: nodeCard(child, child.role, {
-        drill,
-        flow: sequence ? "right" : "down",
-      }),
-    });
-    if (drill) {
-      drills.set(id, {
-        kind: "node",
-        title: `${child.role ?? child.title} — ${child.title}`,
-        node: child,
-      });
+  const flow = sequence ? ("right" as const) : ("down" as const);
+  const drillableCount = node.children.filter(
+    (child) => child.children.length > 0,
+  ).length;
+  const ids: string[] = [];
+  const items = node.children.map((child, i) => {
+    const childId = `${pid}/c${i + 1}`;
+    ids.push(childId);
+    if (child.children.length === 0) {
+      return cardSub(
+        childId,
+        nodeCard(child, child.role, { drill: false, flow }),
+      );
     }
-    if (sequence && index > 0) {
-      edges.push({
-        id: `c:lvl:${index}->lvl:${index + 1}`,
-        source: `lvl:${index}`,
-        target: id,
+    return item(
+      childId,
+      `${child.role ?? child.title} — ${child.title}`,
+      nodeCard(child, child.role, { drill: true, flow }),
+      () => childrenSub(child, childId, expanded),
+      expanded,
+      node.children.length === 1 && drillableCount === 1,
+    );
+  });
+  const laid = sequence ? row(items, GAP) : column(items, GAP);
+  const edges: FlowGraphEdge[] = sequence
+    ? ids.slice(1).map((target, i) => ({
+        id: `c:${ids[i] ?? ""}->${target}`,
+        source: ids[i] ?? "",
+        target,
         label: "then",
         kind: "chain",
-      });
-    }
-  });
-
-  return { nodes, edges, drills };
+      }))
+    : [];
+  return { ...laid, edges: [...laid.edges, ...edges] };
 }
