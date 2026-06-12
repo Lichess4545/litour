@@ -7,6 +7,7 @@ import {
   lichess4545Season,
   miniChampionship,
   worldChampionship,
+  worldUniversityChampionship,
 } from "@/chess/formats";
 import { chessRegistry } from "@/chess/registry";
 import { concretify } from "./concrete";
@@ -76,6 +77,35 @@ describe("concretify — sizes are explicit", () => {
     expect(run.between.repair?.kind).toBe("swiss");
     // After the final round only the standings remain — nothing to pair.
     expect(run.final.repair).toBeUndefined();
+  });
+
+  it("a truncated knockout plays two rounds; its seed links aggregate per source", () => {
+    const event = concretify(worldUniversityChampionship, chessRegistry);
+    const ko = event.stages[1]?.groups[0];
+    expect(ko?.entrants).toBe(32);
+    expect(ko?.seededFrom.map((link) => link.label)).toEqual([
+      "top 16",
+      "top 16",
+    ]);
+    const run = ko?.run;
+    if (run?.kind !== "rounds") throw new Error("expected a rounds run");
+    expect(run.rounds.open).toBe(false);
+    expect(run.rounds.items.map((round) => round.label)).toEqual([
+      "Round 1",
+      "Round 2",
+    ]);
+    expect(
+      run.rounds.items.map((round) =>
+        round.pairings.open ? "open" : round.pairings.items.length,
+      ),
+    ).toEqual([16, 8]);
+    // The eight survivors split into the two over-the-board groups.
+    expect(
+      event.stages[2]?.groups.map((g) => [g.entrants, g.seededFrom[0]?.label]),
+    ).toEqual([
+      [4, "4 seeds"],
+      [4, "4 seeds"],
+    ]);
   });
 
   it("an eliminative pool shrinks per round and seats the bronze final", () => {

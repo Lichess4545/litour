@@ -101,7 +101,7 @@ export type FlowGraph = {
 };
 
 export const CARD_W = 224;
-export const STEP_W = 120;
+export const STEP_W = 148;
 const GAP_X = 36;
 const ROW_H = 150;
 const STACK_H = 190;

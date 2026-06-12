@@ -86,23 +86,27 @@ function FlowCard(props: NodeProps<CardNode>) {
         className="!bg-border"
       />
       {data.step ? (
-        <div className="flex items-center gap-1.5">
-          <span
-            className={`rounded px-1 py-0.5 font-medium text-[9px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
-          >
-            {data.chip}
-          </span>
-          <span className="font-semibold text-xs">{data.title}</span>
-          {data.drill && (
-            <button
-              type="button"
-              aria-label={`Zoom into ${data.title}`}
-              className="ml-auto text-muted-foreground text-xs"
+        <>
+          <div className="flex items-center justify-between gap-1.5">
+            <span
+              className={`rounded px-1 py-0.5 font-medium text-[9px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
             >
-              ⤵
-            </button>
-          )}
-        </div>
+              {data.chip}
+            </span>
+            {data.drill && (
+              <button
+                type="button"
+                aria-label={`Zoom into ${data.title}`}
+                className="text-muted-foreground text-xs"
+              >
+                ⤵
+              </button>
+            )}
+          </div>
+          <div className="mt-0.5 truncate whitespace-nowrap font-semibold text-xs">
+            {data.title}
+          </div>
+        </>
       ) : (
         <>
           <div className="flex items-center gap-2">

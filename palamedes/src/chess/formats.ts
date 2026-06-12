@@ -698,6 +698,211 @@ export const teamSwissCascade: ParsedEventDef = parseEventDef({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// The full championship pipelines (university & corporate)
+
+const ranks = (stage: string, group: string, ...ns: readonly number[]) =>
+  ns.map((rank) => ({ kind: "rank", stage, group, rank }));
+
+const topSeeds = (stage: string, group: string, count: number) =>
+  ranks(stage, group, ...Array.from({ length: count }, (_, i) => i + 1));
+
+const teamMatch = (boards: number, game: unknown) => ({
+  kind: "match",
+  boards,
+  board: game,
+  seats: zigzag,
+});
+
+/** Two team matches with flipped colors; the arbiter decides aggregate ties. */
+const twoMatchTie = (boards: number, game: unknown) => ({
+  kind: "series",
+  legs: [teamMatch(boards, game), teamMatch(boards, game)],
+  seats: alternate,
+  tie: { kind: "manual" },
+});
+
+/** A 32-team knockout cut to two rounds: the eight survivors advance. */
+const cutKnockout = (encounter: unknown) => ({
+  kind: "pool",
+  pairing: { system: "knockout", seeding: "traditional", rounds: 2 },
+  encounter,
+  score: gamePoints,
+  bye: { kind: "advance" },
+  legRelease: "lockstep",
+  tiebreaks: [],
+});
+
+const universitySwiss = {
+  kind: "pool",
+  pairing: { system: "swiss" },
+  rounds: 9,
+  encounter: teamMatch(4, rapid(900, 10)),
+  score: matchPoints,
+  bye: { kind: "points", standings: 1, encounter: 2 },
+  tiebreaks: [{ metric: "gamesWon" }],
+};
+
+const universityOtbGroup = {
+  kind: "pool",
+  pairing: { system: "roundRobin", cycles: 2 },
+  encounter: teamMatch(4, classical),
+  score: matchPoints,
+  tiebreaks: [{ metric: "gamesWon" }],
+};
+
+/**
+ * FIDE World University Team Championship — the full pipeline. Two open
+ * online team-swiss qualifiers each send their top 16 into a 32-team
+ * knockout that plays only two rounds (`rounds: 2` truncates the bracket);
+ * the eight survivors travel to the venue: two double round robins, then
+ * cross-group semifinals with a bronze final.
+ */
+export const worldUniversityChampionship: ParsedEventDef = parseEventDef({
+  id: "world-university",
+  name: "World University Team Championship",
+  competitors: [],
+  stages: [
+    {
+      id: "qualifiers",
+      groups: [
+        { id: "q1", entries: { open: true }, run: universitySwiss },
+        { id: "q2", entries: { open: true }, run: universitySwiss },
+      ],
+    },
+    {
+      id: "knockout",
+      groups: [
+        {
+          id: "ko",
+          entries: [
+            ...topSeeds("qualifiers", "q1", 16),
+            ...topSeeds("qualifiers", "q2", 16),
+          ],
+          run: cutKnockout(twoMatchTie(4, rapid(900, 10))),
+        },
+      ],
+    },
+    {
+      id: "otb-groups",
+      groups: [
+        {
+          id: "a",
+          entries: ranks("knockout", "ko", 1, 4, 5, 8),
+          run: universityOtbGroup,
+        },
+        {
+          id: "b",
+          entries: ranks("knockout", "ko", 2, 3, 6, 7),
+          run: universityOtbGroup,
+        },
+      ],
+    },
+    {
+      id: "medals",
+      groups: [
+        {
+          id: "title",
+          entries: [
+            ...ranks("otb-groups", "a", 1),
+            ...ranks("otb-groups", "b", 2),
+            ...ranks("otb-groups", "b", 1),
+            ...ranks("otb-groups", "a", 2),
+          ],
+          run: {
+            kind: "pool",
+            pairing: {
+              system: "knockout",
+              seeding: "adjacent",
+              thirdPlace: true,
+            },
+            encounter: {
+              ...teamMatch(4, classical),
+              tie: { kind: "manual" },
+            },
+            score: gamePoints,
+            bye: { kind: "advance" },
+            tiebreaks: [],
+          },
+        },
+      ],
+    },
+  ],
+});
+
+const CORPORATE_POOLS = [
+  "americas",
+  "europe-africa",
+  "asia-pacific",
+  "oceania",
+] as const;
+
+/**
+ * FIDE World Corporate Championship — four open timezone pools (team
+ * swiss); each sends its top 8 into the same 32-team knockout, cut to two
+ * rounds; the final eight play an over-the-board knockout with a bronze
+ * final.
+ */
+export const worldCorporateChampionship: ParsedEventDef = parseEventDef({
+  id: "world-corporate",
+  name: "World Corporate Championship",
+  competitors: [],
+  stages: [
+    {
+      id: "pools",
+      groups: CORPORATE_POOLS.map((id) => ({
+        id,
+        entries: { open: true },
+        run: {
+          kind: "pool",
+          pairing: { system: "swiss" },
+          rounds: 7,
+          encounter: teamMatch(4, rapid(600, 5)),
+          score: matchPoints,
+          bye: { kind: "points", standings: 1, encounter: 2 },
+          tiebreaks: [{ metric: "gamesWon" }],
+        },
+      })),
+    },
+    {
+      id: "knockout",
+      groups: [
+        {
+          id: "ko",
+          entries: CORPORATE_POOLS.flatMap((pool) =>
+            topSeeds("pools", pool, 8),
+          ),
+          run: cutKnockout(twoMatchTie(4, rapid(600, 5))),
+        },
+      ],
+    },
+    {
+      id: "finals",
+      groups: [
+        {
+          id: "otb",
+          entries: topSeeds("knockout", "ko", 8),
+          run: {
+            kind: "pool",
+            pairing: {
+              system: "knockout",
+              seeding: "traditional",
+              thirdPlace: true,
+            },
+            encounter: {
+              ...teamMatch(4, rapid(1500, 10)),
+              tie: { kind: "manual" },
+            },
+            score: gamePoints,
+            bye: { kind: "advance" },
+            tiebreaks: [],
+          },
+        },
+      ],
+    },
+  ],
+});
+
 export type FormatExample = {
   readonly slug: string;
   readonly title: string;
@@ -760,6 +965,20 @@ export const FORMAT_EXAMPLES: readonly FormatExample[] = [
     title: "Candidates",
     blurb: "Double round robin with reversed colors in the second cycle.",
     def: candidates,
+  },
+  {
+    slug: "world-university",
+    title: "World University Team Championship",
+    blurb:
+      "Two open qualifiers → 32-team knockout cut to two rounds → eight teams over the board.",
+    def: worldUniversityChampionship,
+  },
+  {
+    slug: "world-corporate",
+    title: "World Corporate Championship",
+    blurb:
+      "Four open timezone pools → 32-team knockout, two rounds → an over-the-board final eight.",
+    def: worldCorporateChampionship,
   },
   {
     slug: "wucc-knockout",

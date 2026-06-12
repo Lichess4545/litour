@@ -336,25 +336,50 @@ export function concretify(
         const open = isOpenEntries(group.entries);
         const entrants = open ? ("open" as const) : group.entries.length;
         const entrantsLine = open ? "open entry" : `${entrants} entrants`;
-        const seededFrom = open
-          ? []
-          : group.entries.flatMap((entry): ConcreteSeedLink[] => {
-              const origin = registry.seeds.get(entry.kind)?.origin?.(entry);
-              return origin === undefined
-                ? []
-                : [
-                    {
-                      stage: origin.stage,
-                      group: origin.group,
-                      label:
-                        origin.rank === 1
-                          ? "winner"
-                          : origin.rank !== undefined
-                            ? `#${origin.rank}`
-                            : undefined,
-                    },
-                  ];
-            });
+        // One link per source group, labeled for all the seeds it sends
+        // ("winner", "#3", "top 16", "4 seeds").
+        const bySource = new Map<
+          string,
+          { stage: string; group: string; ranks: (number | undefined)[] }
+        >();
+        if (!open) {
+          for (const entry of group.entries) {
+            const origin = registry.seeds.get(entry.kind)?.origin?.(entry);
+            if (origin === undefined) continue;
+            const sourceKey = `${origin.stage}/${origin.group}`;
+            const links = bySource.get(sourceKey) ?? {
+              stage: origin.stage,
+              group: origin.group,
+              ranks: [],
+            };
+            links.ranks.push(origin.rank);
+            bySource.set(sourceKey, links);
+          }
+        }
+        const seededFrom = [...bySource.values()].map(
+          ({ stage: s, group: g, ranks }): ConcreteSeedLink => {
+            const [only] = ranks;
+            const sorted = ranks.flatMap((r) => (r === undefined ? [] : [r]));
+            sorted.sort((x, y) => x - y);
+            const topN =
+              sorted.length === ranks.length &&
+              sorted.every((rank, i) => rank === i + 1);
+            return {
+              stage: s,
+              group: g,
+              label:
+                ranks.length === 1
+                  ? only === 1
+                    ? "winner"
+                    : only !== undefined
+                      ? `#${only}`
+                      : undefined
+                  : topN
+                    ? `top ${ranks.length}`
+                    : `${ranks.length} seeds`,
+            };
+          },
+        );
         const run = group.run;
         if (isPool(run)) {
           const concrete = concretifyPool(run, entrants, registry);

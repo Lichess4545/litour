@@ -205,8 +205,13 @@ export const knockoutPairing: PairingKind = definePairingKind({
     system: z.literal("knockout"),
     seeding: z.enum(["traditional", "adjacent", "manual"]),
     thirdPlace: z.boolean().optional(),
+    /** Truncate the bracket: play only this many rounds, survivors advance. */
+    rounds: z.number().int().min(1).optional(),
   }),
-  totalRounds: (_options, entrants) => Math.round(Math.log2(entrants)),
+  totalRounds: (options, entrants) => {
+    const full = Math.round(Math.log2(entrants));
+    return Math.min(full, options.rounds ?? full);
+  },
   pairsInRound: (options, entrants, round) => {
     const pairs = Math.max(1, Math.floor(entrants / 2 ** round));
     return pairs === 1 && options.thirdPlace === true ? 2 : pairs;
