@@ -32,3 +32,4 @@ wucc_backup_*.dump
 .devenv.flake.nix
 devenv.local.nix
 .direnv/
+.gstack/
