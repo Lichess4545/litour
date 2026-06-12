@@ -18,8 +18,8 @@ import { chessRegistry } from "@/chess/registry";
 import { concretify } from "@/tournament/concrete";
 import type { ParsedEventDef } from "@/tournament/registry";
 import {
+  buildEventGraph,
   buildLevelGraph,
-  buildOverviewGraph,
   CARD_W,
   type DrillTarget,
   type FlowCardData,
@@ -187,11 +187,20 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
   const [stack, setStack] = useState<readonly DrillTarget[]>([]);
   const top = stack[stack.length - 1];
 
-  const graph: FlowGraph = useMemo(
-    () =>
-      top === undefined ? buildOverviewGraph(concrete) : buildLevelGraph(top),
-    [concrete, top],
-  );
+  const graph: FlowGraph = useMemo(() => {
+    let level =
+      top === undefined ? buildEventGraph(concrete) : buildLevelGraph(top);
+    // A canvas that is exactly one drillable card opens it — uniformly at
+    // every level, so a single-stage event resolves straight to its rounds.
+    for (;;) {
+      const [only, ...rest] = level.nodes;
+      if (only === undefined || rest.length > 0) break;
+      const into = level.drills.get(only.id);
+      if (into === undefined) break;
+      level = buildLevelGraph(into);
+    }
+    return level;
+  }, [concrete, top]);
 
   const nodes = useMemo<AppNode[]>(
     () =>

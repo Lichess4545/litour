@@ -123,21 +123,32 @@ export type ConcreteRun =
 export type ConcreteSeedLink = {
   readonly stage: string;
   readonly group: string;
-  /** Edge wording ("winner", "#3"); the seed kind's origin decides it. */
+  /** Edge wording ("winner", "#3", "top 16"); the seed kind's origin decides it. */
   readonly label: string | undefined;
+  /** How many seeds this link carries. */
+  readonly count: number;
 };
 
 export type ConcreteGroup = {
   readonly id: string;
   readonly entrants: number | "open";
-  /** The lane's header card (entrants, scoring, schedule badge). */
+  /** The lane's header card (entrants, scoring, schedule badge, inflows). */
   readonly header: ConcreteCard;
   readonly seededFrom: readonly ConcreteSeedLink[];
   readonly run: ConcreteRun;
 };
 
+/** A flow between stages: every group-level link, summed per source stage. */
+export type ConcreteStageLink = {
+  readonly stage: string;
+  readonly label: string | undefined;
+};
+
 export type ConcreteStage = {
   readonly id: string;
+  /** The stage's own card at the event level. */
+  readonly card: ConcreteCard;
+  readonly seededFrom: readonly ConcreteStageLink[];
   readonly groups: readonly ConcreteGroup[];
 };
 
@@ -330,9 +341,8 @@ export function concretify(
   registry: ModelRegistry,
 ): ConcreteEvent {
   return {
-    stages: def.stages.map((stage) => ({
-      id: stage.id,
-      groups: stage.groups.map((group): ConcreteGroup => {
+    stages: def.stages.map((stage): ConcreteStage => {
+      const groups = stage.groups.map((group): ConcreteGroup => {
         const open = isOpenEntries(group.entries);
         const entrants = open ? ("open" as const) : group.entries.length;
         const entrantsLine = open ? "open entry" : `${entrants} entrants`;
@@ -377,8 +387,14 @@ export function concretify(
                   : topN
                     ? `top ${ranks.length}`
                     : `${ranks.length} seeds`,
+              count: ranks.length,
             };
           },
+        );
+        const inflowLines = seededFrom.map((link) =>
+          link.label === undefined
+            ? `from ${link.group}`
+            : `${link.label} from ${link.group}`,
         );
         const run = group.run;
         if (isPool(run)) {
@@ -393,7 +409,7 @@ export function concretify(
               kind: "group",
               title: group.id,
               badge: `${concrete.system} · ${roundsLabel} rounds`,
-              lines: [entrantsLine, concrete.scoring.title],
+              lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
             },
             seededFrom,
             run: concrete,
@@ -415,7 +431,7 @@ export function concretify(
             kind: "group",
             title: group.id,
             badge: undefined,
-            lines: [entrantsLine],
+            lines: [entrantsLine, ...inflowLines],
           },
           seededFrom,
           run: {
@@ -423,7 +439,46 @@ export function concretify(
             node: concretifyNode(run, { sides, drawn: false }, registry),
           },
         };
-      }),
-    })),
+      });
+
+      // Stage-level inflows: every group link, summed per source stage.
+      const byStage = new Map<
+        string,
+        { count: number; labels: (string | undefined)[] }
+      >();
+      for (const group of groups) {
+        for (const link of group.seededFrom) {
+          const flow = byStage.get(link.stage) ?? { count: 0, labels: [] };
+          flow.count += link.count;
+          flow.labels.push(link.label);
+          byStage.set(link.stage, flow);
+        }
+      }
+      const seededFrom = [...byStage.entries()].map(
+        ([source, { count, labels }]): ConcreteStageLink => ({
+          stage: source,
+          label: count === 1 ? labels[0] : `${count} advance`,
+        }),
+      );
+
+      return {
+        id: stage.id,
+        card: {
+          kind: "stage",
+          title: stage.id,
+          badge: groups.length > 1 ? `${groups.length} groups` : undefined,
+          lines: groups.map(
+            (group) =>
+              `${group.id} · ${
+                group.entrants === "open"
+                  ? "open entry"
+                  : `${group.entrants} entrants`
+              }`,
+          ),
+        },
+        seededFrom,
+        groups,
+      };
+    }),
   };
 }

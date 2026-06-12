@@ -79,6 +79,26 @@ describe("concretify — sizes are explicit", () => {
     expect(run.final.repair).toBeUndefined();
   });
 
+  it("stages carry their own card and aggregated inflows for the event level", () => {
+    const event = concretify(worldUniversityChampionship, chessRegistry);
+    expect(event.stages.map((s) => s.card.title)).toEqual([
+      "qualifiers",
+      "knockout",
+      "otb-groups",
+      "medals",
+    ]);
+    expect(event.stages[0]?.card.lines).toEqual([
+      "q1 · open entry",
+      "q2 · open entry",
+    ]);
+    expect(event.stages[1]?.seededFrom).toEqual([
+      { stage: "qualifiers", label: "32 advance" },
+    ]);
+    expect(event.stages[3]?.seededFrom).toEqual([
+      { stage: "otb-groups", label: "4 advance" },
+    ]);
+  });
+
   it("a truncated knockout plays two rounds; its seed links aggregate per source", () => {
     const event = concretify(worldUniversityChampionship, chessRegistry);
     const ko = event.stages[1]?.groups[0];

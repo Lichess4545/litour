@@ -5,6 +5,7 @@ import {
   type ConcreteNode,
   type ConcreteProcess,
   type ConcreteRound,
+  type ConcreteStage,
   manyList,
 } from "@/tournament/concrete";
 
@@ -12,12 +13,15 @@ import {
  * Layout only: project the concrete structure (`@/tournament/concrete`) onto
  * React Flow nodes and edges, one level of resolution per canvas:
  *
- * - the OVERVIEW is the event's own level — a left-to-right timeline of
- *   stage frames, group lanes, round steps. There is no "event node": the
- *   page is the event.
- * - a ROUND level is that round's pairings, stacked.
+ * - the EVENT level is its stages in sequence, joined by advancement flows.
+ * - a STAGE level is its groups as parallel lanes of round/process steps.
+ * - a ROUND level is that round's pairings feeding the scoring rule.
  * - a NODE level is one encounter's immediate children — every board and
  *   leg its own card. Drilling descends; a breadcrumb walks back up.
+ *
+ * The caller applies one generic rule between levels: a canvas that is
+ * exactly one drillable card opens it, so single-stage events resolve
+ * straight to their rounds without any special case.
  *
  * Everything domain-shaped — sizes (known or open-with-exemplars), side
  * names, seat-derived colors, roles, seed links — arrives precomputed in the
@@ -78,6 +82,11 @@ export type FlowGraphEdge = {
 
 export type DrillTarget =
   | {
+      readonly kind: "stage";
+      readonly title: string;
+      readonly stage: ConcreteStage;
+    }
+  | {
       readonly kind: "round";
       readonly title: string;
       readonly round: ConcreteRound;
@@ -107,7 +116,6 @@ const ROW_H = 150;
 const STACK_H = 190;
 const FRAME_PAD = 20;
 const FRAME_TITLE = 34;
-const STAGE_GAP = 96;
 const STEP_Y_NUDGE = 18;
 
 const card = (
@@ -171,178 +179,205 @@ const nodeCard = (
 // ---------------------------------------------------------------------------
 // Overview: a timeline of stage frames with group lanes and round steps
 
-export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
+/**
+ * The event's own level: its stages in sequence, each one card, joined by
+ * the flows between them ("32 advance"). A single-stage event never shows
+ * this canvas — the generic rule "a canvas of one drillable card opens it"
+ * resolves straight into the stage.
+ */
+export function buildEventGraph(event: ConcreteEvent): FlowGraph {
   const nodes: FlowGraphNode[] = [];
   const edges: FlowGraphEdge[] = [];
   const drills = new Map<string, DrillTarget>();
-  /** First and last node of each group lane, for cross-stage seed edges. */
-  const laneHead = new Map<string, string>();
-  const laneTail = new Map<string, string>();
 
-  let cursorX = 0;
-  for (const stage of event.stages) {
-    const frameId = `stage:${stage.id}`;
-    const laneNodes: FlowGraphNode[] = [];
-    let laneY = FRAME_TITLE + FRAME_PAD;
-    let widest = CARD_W;
-
-    for (const group of stage.groups) {
-      const key = `${stage.id}/${group.id}`;
-      const headerId = `g:${key}`;
-      laneHead.set(key, headerId);
-
-      if (group.run.kind === "rounds") {
-        const run = group.run;
-        laneNodes.push({
-          id: headerId,
-          type: "card",
-          parentId: frameId,
-          position: { x: FRAME_PAD, y: laneY },
-          data: plainCard(group.header, { flow: "right" }),
-        });
-
-        const rounds = manyList(run.rounds);
-        // Every round is followed by its process step: standings update and
-        // re-pair between rounds, the final standings after the last.
-        const steps: readonly (
-          | { kind: "round"; round: ConcreteRound; ghost: boolean }
-          | {
-              kind: "process";
-              process: ConcreteProcess;
-              title: string;
-              label: string;
-            }
-        )[] = rounds.flatMap(({ item: round, ghost }, i) => [
-          { kind: "round" as const, round, ghost },
-          i < rounds.length - 1
-            ? {
-                kind: "process" as const,
-                process: run.between,
-                title: `After ${round.label}`,
-                label: "standings · pair",
-              }
-            : {
-                kind: "process" as const,
-                process: run.final,
-                title: "Final standings",
-                label: "standings",
-              },
-        ]);
-        let previous = headerId;
-        steps.forEach((step, slot) => {
-          const stepId = `${headerId}/step-${slot + 1}`;
-          const ghost = step.kind === "round" && step.ghost;
-          laneNodes.push({
-            id: stepId,
-            type: "card",
-            parentId: frameId,
-            position: {
-              x: FRAME_PAD + CARD_W + GAP_X + slot * (STEP_W + GAP_X),
-              y: laneY + STEP_Y_NUDGE,
-            },
-            data:
-              step.kind === "round"
-                ? card("round", step.round.label, [], {
-                    drill: !ghost,
-                    step: true,
-                    ghost,
-                  })
-                : card("standings", step.label, [], {
-                    drill: true,
-                    step: true,
-                  }),
-          });
-          edges.push({
-            id: `c:${previous}->${stepId}`,
-            source: previous,
-            target: stepId,
-            kind: "chain",
-          });
-          if (step.kind === "round" && !ghost) {
-            drills.set(stepId, {
-              kind: "round",
-              title: step.round.label,
-              round: step.round,
-            });
-          }
-          if (step.kind === "process") {
-            drills.set(stepId, {
-              kind: "process",
-              title: step.title,
-              process: step.process,
-            });
-          }
-          previous = stepId;
-        });
-        laneTail.set(key, previous);
-        widest = Math.max(widest, CARD_W + (GAP_X + STEP_W) * steps.length);
-      } else {
-        const node = group.run.node;
-        const runId = `${headerId}/run`;
-        laneNodes.push({
-          id: headerId,
-          type: "card",
-          parentId: frameId,
-          position: { x: FRAME_PAD, y: laneY },
-          data: plainCard(group.header, { flow: "right" }),
-        });
-        laneNodes.push({
-          id: runId,
-          type: "card",
-          parentId: frameId,
-          position: { x: FRAME_PAD + CARD_W + GAP_X, y: laneY },
-          data: nodeCard(node, undefined, {
-            drill: node.children.length > 0,
-            flow: "right",
-          }),
-        });
-        edges.push({
-          id: `c:${headerId}->${runId}`,
-          source: headerId,
-          target: runId,
-          kind: "chain",
-        });
-        if (node.children.length > 0) {
-          drills.set(runId, { kind: "node", title: node.title, node });
-        }
-        laneTail.set(key, runId);
-        widest = Math.max(widest, CARD_W + GAP_X + CARD_W);
-      }
-      laneY += ROW_H;
-    }
-
-    const width = FRAME_PAD * 2 + widest;
-    const height = laneY - ROW_H + 130 + FRAME_PAD;
+  const idOf = new Map<string, string>();
+  event.stages.forEach((stage, index) => {
+    const id = `stage:${stage.id}`;
+    idOf.set(stage.id, id);
     nodes.push({
-      id: frameId,
-      type: "frame",
-      position: { x: cursorX, y: 0 },
-      data: { title: stage.id },
-      width,
-      height,
+      id,
+      type: "card",
+      position: { x: index * (CARD_W + 2 * GAP_X), y: 0 },
+      data: card(stage.card.kind, stage.card.title, stage.card.lines, {
+        badge: stage.card.badge,
+        drill: true,
+        flow: "right",
+      }),
     });
-    nodes.push(...laneNodes);
-    cursorX += width + STAGE_GAP;
-  }
+    drills.set(id, { kind: "stage", title: stage.id, stage });
 
-  // Seed edges: competitors flowing from a finished group into a later one.
-  for (const stage of event.stages) {
-    for (const group of stage.groups) {
-      const targetHead = laneHead.get(`${stage.id}/${group.id}`);
-      if (targetHead === undefined) continue;
-      group.seededFrom.forEach((link, index) => {
-        const sourceTail = laneTail.get(`${link.stage}/${link.group}`);
-        if (sourceTail === undefined) return;
+    if (stage.seededFrom.length > 0) {
+      stage.seededFrom.forEach((link, li) => {
+        const source = idOf.get(link.stage);
+        if (source === undefined) return;
         edges.push({
-          id: `seed:${targetHead}:${index}`,
-          source: sourceTail,
-          target: targetHead,
+          id: `seed:${id}:${li}`,
+          source,
+          target: id,
           label: link.label,
           kind: "seed",
         });
       });
+    } else if (index > 0) {
+      const previous = event.stages[index - 1];
+      const source = previous === undefined ? undefined : idOf.get(previous.id);
+      if (source !== undefined) {
+        edges.push({
+          id: `c:${source}->${id}`,
+          source,
+          target: id,
+          kind: "chain",
+        });
+      }
     }
+  });
+
+  return { nodes, edges, drills };
+}
+
+/** One stage: its groups as parallel lanes of round and process steps. */
+function buildStageLevel(stage: ConcreteStage): FlowGraph {
+  const nodes: FlowGraphNode[] = [];
+  const edges: FlowGraphEdge[] = [];
+  const drills = new Map<string, DrillTarget>();
+
+  const frameId = `stage:${stage.id}`;
+  const laneNodes: FlowGraphNode[] = [];
+  let laneY = FRAME_TITLE + FRAME_PAD;
+  let widest = CARD_W;
+
+  for (const group of stage.groups) {
+    const headerId = `g:${group.id}`;
+
+    if (group.run.kind === "rounds") {
+      const run = group.run;
+      laneNodes.push({
+        id: headerId,
+        type: "card",
+        parentId: frameId,
+        position: { x: FRAME_PAD, y: laneY },
+        data: plainCard(group.header, { flow: "right" }),
+      });
+
+      const rounds = manyList(run.rounds);
+      // Every round is followed by its process step: standings update and
+      // re-pair between rounds, the final standings after the last.
+      const steps: readonly (
+        | { kind: "round"; round: ConcreteRound; ghost: boolean }
+        | {
+            kind: "process";
+            process: ConcreteProcess;
+            title: string;
+            label: string;
+          }
+      )[] = rounds.flatMap(({ item: round, ghost }, i) => [
+        { kind: "round" as const, round, ghost },
+        i < rounds.length - 1
+          ? {
+              kind: "process" as const,
+              process: run.between,
+              title: `After ${round.label}`,
+              label: "standings · pair",
+            }
+          : {
+              kind: "process" as const,
+              process: run.final,
+              title: "Final standings",
+              label: "standings",
+            },
+      ]);
+      let previous = headerId;
+      steps.forEach((step, slot) => {
+        const stepId = `${headerId}/step-${slot + 1}`;
+        const ghost = step.kind === "round" && step.ghost;
+        laneNodes.push({
+          id: stepId,
+          type: "card",
+          parentId: frameId,
+          position: {
+            x: FRAME_PAD + CARD_W + GAP_X + slot * (STEP_W + GAP_X),
+            y: laneY + STEP_Y_NUDGE,
+          },
+          data:
+            step.kind === "round"
+              ? card("round", step.round.label, [], {
+                  drill: !ghost,
+                  step: true,
+                  ghost,
+                })
+              : card("standings", step.label, [], {
+                  drill: true,
+                  step: true,
+                }),
+        });
+        edges.push({
+          id: `c:${previous}->${stepId}`,
+          source: previous,
+          target: stepId,
+          kind: "chain",
+        });
+        if (step.kind === "round" && !ghost) {
+          drills.set(stepId, {
+            kind: "round",
+            title: step.round.label,
+            round: step.round,
+          });
+        }
+        if (step.kind === "process") {
+          drills.set(stepId, {
+            kind: "process",
+            title: step.title,
+            process: step.process,
+          });
+        }
+        previous = stepId;
+      });
+      widest = Math.max(widest, CARD_W + (GAP_X + STEP_W) * steps.length);
+    } else {
+      const node = group.run.node;
+      const runId = `${headerId}/run`;
+      laneNodes.push({
+        id: headerId,
+        type: "card",
+        parentId: frameId,
+        position: { x: FRAME_PAD, y: laneY },
+        data: plainCard(group.header, { flow: "right" }),
+      });
+      laneNodes.push({
+        id: runId,
+        type: "card",
+        parentId: frameId,
+        position: { x: FRAME_PAD + CARD_W + GAP_X, y: laneY },
+        data: nodeCard(node, undefined, {
+          drill: node.children.length > 0,
+          flow: "right",
+        }),
+      });
+      edges.push({
+        id: `c:${headerId}->${runId}`,
+        source: headerId,
+        target: runId,
+        kind: "chain",
+      });
+      if (node.children.length > 0) {
+        drills.set(runId, { kind: "node", title: node.title, node });
+      }
+      widest = Math.max(widest, CARD_W + GAP_X + CARD_W);
+    }
+    laneY += ROW_H;
   }
+
+  const width = FRAME_PAD * 2 + widest;
+  const height = laneY - ROW_H + 130 + FRAME_PAD;
+  nodes.push({
+    id: frameId,
+    type: "frame",
+    position: { x: 0, y: 0 },
+    data: { title: stage.id },
+    width,
+    height,
+  });
+  nodes.push(...laneNodes);
 
   return { nodes, edges, drills };
 }
@@ -352,6 +387,8 @@ export function buildOverviewGraph(event: ConcreteEvent): FlowGraph {
 
 export function buildLevelGraph(target: DrillTarget): FlowGraph {
   switch (target.kind) {
+    case "stage":
+      return buildStageLevel(target.stage);
     case "round":
       return buildRoundLevel(target.round);
     case "node":

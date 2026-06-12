@@ -199,12 +199,17 @@ next round (absent after the last). The overview interleaves "score · pair"
 steps between rounds; the round level fans every pairing's outcome into
 scoring → standings → pair-next.
 
-The viewer only iterates that structure. The overview is a left-to-right
-timeline of stage frames (no "event node"; the page is the event) with
-group lanes and round steps; drilling a round shows its pairings feeding
-the process chain, drilling a node shows its immediate children — one
-level of resolution per canvas, sequenced with "then" edges or stacked per
-the node's arrangement, ghosts faded; a breadcrumb walks back up.
+The viewer only iterates that structure, one level of resolution per
+canvas. The event level is its stages in sequence, one card each, joined
+by aggregated advancement flows ("32 advance") — stages also exist as
+concrete data (`ConcreteStage.card`, stage-level `seededFrom`). Drilling a
+stage shows its groups as parallel lanes of round and process steps;
+drilling a round shows its pairings feeding the scoring rule; drilling a
+node shows its immediate children, sequenced with "then" edges or stacked
+per the node's arrangement, ghosts faded; a breadcrumb walks back up. One
+generic rule connects the levels: a canvas that is exactly one drillable
+card opens it — so a single-stage event resolves straight to its rounds
+with no special case anywhere.
 
 ## Out of scope (unchanged)
 
