@@ -216,6 +216,46 @@ export const knockoutPairing: PairingKind = definePairingKind({
     const pairs = Math.max(1, Math.floor(entrants / 2 ** round));
     return pairs === 1 && options.thirdPlace === true ? 2 : pairs;
   },
+  pairLabels: (options, entrants, round) => {
+    // Names follow depth in the FULL bracket, so a truncated knockout
+    // (rounds: 2 of a 32-bracket) never claims a "final".
+    const full = Math.round(Math.log2(entrants));
+    if (round === full) {
+      return options.thirdPlace === true
+        ? ["final", "bronze final"]
+        : ["final"];
+    }
+    if (round === full - 1) return ["semifinal 1", "semifinal 2"];
+    if (round === full - 2) {
+      return Array.from({ length: 4 }, (_, i) => `quarterfinal ${i + 1}`);
+    }
+    return undefined;
+  },
+  flows: (options, entrants, round) => {
+    if (round < 2) return undefined;
+    const full = Math.round(Math.log2(entrants));
+    const winners = Math.max(1, Math.floor(entrants / 2 ** round));
+    const bracket = Array.from({ length: winners }, (_, i) => ({
+      pair: i + 1,
+      from: [
+        { pair: 2 * i + 1, take: "winner" as const },
+        { pair: 2 * i + 2, take: "winner" as const },
+      ],
+    }));
+    if (round === full && winners === 1 && options.thirdPlace === true) {
+      return [
+        ...bracket,
+        {
+          pair: 2,
+          from: [
+            { pair: 1, take: "loser" as const },
+            { pair: 2, take: "loser" as const },
+          ],
+        },
+      ];
+    }
+    return bracket;
+  },
   progression: true,
   defaultBye: { kind: "advance" },
   validate: (_options, entrants, encounter, ops, _ties, issue) => {

@@ -8,6 +8,7 @@ import {
   type Arrangement,
   isPool,
   type ModelRegistry,
+  type PairFlow,
   type ParsedEventDef,
 } from "./registry";
 
@@ -110,6 +111,11 @@ export type ConcreteRound = {
   readonly pairings: Many<ConcretePairing>;
   /** The round's output: its outcomes through the scoring rule. */
   readonly scoring: ConcreteCard;
+  /**
+   * Bracket advancement from the previous round (winners/losers feeding
+   * each pairing); undefined where competitors come from standings instead.
+   */
+  readonly inflows: readonly PairFlow[] | undefined;
 };
 
 export type ConcreteRoundsRun = {
@@ -129,14 +135,23 @@ export type ConcreteRun =
   | ConcreteRoundsRun
   | { readonly kind: "encounter"; readonly node: ConcreteNode };
 
-/** A competitor flow from an earlier group (drawn as a seed edge). */
-export type ConcreteSeedLink = {
-  readonly stage: string;
-  readonly group: string;
-  /** Edge wording ("winner", "#3", "top 16"); the seed kind's origin decides it. */
-  readonly label: string | undefined;
-  /** How many seeds this link carries. */
-  readonly count: number;
+/**
+ * Where a group's participants come from. Every group that needs entrants
+ * starts from a generator node — composability forces it: a registration
+ * process, a previous group's standings output, or an aggregation across
+ * several (the tour) — with optional processing on the way in ("top 8").
+ */
+export type ConcreteIntake = {
+  readonly id: string;
+  /** The participant-generating node (registration, standings, aggregation). */
+  readonly card: ConcreteCard;
+  /** Upstream groups feeding the generator (empty for registration). */
+  readonly from: readonly {
+    readonly stage: string;
+    readonly group: string;
+  }[];
+  /** Processing on the way in ("top 8", "winner", "#2"); undefined = all. */
+  readonly take: string | undefined;
 };
 
 export type ConcreteGroup = {
@@ -144,39 +159,17 @@ export type ConcreteGroup = {
   readonly entrants: number | "open";
   /** The lane's header card (entrants, scoring, schedule badge, inflows). */
   readonly header: ConcreteCard;
-  readonly seededFrom: readonly ConcreteSeedLink[];
-  readonly junctions: readonly ConcreteJunction[];
+  /** The participant sources feeding this group. */
+  readonly intakes: readonly ConcreteIntake[];
   readonly run: ConcreteRun;
-};
-
-/** A flow between stages: every group-level link, summed per source stage. */
-export type ConcreteStageLink = {
-  readonly stage: string;
-  readonly label: string | undefined;
-};
-
-/**
- * An aggregation junction: seeds that draw on SEVERAL sources at once (the
- * tour's placements) flow through a visible standings node — sources feed
- * it, and its intake ("top 4") feeds the consuming group.
- */
-export type ConcreteJunction = {
-  readonly id: string;
-  readonly card: ConcreteCard;
-  readonly sources: readonly {
-    readonly stage: string;
-    readonly group: string;
-  }[];
-  readonly intake: string;
 };
 
 export type ConcreteStage = {
   readonly id: string;
   /** The stage's own card at the event level. */
   readonly card: ConcreteCard;
-  readonly seededFrom: readonly ConcreteStageLink[];
-  /** Aggregation junctions feeding this stage's groups. */
-  readonly junctions: readonly ConcreteJunction[];
+  /** Every participant source feeding this stage's groups. */
+  readonly intakes: readonly ConcreteIntake[];
   /**
    * Depth in the seed-flow graph: 0 = depends on nothing. Stages sharing a
    * tier are independent of each other — the five tour events run
@@ -310,10 +303,12 @@ function concretifyPool(
     const count =
       pairing?.pairsInRound?.(pool.pairing, entrants, round) ??
       Math.floor(entrants / 2);
+    // The system's own names ("final", "bronze final") beat the generic word.
+    const labels = pairing?.pairLabels?.(pool.pairing, entrants, round);
     return {
       open: false,
       items: Array.from({ length: count }, (_, i) => ({
-        label: `${pairWord} ${i + 1}`,
+        label: labels?.[i] ?? `${pairWord} ${i + 1}`,
         node,
       })),
     };
@@ -352,6 +347,10 @@ function concretifyPool(
     label,
     pairings: pairingsOf(round),
     scoring,
+    inflows:
+      entrants === "open"
+        ? undefined
+        : pairing?.flows?.(pool.pairing, entrants, round),
   });
   const rounds: Many<ConcreteRound> =
     roundCount === "open"
@@ -390,43 +389,49 @@ export function concretify(
         const open = isOpenEntries(group.entries);
         const entrants = open ? ("open" as const) : group.entries.length;
         const entrantsLine = open ? "open entry" : `${entrants} entrants`;
-        // One link per source group, labeled for all the seeds it sends
-        // ("winner", "#3", "top 16", "4 seeds").
+
+        // Every group's participants come from generator nodes: open or
+        // origin-less seeds are a registration process; single-origin seeds
+        // are a source group's standings output (with "top N" processing);
+        // multi-origin seeds aggregate several standings (the tour).
         const bySource = new Map<
           string,
           { stage: string; group: string; ranks: (number | undefined)[] }
         >();
-        // Seeds drawing on several sources at once flow through a visible
-        // aggregation junction instead of direct links.
-        const junctionAcc = new Map<
+        const aggregations = new Map<
           string,
           {
             card: ConcreteCard;
-            sources: readonly { stage: string; group: string }[];
+            from: readonly { stage: string; group: string }[];
             count: number;
           }
         >();
+        let registered = 0;
         if (!open) {
           for (const entry of group.entries) {
             const seedKind = registry.seeds.get(entry.kind);
             const all = seedKind?.origins?.(entry) ?? [];
+            if (all.length === 0) {
+              registered += 1;
+              continue;
+            }
             if (all.length > 1) {
               const key = `${entry.kind}|${all
                 .map((o) => `${o.stage}/${o.group}`)
                 .join(",")}`;
               const info = seedKind?.card?.(entry);
-              const acc = junctionAcc.get(key) ?? {
+              const acc = aggregations.get(key) ?? {
                 card: {
                   kind: "standings",
                   title: info?.title ?? "Standings",
                   badge: info?.badge,
                   lines: info?.lines ?? [],
                 },
-                sources: all.map((o) => ({ stage: o.stage, group: o.group })),
+                from: all.map((o) => ({ stage: o.stage, group: o.group })),
                 count: 0,
               };
               acc.count += 1;
-              junctionAcc.set(key, acc);
+              aggregations.set(key, acc);
               continue;
             }
             for (const origin of all) {
@@ -441,65 +446,83 @@ export function concretify(
             }
           }
         }
-        const junctions = [...junctionAcc.values()].map(
-          (acc, i): ConcreteJunction => ({
-            id: `${group.id}-agg${i + 1}`,
-            card: acc.card,
-            sources: acc.sources,
-            intake: `top ${acc.count}`,
-          }),
-        );
-        const seededFrom = [...bySource.values()].map(
-          ({ stage: s, group: g, ranks }): ConcreteSeedLink => {
-            const [only] = ranks;
-            const sorted = ranks.flatMap((r) => (r === undefined ? [] : [r]));
-            sorted.sort((x, y) => x - y);
-            const topN =
-              sorted.length === ranks.length &&
-              sorted.every((rank, i) => rank === i + 1);
-            return {
-              stage: s,
-              group: g,
-              label:
-                ranks.length === 1
-                  ? only === 1
-                    ? "winner"
-                    : only !== undefined
-                      ? `#${only}`
-                      : undefined
-                  : topN
-                    ? `top ${ranks.length}`
-                    : `${ranks.length} seeds`,
-              count: ranks.length,
-            };
-          },
-        );
-        // Name the source by its group — or by its stage when several
+
+        // Name a source by its group — or by its stage when several
         // sources share a group id (the tour's five "field" groups).
         const groupUses = new Map<string, number>();
-        for (const link of seededFrom) {
-          groupUses.set(link.group, (groupUses.get(link.group) ?? 0) + 1);
+        for (const source of bySource.values()) {
+          groupUses.set(source.group, (groupUses.get(source.group) ?? 0) + 1);
         }
-        const sourceName = (link: ConcreteSeedLink): string => {
-          const sourceStage = def.stages.find((s) => s.id === link.stage);
-          if ((groupUses.get(link.group) ?? 0) > 1) {
-            return sourceStage?.name ?? link.stage;
+        const sourceName = (source: {
+          stage: string;
+          group: string;
+        }): string => {
+          const sourceStage = def.stages.find((x) => x.id === source.stage);
+          if ((groupUses.get(source.group) ?? 0) > 1) {
+            return sourceStage?.name ?? source.stage;
           }
           const sourceGroup = sourceStage?.groups.find(
-            (g) => g.id === link.group,
+            (g) => g.id === source.group,
           );
-          return sourceGroup?.name ?? link.group;
+          return sourceGroup?.name ?? source.group;
         };
-        const inflowLines = [
-          ...seededFrom.map((link) =>
-            link.label === undefined
-              ? `from ${sourceName(link)}`
-              : `${link.label} from ${sourceName(link)}`,
-          ),
-          ...junctions.map(
-            (junction) => `${junction.intake} of ${junction.card.title}`,
-          ),
-        ];
+
+        const intakes: ConcreteIntake[] = [];
+        if (open || registered > 0) {
+          intakes.push({
+            id: `${stage.id}-${group.id}-reg`,
+            card: {
+              kind: "registration",
+              title: "Registration",
+              badge: undefined,
+              lines: [entrantsLine],
+            },
+            from: [],
+            take: undefined,
+          });
+        }
+        for (const source of bySource.values()) {
+          const sorted = source.ranks.flatMap((r) =>
+            r === undefined ? [] : [r],
+          );
+          sorted.sort((x, y) => x - y);
+          const [only] = source.ranks;
+          const topN =
+            sorted.length === source.ranks.length &&
+            sorted.every((rank, i) => rank === i + 1);
+          intakes.push({
+            id: `${stage.id}-${group.id}-std-${source.stage}-${source.group}`,
+            card: {
+              kind: "standings",
+              title: `${sourceName(source)} standings`,
+              badge: undefined,
+              lines: [],
+            },
+            from: [{ stage: source.stage, group: source.group }],
+            take:
+              source.ranks.length === 1
+                ? only === 1
+                  ? "winner"
+                  : only !== undefined
+                    ? `#${only}`
+                    : undefined
+                : topN
+                  ? `top ${source.ranks.length}`
+                  : `${source.ranks.length} seeds`,
+          });
+        }
+        [...aggregations.values()].forEach((acc, i) => {
+          intakes.push({
+            id: `${stage.id}-${group.id}-agg${i + 1}`,
+            card: acc.card,
+            from: acc.from,
+            take: `top ${acc.count}`,
+          });
+        });
+
+        const inflowLines = intakes
+          .filter((intake) => intake.from.length > 0)
+          .map((intake) => `${intake.take ?? "all"} of ${intake.card.title}`);
         const run = group.run;
         if (isPool(run)) {
           const concrete = concretifyPool(run, entrants, registry);
@@ -515,8 +538,7 @@ export function concretify(
               badge: `${concrete.system} · ${roundsLabel} rounds`,
               lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
             },
-            seededFrom,
-            junctions,
+            intakes,
             run: concrete,
           };
         }
@@ -538,8 +560,7 @@ export function concretify(
             badge: undefined,
             lines: [entrantsLine, ...inflowLines],
           },
-          seededFrom,
-          junctions,
+          intakes,
           run: {
             kind: "encounter",
             node: concretifyNode(run, { sides, drawn: false }, registry),
@@ -547,30 +568,9 @@ export function concretify(
         };
       });
 
-      // Stage-level inflows: every group link, summed per source stage.
-      const byStage = new Map<
-        string,
-        { count: number; labels: (string | undefined)[] }
-      >();
-      for (const group of groups) {
-        for (const link of group.seededFrom) {
-          const flow = byStage.get(link.stage) ?? { count: 0, labels: [] };
-          flow.count += link.count;
-          flow.labels.push(link.label);
-          byStage.set(link.stage, flow);
-        }
-      }
-      const seededFrom = [...byStage.entries()].map(
-        ([source, { count, labels }]): ConcreteStageLink => ({
-          stage: source,
-          label: count === 1 ? labels[0] : `${count} advance`,
-        }),
-      );
-
-      const junctions = groups.flatMap((group) => group.junctions);
       return {
         id: stage.id,
-        junctions,
+        intakes: groups.flatMap((group) => group.intakes),
         card: {
           kind: "stage",
           title: stage.name ?? stage.id,
@@ -584,7 +584,6 @@ export function concretify(
               }`,
           ),
         },
-        seededFrom,
         groups,
       };
     },
@@ -594,12 +593,9 @@ export function concretify(
   // from; no inflows means tier 0. Sources always precede (validated).
   const tierOf = new Map<string, number>();
   for (const stage of built) {
-    const inflows = [
-      ...stage.seededFrom.map((link) => link.stage),
-      ...stage.junctions.flatMap((junction) =>
-        junction.sources.map((source) => source.stage),
-      ),
-    ];
+    const inflows = stage.intakes.flatMap((intake) =>
+      intake.from.map((source) => source.stage),
+    );
     const tier = inflows.reduce(
       (max, source) => Math.max(max, (tierOf.get(source) ?? 0) + 1),
       0,

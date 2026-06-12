@@ -80,6 +80,16 @@ export type Issue = (
 /** How a kind's children relate: in time (sequence) or side by side (parallel). */
 export type Arrangement = "sequence" | "parallel";
 
+/** One pairing of a round, fed by results of the previous round's pairings. */
+export type PairFlow = {
+  /** 1-based pairing number in this round. */
+  readonly pair: number;
+  readonly from: readonly {
+    readonly pair: number;
+    readonly take: "winner" | "loser";
+  }[];
+};
+
 /** Registry-bound recursion over encounter children, handed to instances. */
 export type EncounterOps = {
   readonly validate: (def: AnyEncounterDef, issue: Issue) => void;
@@ -273,6 +283,18 @@ export type PairingKind = {
     entrants: number,
     round: number,
   ) => number;
+  /** Semantic pairing names where the system has them ("final", "bronze final"). */
+  readonly pairLabels?: (
+    options: PairingRef,
+    entrants: number,
+    round: number,
+  ) => readonly string[] | undefined;
+  /** Bracket advancement: how a round's pairings draw on the previous round. */
+  readonly flows?: (
+    options: PairingRef,
+    entrants: number,
+    round: number,
+  ) => readonly PairFlow[] | undefined;
   /** Eliminative systems rank by survival depth instead of points. */
   readonly progression?: true;
   /** Bye rule applied when the def doesn't configure one. */
@@ -434,6 +456,16 @@ export type PairingKindSpec<O> = {
   readonly defaultBye?: ByeRule;
   totalRounds?(options: O, entrants: number): number;
   pairsInRound?(options: O, entrants: number, round: number): number;
+  pairLabels?(
+    options: O,
+    entrants: number,
+    round: number,
+  ): readonly string[] | undefined;
+  flows?(
+    options: O,
+    entrants: number,
+    round: number,
+  ): readonly PairFlow[] | undefined;
   propose(options: O, ctx: PairingContext): PairingResult;
   validate?(
     options: O,
@@ -449,6 +481,8 @@ export function definePairingKind<O>(spec: PairingKindSpec<O>): PairingKind {
   const decode = memoDecode(spec.schema);
   const totalRounds = spec.totalRounds;
   const pairsInRound = spec.pairsInRound;
+  const pairLabels = spec.pairLabels;
+  const flows = spec.flows;
   const validate = spec.validate;
   return {
     system: spec.system,
@@ -472,6 +506,18 @@ export function definePairingKind<O>(spec: PairingKindSpec<O>): PairingKind {
             entrants: number,
             round: number,
           ) => pairsInRound(decode(options), entrants, round),
+        }),
+    ...(pairLabels === undefined
+      ? {}
+      : {
+          pairLabels: (options: PairingRef, entrants: number, round: number) =>
+            pairLabels(decode(options), entrants, round),
+        }),
+    ...(flows === undefined
+      ? {}
+      : {
+          flows: (options: PairingRef, entrants: number, round: number) =>
+            flows(decode(options), entrants, round),
         }),
     ...(validate === undefined
       ? {}

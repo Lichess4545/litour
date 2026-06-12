@@ -393,13 +393,14 @@ export function buildGraph(
   const columns: Sub[] = [];
   for (let tier = 0; tier < tierCount; tier += 1) {
     const stages = event.stages.filter((stage) => stage.tier === tier);
-    // Aggregation junctions sit just before the tier they feed.
-    const junctions = stages.flatMap((stage) => stage.junctions);
-    if (junctions.length > 0) {
+    // Participant sources sit just before the stage they feed:
+    // registration nodes, standings outputs, aggregations.
+    const intakes = stages.flatMap((stage) => stage.intakes);
+    if (intakes.length > 0) {
       columns.push(
         column(
-          junctions.map((junction) =>
-            iconItem(`j:${junction.id}`, junction.card, expanded),
+          intakes.map((intake) =>
+            iconItem(`in:${intake.id}`, intake.card, expanded),
           ),
           LANE_GAP,
           "center",
@@ -412,33 +413,22 @@ export function buildGraph(
 
   const edges: FlowGraphEdge[] = [...laid.edges];
   for (const stage of event.stages) {
-    stage.seededFrom.forEach((link, li) => {
-      edges.push({
-        id: `seed:s:${stage.id}:${li}`,
-        source: `s:${link.stage}`,
-        target: `s:${stage.id}`,
-        label: link.label,
-        fromHandle: "r",
-        toHandle: "l",
-        kind: "seed",
-      });
-    });
-    for (const junction of stage.junctions) {
-      junction.sources.forEach((source, si) => {
+    for (const intake of stage.intakes) {
+      intake.from.forEach((source, si) => {
         edges.push({
-          id: `seed:j:${junction.id}:${si}`,
+          id: `seed:in:${intake.id}:${si}`,
           source: `s:${source.stage}`,
-          target: `j:${junction.id}`,
+          target: `in:${intake.id}`,
           fromHandle: "r",
           toHandle: "l",
           kind: "seed",
         });
       });
       edges.push({
-        id: `seed:j:${junction.id}->s:${stage.id}`,
-        source: `j:${junction.id}`,
+        id: `seed:in:${intake.id}->s:${stage.id}`,
+        source: `in:${intake.id}`,
         target: `s:${stage.id}`,
-        label: junction.intake,
+        label: intake.take,
         fromHandle: "r",
         toHandle: "l",
         kind: "seed",
@@ -472,10 +462,21 @@ function laneSub(
   pid: string,
   expanded: ReadonlySet<string>,
 ): Sub {
-  const ids: string[] = [`${pid}/hdr`];
   const items: Sub[] = [cardSub(`${pid}/hdr`, plainCard(group.header))];
-  /** Cycle edges (the between-rounds process looping back to the rounds). */
+  /** Bracket, cycle, and chain edges, built as the lane assembles. */
   const loops: FlowGraphEdge[] = [];
+  let prev = `${pid}/hdr`;
+  const connect = (to: string): void => {
+    loops.push({
+      id: `c:${prev}->${to}`,
+      source: prev,
+      target: to,
+      fromHandle: "r",
+      toHandle: "l",
+      kind: "chain",
+    });
+    prev = to;
+  };
 
   if (group.run.kind === "rounds") {
     const run = group.run;
@@ -555,8 +556,8 @@ function laneSub(
           GAP,
           "center",
         );
-        ids.push(runId);
         items.push(stack);
+        connect(runId);
         loops.push(
           {
             id: `c:${runId}->${betweenId}`,
@@ -584,11 +585,11 @@ function laneSub(
             kind: "chain",
           },
         );
-        // The final standings sit after the cycle (no chain edge via ids —
-        // the exit edge above is the connection).
+        // The final standings sit after the cycle; the exit edge above is
+        // the connection.
         items.push(processIcon(true, finalId));
+        prev = finalId;
       } else {
-        ids.push(runId);
         items.push(
           frameSub(
             runId,
@@ -621,23 +622,53 @@ function laneSub(
             true,
           ),
         );
-        ids.push(finalId);
+        connect(runId);
         items.push(processIcon(true, finalId));
+        connect(finalId);
       }
     } else {
       rounds.forEach(({ item: round, ghost }, i) => {
-        ids.push(`${pid}/r${i + 1}`);
+        const roundId = `${pid}/r${i + 1}`;
+        const prevRoundId = `${pid}/r${i}`;
         items.push(roundItem(round, ghost, i));
+        const bracket = i > 0 && round.inflows !== undefined;
+        if (
+          bracket &&
+          expanded.has(prevRoundId) &&
+          expanded.has(roundId) &&
+          round.inflows !== undefined
+        ) {
+          // Both rounds open: draw the bracket — winners (and losers, for
+          // the bronze) flow pairing-to-pairing.
+          for (const flow of round.inflows) {
+            for (const from of flow.from) {
+              loops.push({
+                id: `b:${prevRoundId}/p${from.pair}->${roundId}/p${flow.pair}`,
+                source: `${prevRoundId}/p${from.pair}`,
+                target: `${roundId}/p${flow.pair}`,
+                label: from.take,
+                fromHandle: "r",
+                toHandle: "l",
+                kind: "chain",
+              });
+            }
+          }
+          prev = roundId;
+        } else {
+          connect(roundId);
+        }
         const last = i === rounds.length - 1;
-        const processId = `${pid}/after${i + 1}`;
-        ids.push(processId);
-        items.push(processIcon(last, processId));
+        const nextBracket = rounds[i + 1]?.item.inflows !== undefined;
+        if (last || !nextBracket) {
+          const processId = `${pid}/after${i + 1}`;
+          items.push(processIcon(last, processId));
+          connect(processId);
+        }
       });
     }
   } else {
     const node = group.run.node;
     const runId = `${pid}/run`;
-    ids.push(runId);
     items.push(
       node.children.length > 0
         ? item(
@@ -649,18 +680,11 @@ function laneSub(
           )
         : cardSub(runId, nodeCard(node, undefined, { drill: false })),
     );
+    connect(runId);
   }
 
   const laid = row(items, GAP);
-  const edges: FlowGraphEdge[] = ids.slice(1).map((target, i) => ({
-    id: `c:${ids[i] ?? ""}->${target}`,
-    source: ids[i] ?? "",
-    target,
-    fromHandle: "r",
-    toHandle: "l",
-    kind: "chain",
-  }));
-  return { ...laid, edges: [...laid.edges, ...edges, ...loops] };
+  return { ...laid, edges: [...laid.edges, ...loops] };
 }
 
 /** Between rounds: standings update, then pair what's next. */

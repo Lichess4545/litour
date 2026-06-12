@@ -93,11 +93,20 @@ describe("concretify — sizes are explicit", () => {
       "q1 · open entry",
       "q2 · open entry",
     ]);
-    expect(event.stages[1]?.seededFrom).toEqual([
-      { stage: "qualifiers", label: "32 advance" },
+    // The knockout's participants arrive through two standings outputs.
+    expect(
+      event.stages[1]?.intakes.map((intake) => [
+        intake.card.title,
+        intake.take,
+      ]),
+    ).toEqual([
+      ["q1 standings", "top 16"],
+      ["q2 standings", "top 16"],
     ]);
-    expect(event.stages[3]?.seededFrom).toEqual([
-      { stage: "otb-groups", label: "4 advance" },
+    // Each finals source group sends its top two — merged per source.
+    expect(event.stages[3]?.intakes.map((intake) => intake.take)).toEqual([
+      "top 2",
+      "top 2",
     ]);
   });
 
@@ -105,7 +114,7 @@ describe("concretify — sizes are explicit", () => {
     const event = concretify(worldUniversityChampionship, chessRegistry);
     const ko = event.stages[1]?.groups[0];
     expect(ko?.entrants).toBe(32);
-    expect(ko?.seededFrom.map((link) => link.label)).toEqual([
+    expect(ko?.intakes.map((intake) => intake.take)).toEqual([
       "top 16",
       "top 16",
     ]);
@@ -123,7 +132,7 @@ describe("concretify — sizes are explicit", () => {
     ).toEqual([16, 8]);
     // The eight survivors split into the two over-the-board groups.
     expect(
-      event.stages[2]?.groups.map((g) => [g.entrants, g.seededFrom[0]?.label]),
+      event.stages[2]?.groups.map((g) => [g.entrants, g.intakes[0]?.take]),
     ).toEqual([
       [4, "4 seeds"],
       [4, "4 seeds"],
@@ -158,21 +167,46 @@ describe("the Grand Chess Tour — terminology and tour standings", () => {
     // only the finals depend on them.
     expect(event.stages.map((s) => s.tier)).toEqual([0, 0, 0, 0, 0, 1]);
     const finals = event.stages[5]?.groups[0];
-    // The tour aggregation is a junction: all five events feed one
-    // standings node, whose top 4 feed the finals — no direct links.
-    expect(finals?.seededFrom).toHaveLength(0);
-    const [junction] = finals?.junctions ?? [];
-    expect(junction?.card.title).toBe("Tour standings");
-    expect(junction?.sources).toHaveLength(5);
-    expect(junction?.intake).toBe("top 4");
+    // The tour aggregation is one intake: all five events feed one
+    // standings node, whose top 4 feed the finals.
+    const [intake] = finals?.intakes ?? [];
+    expect(finals?.intakes).toHaveLength(1);
+    expect(intake?.card.title).toBe("Tour standings");
+    expect(intake?.from).toHaveLength(5);
+    expect(intake?.take).toBe("top 4");
     const run = finals?.run;
     if (run?.kind !== "rounds") throw new Error("expected a rounds run");
     const semis = run.rounds.items[0];
     if (semis?.pairings.open !== false)
       throw new Error("expected known pairings");
+    // The knockout names its pairings; the bracket flows carry
+    // winners to the final and losers to the bronze.
     expect(semis.pairings.items.map((p) => p.label)).toEqual([
-      "match 1",
-      "match 2",
+      "semifinal 1",
+      "semifinal 2",
+    ]);
+    const finalRound = run.rounds.items[1];
+    if (finalRound?.pairings.open !== false)
+      throw new Error("expected known pairings");
+    expect(finalRound.pairings.items.map((p) => p.label)).toEqual([
+      "final",
+      "bronze final",
+    ]);
+    expect(finalRound.inflows).toEqual([
+      {
+        pair: 1,
+        from: [
+          { pair: 1, take: "winner" },
+          { pair: 2, take: "winner" },
+        ],
+      },
+      {
+        pair: 2,
+        from: [
+          { pair: 1, take: "loser" },
+          { pair: 2, take: "loser" },
+        ],
+      },
     ]);
     const match = semis.pairings.items[0]?.node;
     expect(match?.title).toBe("Finals match");
