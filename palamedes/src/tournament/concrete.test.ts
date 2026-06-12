@@ -158,8 +158,13 @@ describe("the Grand Chess Tour — terminology and tour standings", () => {
     // only the finals depend on them.
     expect(event.stages.map((s) => s.tier)).toEqual([0, 0, 0, 0, 0, 1]);
     const finals = event.stages[5]?.groups[0];
-    // The tour aggregation links the finals back to all five events.
-    expect(finals?.seededFrom).toHaveLength(5);
+    // The tour aggregation is a junction: all five events feed one
+    // standings node, whose top 4 feed the finals — no direct links.
+    expect(finals?.seededFrom).toHaveLength(0);
+    const [junction] = finals?.junctions ?? [];
+    expect(junction?.card.title).toBe("Tour standings");
+    expect(junction?.sources).toHaveLength(5);
+    expect(junction?.intake).toBe("top 4");
     const run = finals?.run;
     if (run?.kind !== "rounds") throw new Error("expected a rounds run");
     const semis = run.rounds.items[0];

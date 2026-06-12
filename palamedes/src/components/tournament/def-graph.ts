@@ -4,6 +4,7 @@ import {
   type ConcreteEvent,
   type ConcreteGroup,
   type ConcreteNode,
+  type ConcretePairing,
   type ConcreteProcess,
   type ConcreteRound,
   type ConcreteStage,
@@ -49,6 +50,8 @@ export const flowCardDataSchema = z.object({
   drill: z.boolean(),
   /** Compact step rendering (round chips on the timeline). */
   step: z.boolean(),
+  /** Icon-only rendering for administrative nodes (open for detail). */
+  iconOnly: z.boolean(),
   /** Faded illustration of an open size ("… pairing n") — not interactive. */
   ghost: z.boolean(),
 });
@@ -121,6 +124,7 @@ const card = (
     drill?: boolean;
     step?: boolean;
     ghost?: boolean;
+    iconOnly?: boolean;
   },
 ): FlowCardData => ({
   chip,
@@ -132,6 +136,7 @@ const card = (
   drill: options?.drill ?? false,
   step: options?.step ?? false,
   ghost: options?.ghost ?? false,
+  iconOnly: options?.iconOnly ?? false,
 });
 
 /** The card face of a non-encounter concrete card (scoring, standings, …). */
@@ -181,16 +186,18 @@ type Sub = {
 
 /** Rendered height of a card — an estimate the gaps absorb. */
 const cardH = (data: FlowCardData): number =>
-  data.step
-    ? 58
-    : 62 +
-      (data.badge === undefined ? 0 : 18) +
-      (data.sides === undefined ? 0 : 22) +
-      data.lines.length * 17 +
-      (data.drill ? 20 : 0);
+  data.iconOnly
+    ? 64
+    : data.step
+      ? 58
+      : 62 +
+        (data.badge === undefined ? 0 : 18) +
+        (data.sides === undefined ? 0 : 22) +
+        data.lines.length * 17 +
+        (data.drill ? 20 : 0);
 
 function cardSub(id: string, data: FlowCardData): Sub {
-  const w = data.step ? STEP_W : CARD_W;
+  const w = data.iconOnly ? 64 : data.step ? STEP_W : CARD_W;
   const h = cardH(data);
   return {
     nodes: [
@@ -319,6 +326,41 @@ function item(
   return frameSub(id, title, inner(), !force);
 }
 
+/** An administrative node: an icon by default, the full card when opened. */
+function iconItem(
+  id: string,
+  concrete: ConcreteCard,
+  expanded: ReadonlySet<string>,
+): Sub {
+  if (!expanded.has(id)) {
+    return cardSub(
+      id,
+      card(concrete.kind, concrete.title, [], { drill: true, iconOnly: true }),
+    );
+  }
+  return frameSub(
+    id,
+    concrete.title,
+    cardSub(`${id}/detail`, plainCard(concrete)),
+    true,
+  );
+}
+
+/** A run of identical siblings: one ×N card, unfoldable to the full list. */
+function foldedRun(
+  id: string,
+  face: FlowCardData,
+  title: string,
+  buildAll: () => Sub,
+  expanded: ReadonlySet<string>,
+): Sub {
+  if (!expanded.has(id)) return cardSub(id, face);
+  return frameSub(id, title, buildAll(), true);
+}
+
+/** Items fold when at least this many identical siblings repeat. */
+const FOLD_AT = 4;
+
 // ---------------------------------------------------------------------------
 // The levels
 
@@ -345,13 +387,24 @@ export function buildGraph(
   // real seed flows — no implied order between independents.
   const tierCount =
     event.stages.reduce((max, stage) => Math.max(max, stage.tier), 0) + 1;
-  const columns = Array.from({ length: tierCount }, (_, tier) =>
-    column(
-      event.stages.filter((stage) => stage.tier === tier).map(stageItem),
-      LANE_GAP,
-      "center",
-    ),
-  );
+  const columns: Sub[] = [];
+  for (let tier = 0; tier < tierCount; tier += 1) {
+    const stages = event.stages.filter((stage) => stage.tier === tier);
+    // Aggregation junctions sit just before the tier they feed.
+    const junctions = stages.flatMap((stage) => stage.junctions);
+    if (junctions.length > 0) {
+      columns.push(
+        column(
+          junctions.map((junction) =>
+            iconItem(`j:${junction.id}`, junction.card, expanded),
+          ),
+          LANE_GAP,
+          "center",
+        ),
+      );
+    }
+    columns.push(column(stages.map(stageItem), LANE_GAP, "center"));
+  }
   const laid = row(columns, GAP * 2);
 
   const edges: FlowGraphEdge[] = [...laid.edges];
@@ -367,6 +420,27 @@ export function buildGraph(
         kind: "seed",
       });
     });
+    for (const junction of stage.junctions) {
+      junction.sources.forEach((source, si) => {
+        edges.push({
+          id: `seed:j:${junction.id}:${si}`,
+          source: `s:${source.stage}`,
+          target: `j:${junction.id}`,
+          fromHandle: "r",
+          toHandle: "l",
+          kind: "seed",
+        });
+      });
+      edges.push({
+        id: `seed:j:${junction.id}->s:${stage.id}`,
+        source: `j:${junction.id}`,
+        target: `s:${stage.id}`,
+        label: junction.intake,
+        fromHandle: "r",
+        toHandle: "l",
+        kind: "seed",
+      });
+    }
   }
 
   return {
@@ -401,39 +475,103 @@ function laneSub(
   if (group.run.kind === "rounds") {
     const run = group.run;
     const rounds = manyList(run.rounds);
-    rounds.forEach(({ item: round, ghost }, i) => {
+    const roundItem = (
+      round: ConcreteRound,
+      ghost: boolean,
+      i: number,
+    ): Sub => {
       const roundId = `${pid}/r${i + 1}`;
-      ids.push(roundId);
-      items.push(
-        ghost
-          ? cardSub(
-              roundId,
-              card("round", round.label, [], { step: true, ghost: true }),
-            )
-          : item(
-              roundId,
-              round.label,
-              card("round", round.label, [], { drill: true, step: true }),
-              () => roundSub(round, roundId, expanded),
-              expanded,
-            ),
-      );
-      const last = i === rounds.length - 1;
+      return ghost
+        ? cardSub(
+            roundId,
+            card("round", round.label, [], { step: true, ghost: true }),
+          )
+        : item(
+            roundId,
+            round.label,
+            card("round", round.label, [], { drill: true, step: true }),
+            () => roundSub(round, roundId, expanded),
+            expanded,
+          );
+    };
+    const processItem = (last: boolean, i: number): Sub => {
       const processId = `${pid}/after${i + 1}`;
-      ids.push(processId);
+      return item(
+        processId,
+        last ? "Final standings" : "Between rounds",
+        card("standings", last ? "standings" : "standings · pair", [], {
+          drill: true,
+          step: true,
+        }),
+        () => processSub(last ? run.final : run.between, processId, expanded),
+        expanded,
+      );
+    };
+
+    // Identical rounds fold into one ×N step, unfoldable to the full chain;
+    // the recurring between-rounds process shows once.
+    const signature = (round: ConcreteRound): string =>
+      JSON.stringify({ ...round, label: "" });
+    const firstRound = rounds[0];
+    const uniform =
+      firstRound !== undefined &&
+      rounds.length >= FOLD_AT &&
+      rounds.every(
+        ({ item: round, ghost }) =>
+          !ghost && signature(round) === signature(firstRound.item),
+      );
+    if (uniform) {
+      const lastRound = rounds[rounds.length - 1];
+      const runId = `${pid}/rs`;
+      const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
+      ids.push(runId);
       items.push(
-        item(
-          processId,
-          last ? "Final standings" : `After ${round.label}`,
-          card("standings", last ? "standings" : "standings · pair", [], {
-            drill: true,
-            step: true,
-          }),
-          () => processSub(last ? run.final : run.between, processId),
+        foldedRun(
+          runId,
+          {
+            ...card("round", range, [], { drill: true, step: true }),
+            count: rounds.length,
+          },
+          `${range} ×${rounds.length}`,
+          () => {
+            const steps = rounds.map(({ item: round, ghost }, i) =>
+              roundItem(round, ghost, i),
+            );
+            const chain = row(steps, GAP);
+            const chainEdges: FlowGraphEdge[] = rounds.slice(1).map((_, i) => ({
+              id: `c:${pid}/r${i + 1}->${pid}/r${i + 2}`,
+              source: `${pid}/r${i + 1}`,
+              target: `${pid}/r${i + 2}`,
+              fromHandle: "r" as const,
+              toHandle: "l" as const,
+              kind: "chain" as const,
+            }));
+            return { ...chain, edges: [...chain.edges, ...chainEdges] };
+          },
           expanded,
         ),
       );
-    });
+      ids.push(`${pid}/after1`);
+      items.push(processItem(false, 0));
+      ids.push(`${pid}/afterlast`);
+      items.push(
+        item(
+          `${pid}/afterlast`,
+          "Final standings",
+          card("standings", "standings", [], { drill: true, step: true }),
+          () => processSub(run.final, `${pid}/afterlast`, expanded),
+          expanded,
+        ),
+      );
+    } else {
+      rounds.forEach(({ item: round, ghost }, i) => {
+        ids.push(`${pid}/r${i + 1}`);
+        items.push(roundItem(round, ghost, i));
+        const last = i === rounds.length - 1;
+        ids.push(`${pid}/after${i + 1}`);
+        items.push(processItem(last, i));
+      });
+    }
   } else {
     const node = group.run.node;
     const runId = `${pid}/run`;
@@ -464,12 +602,16 @@ function laneSub(
 }
 
 /** Between rounds: standings update, then pair what's next. */
-function processSub(process: ConcreteProcess, pid: string): Sub {
+function processSub(
+  process: ConcreteProcess,
+  pid: string,
+  expanded: ReadonlySet<string>,
+): Sub {
   const items: Sub[] = [
-    cardSub(`${pid}/standings`, plainCard(process.standings)),
+    iconItem(`${pid}/standings`, process.standings, expanded),
     ...(process.repair === undefined
       ? []
-      : [cardSub(`${pid}/repair`, plainCard(process.repair))]),
+      : [iconItem(`${pid}/repair`, process.repair, expanded)]),
   ];
   const laid = row(items, GAP);
   const edges: FlowGraphEdge[] =
@@ -495,38 +637,84 @@ function roundSub(
   expanded: ReadonlySet<string>,
 ): Sub {
   const pairings = manyList(round.pairings);
-  const pairIds: string[] = [];
-  const stack = column(
-    pairings.map(({ item: pairing, ghost }, i) => {
-      const pairId = `${pid}/p${i + 1}`;
-      pairIds.push(pairId);
-      const drillable = !ghost && pairing.node.children.length > 0;
-      return drillable
-        ? item(
-            pairId,
-            `${pairing.label} — ${pairing.node.title}`,
-            nodeCard(pairing.node, pairing.label, { drill: true }),
-            () => childrenSub(pairing.node, pairId, expanded),
-            expanded,
-          )
-        : cardSub(
-            pairId,
-            nodeCard(pairing.node, pairing.label, { drill: false, ghost }),
-          );
-    }),
-    GAP,
-  );
+  const pairItem = (
+    pairing: (typeof pairings)[number]["item"],
+    ghost: boolean,
+    i: number,
+  ): Sub => {
+    const pairId = `${pid}/p${i + 1}`;
+    const drillable = !ghost && pairing.node.children.length > 0;
+    return drillable
+      ? item(
+          pairId,
+          `${pairing.label} — ${pairing.node.title}`,
+          nodeCard(pairing.node, pairing.label, { drill: true }),
+          () => childrenSub(pairing.node, pairId, expanded),
+          expanded,
+        )
+      : cardSub(
+          pairId,
+          nodeCard(pairing.node, pairing.label, { drill: false, ghost }),
+        );
+  };
+
+  // Identical pairings fold into one ×N card, unfoldable to the full stack.
+  const signature = (pairing: ConcretePairing): string =>
+    JSON.stringify(pairing.node);
+  const first = pairings[0];
+  const uniform =
+    first !== undefined &&
+    pairings.length >= FOLD_AT &&
+    pairings.every(
+      ({ item: pairing, ghost }) =>
+        !ghost && signature(pairing) === signature(first.item),
+    );
+
+  let stack: Sub;
+  let feedIds: readonly string[];
+  if (uniform) {
+    const last = pairings[pairings.length - 1];
+    const runId = `${pid}/ps`;
+    const range = `${first.item.label} … ${last?.item.label ?? ""}`;
+    stack = foldedRun(
+      runId,
+      {
+        ...nodeCard(first.item.node, range, { drill: true }),
+        count: pairings.length,
+      },
+      `${range} ×${pairings.length}`,
+      () =>
+        column(
+          pairings.map(({ item: pairing, ghost }, i) =>
+            pairItem(pairing, ghost, i),
+          ),
+          GAP,
+        ),
+      expanded,
+    );
+    feedIds = [runId];
+  } else {
+    const ids: string[] = [];
+    stack = column(
+      pairings.map(({ item: pairing, ghost }, i) => {
+        ids.push(`${pid}/p${i + 1}`);
+        return pairItem(pairing, ghost, i);
+      }),
+      GAP,
+    );
+    feedIds = ids;
+  }
 
   const scoringId = `${pid}/scoring`;
-  const scoring = cardSub(scoringId, plainCard(round.scoring));
+  const scoring = iconItem(scoringId, round.scoring, expanded);
   const placedScoring = offset(
     scoring,
     stack.w + GAP * 3,
     (stack.h - scoring.h) / 2,
   );
-  const edges: FlowGraphEdge[] = pairIds.map((pairId) => ({
-    id: `c:${pairId}->${scoringId}`,
-    source: pairId,
+  const edges: FlowGraphEdge[] = feedIds.map((feedId) => ({
+    id: `c:${feedId}->${scoringId}`,
+    source: feedId,
     target: scoringId,
     fromHandle: "r" as const,
     toHandle: "l" as const,

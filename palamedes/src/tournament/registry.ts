@@ -348,6 +348,8 @@ export type SeedKind = {
   ) => void;
   /** The earlier groups this seed draws from (cross-stage UI edges) — possibly several (tour aggregations). */
   readonly origins?: (ref: SeedRef) => readonly SeedOrigin[];
+  /** How an aggregating seed describes itself ("Tour standings", the points table). */
+  readonly card?: (ref: SeedRef) => CardInfo;
 };
 
 // ---------------------------------------------------------------------------
@@ -574,12 +576,14 @@ export type SeedKindSpec<S> = {
   resolve(ref: S, ctx: SeedContext): CompetitorId | undefined;
   validate?(ref: S, ctx: SeedValidateContext, issue: Issue): void;
   origins?(ref: S): readonly SeedOrigin[];
+  card?(ref: S): CardInfo;
 };
 
 export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
   const decode = memoDecode(spec.schema);
   const validate = spec.validate;
   const origins = spec.origins;
+  const cardOf = spec.card;
   return {
     kind: spec.kind,
     schema: spec.schema,
@@ -593,6 +597,9 @@ export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
     ...(origins === undefined
       ? {}
       : { origins: (ref: SeedRef) => origins(decode(ref)) }),
+    ...(cardOf === undefined
+      ? {}
+      : { card: (ref: SeedRef) => cardOf(decode(ref)) }),
   };
 }
 

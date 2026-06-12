@@ -145,6 +145,7 @@ export type ConcreteGroup = {
   /** The lane's header card (entrants, scoring, schedule badge, inflows). */
   readonly header: ConcreteCard;
   readonly seededFrom: readonly ConcreteSeedLink[];
+  readonly junctions: readonly ConcreteJunction[];
   readonly run: ConcreteRun;
 };
 
@@ -154,11 +155,28 @@ export type ConcreteStageLink = {
   readonly label: string | undefined;
 };
 
+/**
+ * An aggregation junction: seeds that draw on SEVERAL sources at once (the
+ * tour's placements) flow through a visible standings node — sources feed
+ * it, and its intake ("top 4") feeds the consuming group.
+ */
+export type ConcreteJunction = {
+  readonly id: string;
+  readonly card: ConcreteCard;
+  readonly sources: readonly {
+    readonly stage: string;
+    readonly group: string;
+  }[];
+  readonly intake: string;
+};
+
 export type ConcreteStage = {
   readonly id: string;
   /** The stage's own card at the event level. */
   readonly card: ConcreteCard;
   readonly seededFrom: readonly ConcreteStageLink[];
+  /** Aggregation junctions feeding this stage's groups. */
+  readonly junctions: readonly ConcreteJunction[];
   /**
    * Depth in the seed-flow graph: 0 = depends on nothing. Stages sharing a
    * tier are independent of each other — the five tour events run
@@ -378,9 +396,39 @@ export function concretify(
           string,
           { stage: string; group: string; ranks: (number | undefined)[] }
         >();
+        // Seeds drawing on several sources at once flow through a visible
+        // aggregation junction instead of direct links.
+        const junctionAcc = new Map<
+          string,
+          {
+            card: ConcreteCard;
+            sources: readonly { stage: string; group: string }[];
+            count: number;
+          }
+        >();
         if (!open) {
           for (const entry of group.entries) {
-            const all = registry.seeds.get(entry.kind)?.origins?.(entry) ?? [];
+            const seedKind = registry.seeds.get(entry.kind);
+            const all = seedKind?.origins?.(entry) ?? [];
+            if (all.length > 1) {
+              const key = `${entry.kind}|${all
+                .map((o) => `${o.stage}/${o.group}`)
+                .join(",")}`;
+              const info = seedKind?.card?.(entry);
+              const acc = junctionAcc.get(key) ?? {
+                card: {
+                  kind: "standings",
+                  title: info?.title ?? "Standings",
+                  badge: info?.badge,
+                  lines: info?.lines ?? [],
+                },
+                sources: all.map((o) => ({ stage: o.stage, group: o.group })),
+                count: 0,
+              };
+              acc.count += 1;
+              junctionAcc.set(key, acc);
+              continue;
+            }
             for (const origin of all) {
               const sourceKey = `${origin.stage}/${origin.group}`;
               const links = bySource.get(sourceKey) ?? {
@@ -393,6 +441,14 @@ export function concretify(
             }
           }
         }
+        const junctions = [...junctionAcc.values()].map(
+          (acc, i): ConcreteJunction => ({
+            id: `${group.id}-agg${i + 1}`,
+            card: acc.card,
+            sources: acc.sources,
+            intake: `top ${acc.count}`,
+          }),
+        );
         const seededFrom = [...bySource.values()].map(
           ({ stage: s, group: g, ranks }): ConcreteSeedLink => {
             const [only] = ranks;
@@ -434,11 +490,16 @@ export function concretify(
           );
           return sourceGroup?.name ?? link.group;
         };
-        const inflowLines = seededFrom.map((link) =>
-          link.label === undefined
-            ? `from ${sourceName(link)}`
-            : `${link.label} from ${sourceName(link)}`,
-        );
+        const inflowLines = [
+          ...seededFrom.map((link) =>
+            link.label === undefined
+              ? `from ${sourceName(link)}`
+              : `${link.label} from ${sourceName(link)}`,
+          ),
+          ...junctions.map(
+            (junction) => `${junction.intake} of ${junction.card.title}`,
+          ),
+        ];
         const run = group.run;
         if (isPool(run)) {
           const concrete = concretifyPool(run, entrants, registry);
@@ -455,6 +516,7 @@ export function concretify(
               lines: [entrantsLine, concrete.scoring.title, ...inflowLines],
             },
             seededFrom,
+            junctions,
             run: concrete,
           };
         }
@@ -477,6 +539,7 @@ export function concretify(
             lines: [entrantsLine, ...inflowLines],
           },
           seededFrom,
+          junctions,
           run: {
             kind: "encounter",
             node: concretifyNode(run, { sides, drawn: false }, registry),
@@ -504,8 +567,10 @@ export function concretify(
         }),
       );
 
+      const junctions = groups.flatMap((group) => group.junctions);
       return {
         id: stage.id,
+        junctions,
         card: {
           kind: "stage",
           title: stage.name ?? stage.id,
@@ -529,8 +594,14 @@ export function concretify(
   // from; no inflows means tier 0. Sources always precede (validated).
   const tierOf = new Map<string, number>();
   for (const stage of built) {
-    const tier = stage.seededFrom.reduce(
-      (max, link) => Math.max(max, (tierOf.get(link.stage) ?? 0) + 1),
+    const inflows = [
+      ...stage.seededFrom.map((link) => link.stage),
+      ...stage.junctions.flatMap((junction) =>
+        junction.sources.map((source) => source.stage),
+      ),
+    ];
+    const tier = inflows.reduce(
+      (max, source) => Math.max(max, (tierOf.get(source) ?? 0) + 1),
       0,
     );
     tierOf.set(stage.id, tier);

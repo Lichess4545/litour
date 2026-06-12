@@ -110,6 +110,13 @@ export const placementsSeed: SeedKind = defineSeedKind({
   },
   origins: (ref) =>
     ref.sources.map((source) => ({ stage: source.stage, group: source.group })),
+  card: (ref) => ({
+    title: "Tour standings",
+    badge: `${ref.sources.length} events`,
+    lines: [
+      `placement points ${ref.points.slice(0, 4).join("/")}${ref.points.length > 4 ? "/…" : ""}`,
+    ],
+  }),
   validate: (ref, ctx, issue) => {
     ref.sources.forEach((source, i) => {
       const sourceIndex = ctx.stages.findIndex((s) => s.id === source.stage);

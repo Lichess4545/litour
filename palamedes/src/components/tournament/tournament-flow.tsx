@@ -15,6 +15,23 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import {
+  Calculator,
+  CircleDot,
+  Flag,
+  Grid3x3,
+  Hand,
+  Layers,
+  ListOrdered,
+  type LucideIcon,
+  Network,
+  Puzzle,
+  RotateCcw,
+  Shuffle,
+  Split,
+  Swords,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { chessRegistry } from "@/chess/registry";
 import { concretify } from "@/tournament/concrete";
@@ -50,6 +67,42 @@ const CHIP_STYLES: Record<string, string> = {
   end: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300",
 };
 const DEFAULT_CHIP = "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+
+/** One icon per kind key — unknown kinds get the puzzle piece. */
+const CHIP_ICONS: Record<string, LucideIcon> = {
+  stage: Layers,
+  group: Users,
+  round: CircleDot,
+  series: ListOrdered,
+  match: Swords,
+  game: Grid3x3,
+  standings: ListOrdered,
+  gate: Split,
+  end: Flag,
+  passThrough: Calculator,
+  table: Calculator,
+  phased: Calculator,
+  swiss: Shuffle,
+  knockout: Network,
+  roundRobin: RotateCcw,
+  manual: Hand,
+};
+const chipIcon = (chip: string): LucideIcon => CHIP_ICONS[chip] ?? Puzzle;
+
+/** The colored kind pill: icon plus key. */
+function Chip({ chip, small }: { chip: string; small?: boolean }) {
+  const Icon = chipIcon(chip);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded font-medium uppercase tracking-wide ${
+        small ? "px-1 py-0.5 text-[9px]" : "px-1.5 py-0.5 text-[10px]"
+      } ${CHIP_STYLES[chip] ?? DEFAULT_CHIP}`}
+    >
+      <Icon className={small ? "h-2.5 w-2.5" : "h-3 w-3"} />
+      {chip}
+    </span>
+  );
+}
 
 type CardNode = Node<FlowCardData, "card">;
 type FrameNode = Node<FrameData, "frame">;
@@ -105,6 +158,25 @@ function CardHandles() {
 function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
+  if (data.iconOnly) {
+    const Icon = chipIcon(data.chip);
+    return (
+      <div
+        title={data.title}
+        className={`flex h-16 w-16 items-center justify-center rounded-xl border bg-card shadow-sm ${
+          data.drill ? "border-dashed hover:border-foreground/40" : ""
+        }`}
+      >
+        <CardHandles />
+        <span
+          aria-label={data.title}
+          className={`rounded-lg p-2 ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       className={`rounded-lg border bg-card text-card-foreground shadow-sm ${
@@ -118,10 +190,13 @@ function FlowCard(props: NodeProps<CardNode>) {
       {data.step ? (
         <>
           <div className="flex items-center justify-between gap-1.5">
-            <span
-              className={`rounded px-1 py-0.5 font-medium text-[9px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
-            >
-              {data.chip}
+            <span className="flex items-center gap-1">
+              <Chip chip={data.chip} small />
+              {data.count !== undefined && (
+                <span className="rounded bg-muted px-1 py-0.5 font-semibold text-[9px] text-muted-foreground">
+                  ×{data.count}
+                </span>
+              )}
             </span>
             {data.drill && (
               <button
@@ -140,11 +215,7 @@ function FlowCard(props: NodeProps<CardNode>) {
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <span
-              className={`rounded px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${CHIP_STYLES[data.chip] ?? DEFAULT_CHIP}`}
-            >
-              {data.chip}
-            </span>
+            <Chip chip={data.chip} />
             {data.count !== undefined && (
               <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground">
                 ×{data.count}
