@@ -10,6 +10,15 @@
  * competition built here (GRENKE) drops into another event (the Grand Chess
  * Tour) by reference, unchanged.
  *
+ * Authoring runs bottom-up: clocks → encounters → regulations — and on top
+ * of the data constructors sits the FLUENT layer. `play(rules)` starts a
+ * leaf; an intake attaches next (`.open()`, `.enter(n)`, `.enterFrom`,
+ * `.enterAt`, `.from(flows…)`); identity arrives LAST (`.as(id)` /
+ * `.as(id, name)`). `group(…).as(id, name?)` does the same for containers.
+ * Plans are immutable and reusable — `play(universitySwiss).open()` is both
+ * qualifiers; `.as("q1")` and `.as("q2")` are the two competitions. Every
+ * terminal returns the same plain data the constructors below produce.
+ *
  * Cross-competition FLOW is composed the same way: the flow combinators
  * (`top`, `ranks`, `tourTop`) take the source competition BY VALUE and
  * compile to its id, so a consumer's entries are built out of the
@@ -87,29 +96,63 @@ export const event = (
   competition: CompetitionData,
 ): EventData => ({ id, name, competitors, competition });
 
-/** A leaf competition: it intakes entrants and runs a pool or an encounter. */
-export const competition = (
+/** A leaf competition: an intake playing a pool or an encounter. */
+export function competition(
   id: string,
-  name: string | undefined,
   entries: EntriesData,
   run: RunData,
-): LeafData => ({
-  id,
-  ...(name === undefined ? {} : { name }),
-  entries,
-  run,
-});
+): LeafData;
+export function competition(
+  id: string,
+  name: string,
+  entries: EntriesData,
+  run: RunData,
+): LeafData;
+export function competition(
+  ...args:
+    | [id: string, entries: EntriesData, run: RunData]
+    | [id: string, name: string, entries: EntriesData, run: RunData]
+): LeafData {
+  if (args.length === 3) {
+    const [id, entries, run] = args;
+    return { id, entries, run };
+  }
+  const [id, name, entries, run] = args;
+  return { id, name, entries, run };
+}
+
+/**
+ * Attach an intake to a regulation — composition's last small piece before
+ * identity. The result mints leaves: stamp it with an id (and optional
+ * display name) once per appearance.
+ */
+export const field =
+  (entries: EntriesData, run: RunData) =>
+  (id: string, name?: string): LeafData =>
+    name === undefined ? { id, entries, run } : { id, name, entries, run };
 
 /** A container competition: it runs sub-competitions and intakes nothing. */
-export const container = (
+export function container(
   id: string,
-  name: string | undefined,
-  ...competitions: readonly CompetitionData[]
-): ContainerData => ({
-  id,
-  ...(name === undefined ? {} : { name }),
-  run: { kind: "competitions", competitions },
-});
+  competitions: readonly CompetitionData[],
+): ContainerData;
+export function container(
+  id: string,
+  name: string,
+  competitions: readonly CompetitionData[],
+): ContainerData;
+export function container(
+  ...args:
+    | [id: string, competitions: readonly CompetitionData[]]
+    | [id: string, name: string, competitions: readonly CompetitionData[]]
+): ContainerData {
+  if (args.length === 2) {
+    const [id, competitions] = args;
+    return { id, run: { kind: "competitions", competitions } };
+  }
+  const [id, name, competitions] = args;
+  return { id, name, run: { kind: "competitions", competitions } };
+}
 
 // ---------------------------------------------------------------------------
 // Intakes — where a leaf's entrants come from
@@ -160,6 +203,71 @@ export const tourTop = (
     points,
     rank: i + 1,
   }));
+
+// ---------------------------------------------------------------------------
+// The fluent layer — ergonomics on top of the same constructors. Builders
+// are immutable and ephemeral; every terminal (`.as`) returns the plain
+// data `competition`/`container`/`field` produce, nothing more.
+
+/** A regulation awaiting its intake. Immutable — share and re-seed freely. */
+export class LeafPlan {
+  constructor(private readonly run: RunData) {}
+
+  /** Registration-bound: the field is unknown until entries are bound. */
+  open(): SeededLeaf {
+    return new SeededLeaf(open, this.run);
+  }
+
+  /** Registration slots 1..count. */
+  enter(count: number): SeededLeaf {
+    return new SeededLeaf(seeds(count), this.run);
+  }
+
+  /** Registration slots start..start+count-1. */
+  enterFrom(start: number, count: number): SeededLeaf {
+    return new SeededLeaf(seedsFrom(start, count), this.run);
+  }
+
+  /** Specific registration slots (split groups: 1, 4, 5). */
+  enterAt(...ns: readonly number[]): SeededLeaf {
+    return new SeededLeaf(seedsAt(...ns), this.run);
+  }
+
+  /** Entrants drawn from other competitions (top/ranks/tourTop flows). */
+  from(...sources: ReadonlyArray<readonly SeedData[]>): SeededLeaf {
+    return new SeededLeaf(sources.flat(), this.run);
+  }
+}
+
+/** An intake attached to a regulation; stamping identity mints the leaf. */
+export class SeededLeaf {
+  constructor(
+    private readonly entries: EntriesData,
+    private readonly run: RunData,
+  ) {}
+
+  as(id: string, name?: string): LeafData {
+    return field(this.entries, this.run)(id, name);
+  }
+}
+
+/** Competitions gathered for a container; stamping identity mints it. */
+export class GroupPlan {
+  constructor(private readonly competitions: readonly CompetitionData[]) {}
+
+  as(id: string, name?: string): ContainerData {
+    return name === undefined
+      ? container(id, this.competitions)
+      : container(id, name, this.competitions);
+  }
+}
+
+/** Start a leaf from the regulation it plays; attach its intake next. */
+export const play = (run: RunData): LeafPlan => new LeafPlan(run);
+
+/** Group competitions into a container; stamp identity with `.as`. */
+export const group = (...competitions: readonly CompetitionData[]): GroupPlan =>
+  new GroupPlan(competitions);
 
 // ---------------------------------------------------------------------------
 // Seats — how colors flow (cycle values, not concepts)

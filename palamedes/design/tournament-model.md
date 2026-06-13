@@ -168,18 +168,30 @@ setting) — pure scheduling, generic over kinds.
 ## The authoring combinators (`src/chess/compose.ts`)
 
 Definitions stay plain data, but nobody writes the wire shapes by hand:
-`compose.ts` is a library of NAMED patterns that compose into them — spine
-(`event`/`competition`/`container`), intakes (`open`, `seeds`/`seedsFrom`/
-`seedsAt`, and the flow combinators `top`/`ranks`/`tourTop`), pools
-(`swiss`/`roundRobin`/`knockout`), encounters (`game`/`matchOf`/`seriesOf`
-and the sugar `bestOf`/`duel`/`untilDecided`), the seat cycles
-(`alternate`, `sameSeats`, `drawnSeats`, `zigzag`, `uniformBoards`) and the
-point tables (`gamePoints`, `matchPoints`, `pointsTable`, `phased`). Every
-builder returns the same `unknown`-shaped literal an arbiter would write;
-`parseEventDef` validates the result, so an invalid composition fails at
-parse with arbiter-grade errors, never with a cast. The World Championship
-reads as
+`compose.ts` is a library of NAMED patterns that compose into them — data
+constructors (`event`/`competition`/`container`/`field`, intakes `open`,
+`seeds`/`seedsFrom`/`seedsAt`, the flow combinators `top`/`ranks`/`tourTop`),
+pools (`swiss`/`roundRobin`/`knockout`), encounters
+(`game`/`matchOf`/`seriesOf` and the sugar `bestOf`/`duel`/`untilDecided`),
+the seat cycles (`alternate`, `sameSeats`, `drawnSeats`, `zigzag`,
+`uniformBoards`) and the point tables (`gamePoints`, `matchPoints`,
+`pointsTable`, `phased`). Every builder returns the same `unknown`-shaped
+literal an arbiter would write; `parseEventDef` validates the result, so an
+invalid composition fails at parse with arbiter-grade errors, never with a
+cast. The World Championship's rules read as
 `untilDecided(bestOf(14, classical), duel(rapid), duel(blitz), armageddon)`.
+
+On top of the constructors sits the FLUENT layer, and authoring runs
+bottom-up through it: build the rules, attach the intake, stamp identity
+last. `play(rules)` starts a leaf; `.open()` / `.enter(n)` /
+`.enterFrom(start, n)` / `.enterAt(…)` / `.from(flows…)` attaches the
+intake; `.as(id)` or `.as(id, name)` mints the competition — so
+`play(universitySwiss).open()` is both qualifiers, stamped `.as("q1")` and
+`.as("q2")`. `group(…).as(id, name?)` does the same for containers. Plans
+are immutable and ephemeral; every terminal returns the plain data the
+constructors produce. No `undefined` placeholders, no entry spreads: names
+appear only where they exist, and `.from(top(q1, 16), top(q2, 16))`
+concatenates flows variadically.
 
 Cross-competition flow is composed EXPLICITLY, by value: the flow
 combinators take the source competition itself — `top(q1, 16)`,

@@ -4,27 +4,23 @@ import {
   byeAdvance,
   byePoints,
   type ContainerData,
-  competition,
-  container,
   drawOdds,
   duel,
   type EncounterData,
   event,
   game,
   gamePoints,
+  group,
   knockout,
   manualTie,
   matchOf,
   matchPoints,
-  open,
   phased,
+  play,
   pointsTable,
   ranks,
   roundRobin,
   sameSeats,
-  seeds,
-  seedsAt,
-  seedsFrom,
   seriesOf,
   swiss,
   top,
@@ -37,11 +33,12 @@ import { parseEventDef } from "./registry";
 /**
  * The acceptance table of design/tournament-model.md as executable
  * definitions, authored on the compose combinators the way an arbiter or
- * tournament designer would: named patterns composing into plain data,
- * parsed against the chess registry — if one of these stops validating, the
- * model broke. Several defs are miniaturized (fewer players or boards,
- * auto-pairable seeding) so the test suite can drive them end-to-end; each
- * notes its deltas from the published format.
+ * tournament designer would: regulations built bottom-up, intakes attached,
+ * identity stamped last — all of it plain data parsed against the chess
+ * registry, so if one of these stops validating, the model broke. Several
+ * defs are miniaturized (fewer players or boards, auto-pairable seeding) so
+ * the test suite can drive them end-to-end; each notes its deltas from the
+ * published format.
  */
 
 // --- format-local vocabulary -----------------------------------------------
@@ -71,7 +68,7 @@ export const armageddonShowdown: ParsedEventDef = parseEventDef(
     "armageddon-showdown",
     "Armageddon showdown",
     players("Magnus", "Hikaru"),
-    competition("duel", undefined, seeds(2), armageddon),
+    play(armageddon).enter(2).as("duel"),
   ),
 );
 
@@ -85,17 +82,16 @@ export const worldChampionship: ParsedEventDef = parseEventDef(
     "world-championship",
     "World Championship match",
     players("Ding", "Gukesh"),
-    competition(
-      "title",
-      undefined,
-      seeds(2),
+    play(
       untilDecided(
         bestOf(14, classical),
         duel(rapid(600, 5)),
         duel(rapid(300, 3)),
         armageddon,
       ),
-    ),
+    )
+      .enter(2)
+      .as("title"),
   ),
 );
 
@@ -118,10 +114,7 @@ export const worldCup: ParsedEventDef = parseEventDef(
       "Wesley",
       "Anish",
     ),
-    competition(
-      "bracket",
-      undefined,
-      seeds(8),
+    play(
       knockout(
         untilDecided(
           duel(classical),
@@ -131,7 +124,9 @@ export const worldCup: ParsedEventDef = parseEventDef(
           armageddon,
         ),
       ),
-    ),
+    )
+      .enter(8)
+      .as("bracket"),
   ),
 );
 
@@ -141,10 +136,7 @@ export const loneWolf: ParsedEventDef = parseEventDef(
     "lone-wolf",
     "LoneWolf individual swiss",
     players("Alice", "Bob", "Carol", "Dave", "Erin"),
-    competition(
-      "swiss",
-      undefined,
-      seeds(5),
+    play(
       swiss(3, rapid(2700, 45), gamePoints, {
         bye: byePoints(1, 1),
         tiebreaks: [
@@ -153,7 +145,9 @@ export const loneWolf: ParsedEventDef = parseEventDef(
           { metric: "headToHead" },
         ],
       }),
-    ),
+    )
+      .enter(5)
+      .as("swiss"),
   ),
 );
 
@@ -171,10 +165,7 @@ export const olympiad: ParsedEventDef = parseEventDef(
       team("uzb", "Uzbekistan", 4),
       team("chn", "China", 4),
     ],
-    competition(
-      "swiss",
-      undefined,
-      seeds(4),
+    play(
       swiss(3, matchOf(4, classical), matchPoints, {
         bye: byePoints(1, 2),
         tiebreaks: [
@@ -187,21 +178,25 @@ export const olympiad: ParsedEventDef = parseEventDef(
           { metric: "gamesWon" },
         ],
       }),
-    ),
+    )
+      .enter(4)
+      .as("swiss"),
   ),
 );
 
 /** lichess4545-style team swiss pool: rounds won, games won, then board points (4-board miniature of the 8-board league). */
 const league4545 = (rounds: number) =>
-  swiss(rounds, matchOf(4, rapid(2700, 45)), matchPoints, {
-    bye: byePoints(1, 2),
-    tiebreaks: [
-      { metric: "matchWins" },
-      { metric: "gamesWon" },
-      { metric: "boardPoints", board: 1 },
-      { metric: "boardPoints", board: 2 },
-    ],
-  });
+  play(
+    swiss(rounds, matchOf(4, rapid(2700, 45)), matchPoints, {
+      bye: byePoints(1, 2),
+      tiebreaks: [
+        { metric: "matchWins" },
+        { metric: "gamesWon" },
+        { metric: "boardPoints", board: 1 },
+        { metric: "boardPoints", board: 2 },
+      ],
+    }),
+  );
 
 /**
  * The league as a design: entries are open (teams register), so the view
@@ -213,7 +208,7 @@ export const lichess4545: ParsedEventDef = parseEventDef(
     "lichess4545",
     "lichess4545 team league",
     [],
-    competition("league", undefined, open, league4545(8)),
+    league4545(8).open().as("league"),
   ),
 );
 
@@ -228,7 +223,7 @@ export const lichess4545Season: ParsedEventDef = parseEventDef(
       team("roo", "Rooks", 4),
       team("paw", "Pawnstars", 4),
     ],
-    competition("league", undefined, seeds(4), league4545(2)),
+    league4545(2).enter(4).as("league"),
   ),
 );
 
@@ -238,14 +233,13 @@ export const clubRoundRobin: ParsedEventDef = parseEventDef(
     "club-rr",
     "Club round robin",
     [],
-    competition(
-      "rr",
-      undefined,
-      open,
+    play(
       roundRobin(1, rapid(900, 10), gamePoints, {
         tiebreaks: [{ metric: "sonnebornBerger" }],
       }),
-    ),
+    )
+      .open()
+      .as("rr"),
   ),
 );
 
@@ -259,10 +253,7 @@ export const norwayChess: ParsedEventDef = parseEventDef(
     "norway-chess",
     "Norway Chess",
     players("Magnus", "Fabiano", "Hikaru", "Praggnanandhaa"),
-    competition(
-      "rr",
-      undefined,
-      seeds(4),
+    play(
       roundRobin(
         1,
         seriesOf([classical, armageddon], {
@@ -272,28 +263,29 @@ export const norwayChess: ParsedEventDef = parseEventDef(
         pointsTable(0, { win: 3, loss: 0 }, { win: 1.5, loss: 1 }),
         { tiebreaks: [{ metric: "gamesWon" }] },
       ),
-    ),
+    )
+      .enter(4)
+      .as("rr"),
   ),
 );
 
-/** Candidates: double round robin, colors reversed in the second cycle. */
+/** The Candidates regulation: double round robin, colors reversed in cycle two. */
+const candidatesRR = play(
+  roundRobin(2, classical, gamePoints, {
+    tiebreaks: [
+      { metric: "headToHead" },
+      { metric: "gamesWon" },
+      { metric: "sonnebornBerger" },
+    ],
+  }),
+);
+
 export const candidates: ParsedEventDef = parseEventDef(
   event(
     "candidates",
     "Candidates (double round robin)",
     players("Ian", "Fabiano", "Gukesh", "Hikaru"),
-    competition(
-      "rr",
-      undefined,
-      seeds(4),
-      roundRobin(2, classical, gamePoints, {
-        tiebreaks: [
-          { metric: "headToHead" },
-          { metric: "gamesWon" },
-          { metric: "sonnebornBerger" },
-        ],
-      }),
-    ),
+    candidatesRR.enter(4).as("rr"),
   ),
 );
 
@@ -308,17 +300,16 @@ const wuccKnockout = (legRelease: "lockstep" | "independent", suffix: string) =>
         team("mona", "Monash University", 2),
         team("auck", "Auckland University", 2),
       ],
-      competition(
-        "bracket",
-        undefined,
-        seeds(4),
+      play(
         knockout(
           seriesOf([matchOf(2, rapid(600, 5)), matchOf(2, rapid(600, 5))], {
             tie: manualTie,
           }),
           { legRelease },
         ),
-      ),
+      )
+        .enter(4)
+        .as("bracket"),
     ),
   );
 
@@ -340,35 +331,25 @@ export const wuccKnockoutUpfront: ParsedEventDef = wuccKnockout(
 /**
  * A miniature multi-stage championship: two round-robin groups feed a
  * knockout (A1 vs B2, B1 vs A2) with a third-place playoff — the WUCC/FIDE
- * Corporate shape.
+ * Corporate shape. Both groups play the same regulation, seeded last.
  */
-/** Both qualifying groups run the same regulation — one definition, shared. */
-const miniGroupRR = roundRobin(1, rapid(900, 10), gamePoints, {
-  bye: byePoints(0, 0),
-  tiebreaks: [{ metric: "sonnebornBerger" }],
-});
-
-const miniGroupA = competition("a", undefined, seedsAt(1, 4, 5), miniGroupRR);
-const miniGroupB = competition("b", undefined, seedsAt(2, 3, 6), miniGroupRR);
+const miniGroup = play(
+  roundRobin(1, rapid(900, 10), gamePoints, {
+    bye: byePoints(0, 0),
+    tiebreaks: [{ metric: "sonnebornBerger" }],
+  }),
+);
+const miniGroupA = miniGroup.enterAt(1, 4, 5).as("a");
+const miniGroupB = miniGroup.enterAt(2, 3, 6).as("b");
 
 export const miniChampionship: ParsedEventDef = parseEventDef(
   event(
     "mini-championship",
     "Groups into knockout with bronze final",
     players("Anna", "Boris", "Clara", "David", "Elena", "Felix"),
-    container(
-      "mini-championship",
-      "Groups into knockout with bronze final",
-      container("groups", undefined, miniGroupA, miniGroupB),
-      competition(
-        "ko",
-        undefined,
-        [
-          ...ranks(miniGroupA, 1),
-          ...ranks(miniGroupB, 2),
-          ...ranks(miniGroupB, 1),
-          ...ranks(miniGroupA, 2),
-        ],
+    group(
+      group(miniGroupA, miniGroupB).as("groups"),
+      play(
         knockout(
           game(
             {
@@ -381,8 +362,15 @@ export const miniChampionship: ParsedEventDef = parseEventDef(
           ),
           { seeding: "adjacent", thirdPlace: true },
         ),
-      ),
-    ),
+      )
+        .from(
+          ranks(miniGroupA, 1),
+          ranks(miniGroupB, 2),
+          ranks(miniGroupB, 1),
+          ranks(miniGroupA, 2),
+        )
+        .as("ko"),
+    ).as("mini-championship", "Groups into knockout with bronze final"),
   ),
 );
 
@@ -395,38 +383,32 @@ export const scheveningen: ParsedEventDef = parseEventDef(
     "scheveningen",
     "Scheveningen team match",
     [team("ham", "Hammers", 2), team("anv", "Anvils", 2)],
-    competition(
-      "tie",
-      undefined,
-      seeds(2),
+    play(
       seriesOf([
         matchOf(2, classical, { seats: uniformBoards }),
         matchOf(2, classical, { seats: uniformBoards }),
       ]),
-    ),
+    )
+      .enter(2)
+      .as("tie"),
   ),
 );
 
 /** Quads: parallel round-robin groups of four under one roof. */
+const quad = play(
+  roundRobin(1, rapid(900, 5), gamePoints, {
+    tiebreaks: [{ metric: "sonnebornBerger" }],
+  }),
+);
+
 export const quads: ParsedEventDef = parseEventDef(
   event(
     "quads",
     "Quads",
     players("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"),
-    container(
-      "main",
-      undefined,
-      ...[1, 2].map((q) =>
-        competition(
-          `quad-${q}`,
-          undefined,
-          seedsFrom((q - 1) * 4 + 1, 4),
-          roundRobin(1, rapid(900, 5), gamePoints, {
-            tiebreaks: [{ metric: "sonnebornBerger" }],
-          }),
-        ),
-      ),
-    ),
+    group(
+      ...[1, 2].map((q) => quad.enterFrom((q - 1) * 4 + 1, 4).as(`quad-${q}`)),
+    ).as("main"),
   ),
 );
 
@@ -452,10 +434,7 @@ export const teamSwissCascade: ParsedEventDef = parseEventDef(
       team("gri", "Griffins", 2),
       team("hus", "Huskies", 2),
     ],
-    competition(
-      "swiss",
-      undefined,
-      seeds(8),
+    play(
       swiss(
         8,
         seriesOf(
@@ -478,7 +457,9 @@ export const teamSwissCascade: ParsedEventDef = parseEventDef(
         matchPoints,
         { bye: byePoints(1, 1), tiebreaks: [{ metric: "matchWins" }] },
       ),
-    ),
+    )
+      .enter(8)
+      .as("swiss"),
   ),
 );
 
@@ -493,71 +474,58 @@ const twoMatchTie = (boards: number, g: EncounterData) =>
 const cutKnockout = (encounter: EncounterData) =>
   knockout(encounter, { rounds: 2, bye: byeAdvance, legRelease: "lockstep" });
 
-const universitySwiss = swiss(9, matchOf(4, rapid(900, 10)), matchPoints, {
-  bye: byePoints(1, 2),
-  tiebreaks: [{ metric: "gamesWon" }],
-});
-
-const universityOtbGroup = roundRobin(2, matchOf(4, classical), matchPoints, {
-  tiebreaks: [{ metric: "gamesWon" }],
-});
-
 /**
- * FIDE World University Team Championship — the full pipeline, composed by
- * value: each consumer's entries are built from the competitions it draws
- * on. Two open online team-swiss qualifiers each send their top 16 into a
- * 32-team knockout that plays only two rounds (`rounds: 2` truncates the
+ * FIDE World University Team Championship — the full pipeline, read top to
+ * bottom: two open online team-swiss qualifiers each send their top 16 into
+ * a 32-team knockout that plays only two rounds (`rounds: 2` truncates the
  * bracket); the eight survivors travel to the venue: two double round
  * robins, then cross-group semifinals with a bronze final.
  */
-const wuQ1 = competition("q1", undefined, open, universitySwiss);
-const wuQ2 = competition("q2", undefined, open, universitySwiss);
-const wuKnockout = competition(
-  "knockout",
-  undefined,
-  [...top(wuQ1, 16), ...top(wuQ2, 16)],
-  cutKnockout(twoMatchTie(4, rapid(900, 10))),
+const universityQualifier = play(
+  swiss(9, matchOf(4, rapid(900, 10)), matchPoints, {
+    bye: byePoints(1, 2),
+    tiebreaks: [{ metric: "gamesWon" }],
+  }),
+).open();
+const wuQ1 = universityQualifier.as("q1");
+const wuQ2 = universityQualifier.as("q2");
+
+const wuKnockout = play(cutKnockout(twoMatchTie(4, rapid(900, 10))))
+  .from(top(wuQ1, 16), top(wuQ2, 16))
+  .as("knockout");
+
+const universityOtb = play(
+  roundRobin(2, matchOf(4, classical), matchPoints, {
+    tiebreaks: [{ metric: "gamesWon" }],
+  }),
 );
-const wuGroupA = competition(
-  "a",
-  undefined,
-  ranks(wuKnockout, 1, 4, 5, 8),
-  universityOtbGroup,
-);
-const wuGroupB = competition(
-  "b",
-  undefined,
-  ranks(wuKnockout, 2, 3, 6, 7),
-  universityOtbGroup,
-);
+const wuGroupA = universityOtb.from(ranks(wuKnockout, 1, 4, 5, 8)).as("a");
+const wuGroupB = universityOtb.from(ranks(wuKnockout, 2, 3, 6, 7)).as("b");
 
 export const worldUniversityChampionship: ParsedEventDef = parseEventDef(
   event(
     "world-university",
     "World University Team Championship",
     [],
-    container(
-      "world-university",
-      "World University Team Championship",
-      container("qualifiers", undefined, wuQ1, wuQ2),
+    group(
+      group(wuQ1, wuQ2).as("qualifiers"),
       wuKnockout,
-      container("otb-groups", undefined, wuGroupA, wuGroupB),
-      competition(
-        "medals",
-        undefined,
-        [
-          ...ranks(wuGroupA, 1),
-          ...ranks(wuGroupB, 2),
-          ...ranks(wuGroupB, 1),
-          ...ranks(wuGroupA, 2),
-        ],
+      group(wuGroupA, wuGroupB).as("otb-groups"),
+      play(
         knockout(matchOf(4, classical, { tie: manualTie }), {
           seeding: "adjacent",
           thirdPlace: true,
           bye: byeAdvance,
         }),
-      ),
-    ),
+      )
+        .from(
+          ranks(wuGroupA, 1),
+          ranks(wuGroupB, 2),
+          ranks(wuGroupB, 1),
+          ranks(wuGroupA, 2),
+        )
+        .as("medals"),
+    ).as("world-university", "World University Team Championship"),
   ),
 );
 
@@ -574,44 +542,35 @@ const CORPORATE_POOLS = [
  * rounds; the final eight play an over-the-board knockout with a bronze
  * final.
  */
-const corporatePools = CORPORATE_POOLS.map((id) =>
-  competition(
-    id,
-    undefined,
-    open,
-    swiss(7, matchOf(4, rapid(600, 5)), matchPoints, {
-      bye: byePoints(1, 2),
-      tiebreaks: [{ metric: "gamesWon" }],
-    }),
-  ),
-);
-const corporateKnockout = competition(
-  "knockout",
-  undefined,
-  corporatePools.flatMap((pool) => top(pool, 8)),
-  cutKnockout(twoMatchTie(4, rapid(600, 5))),
-);
+const timezonePool = play(
+  swiss(7, matchOf(4, rapid(600, 5)), matchPoints, {
+    bye: byePoints(1, 2),
+    tiebreaks: [{ metric: "gamesWon" }],
+  }),
+).open();
+const corporatePools = CORPORATE_POOLS.map((id) => timezonePool.as(id));
+
+const corporateKnockout = play(cutKnockout(twoMatchTie(4, rapid(600, 5))))
+  .from(...corporatePools.map((pool) => top(pool, 8)))
+  .as("knockout");
 
 export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
   event(
     "world-corporate",
     "World Corporate Championship",
     [],
-    container(
-      "world-corporate",
-      "World Corporate Championship",
-      container("pools", undefined, ...corporatePools),
+    group(
+      group(...corporatePools).as("pools"),
       corporateKnockout,
-      competition(
-        "finals",
-        undefined,
-        top(corporateKnockout, 8),
+      play(
         knockout(matchOf(4, rapid(1500, 10), { tie: manualTie }), {
           thirdPlace: true,
           bye: byeAdvance,
         }),
-      ),
-    ),
+      )
+        .from(top(corporateKnockout, 8))
+        .as("finals"),
+    ).as("world-corporate", "World Corporate Championship"),
   ),
 );
 
@@ -625,30 +584,26 @@ export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
  * a tour stop, by reference — and the tour draws on `grenkeClassic` the
  * value, not a name.
  */
-const grenkeClassic = competition(
-  "classic",
-  "GRENKE Classic",
-  seeds(6),
+const grenkeClassic = play(
   roundRobin(2, classical, gamePoints, {
     tiebreaks: [{ metric: "sonnebornBerger" }],
   }),
-);
-const grenkeOpen = competition(
-  "open",
-  "GRENKE Open",
-  open,
+)
+  .enter(6)
+  .as("classic", "GRENKE Classic");
+const grenkeOpen = play(
   swiss(9, classical, gamePoints, {
     bye: byePoints(0.5, 0.5),
     tiebreaks: [{ metric: "buchholz" }, { metric: "sonnebornBerger" }],
   }),
-);
+)
+  .open()
+  .as("open", "GRENKE Open");
 
-export const grenkeCompetition: ContainerData = container(
-  "grenke",
-  "GRENKE Karlsruhe",
+export const grenkeCompetition: ContainerData = group(
   grenkeClassic,
   grenkeOpen,
-);
+).as("grenke", "GRENKE Karlsruhe");
 
 export const grenke: ParsedEventDef = parseEventDef(
   event(
@@ -667,14 +622,16 @@ export const grenke: ParsedEventDef = parseEventDef(
 );
 
 /** A LoneWolf-style swiss section (registration decides who enters which). */
-const loneWolfSection = swiss(11, rapid(2700, 45), gamePoints, {
-  bye: byePoints(1, 1),
-  tiebreaks: [
-    { metric: "sonnebornBerger" },
-    { metric: "buchholz" },
-    { metric: "headToHead" },
-  ],
-});
+const loneWolfSection = play(
+  swiss(11, rapid(2700, 45), gamePoints, {
+    bye: byePoints(1, 1),
+    tiebreaks: [
+      { metric: "sonnebornBerger" },
+      { metric: "buchholz" },
+      { metric: "headToHead" },
+    ],
+  }),
+).open();
 
 /**
  * Sections: one event, two divisions running contemporaneously — separate
@@ -686,22 +643,12 @@ export const loneWolfSections: ParsedEventDef = parseEventDef(
     "lonewolf-sections",
     "LoneWolf — Open & U1800",
     [],
-    container(
-      "season",
-      "Season",
-      competition("open", "Open", open, loneWolfSection),
-      competition("u1800", "U1800", open, loneWolfSection),
-    ),
+    group(
+      loneWolfSection.as("open", "Open"),
+      loneWolfSection.as("u1800", "U1800"),
+    ).as("season", "Season"),
   ),
 );
-
-const candidatesPool = roundRobin(2, classical, gamePoints, {
-  tiebreaks: [
-    { metric: "headToHead" },
-    { metric: "gamesWon" },
-    { metric: "sonnebornBerger" },
-  ],
-});
 
 /** Both Candidates tournaments share the venue and the schedule. */
 export const candidatesBoth: ParsedEventDef = parseEventDef(
@@ -726,17 +673,10 @@ export const candidatesBoth: ParsedEventDef = parseEventDef(
       "Lagno",
       "Muzychuk",
     ),
-    container(
-      "candidates",
-      "Candidates Toronto",
-      competition("open", "Candidates", seeds(8), candidatesPool),
-      competition(
-        "women",
-        "Women's Candidates",
-        seedsFrom(9, 8),
-        candidatesPool,
-      ),
-    ),
+    group(
+      candidatesRR.enter(8).as("open", "Candidates"),
+      candidatesRR.enterFrom(9, 8).as("women", "Women's Candidates"),
+    ).as("candidates", "Candidates Toronto"),
   ),
 );
 
@@ -745,6 +685,12 @@ export const candidatesBoth: ParsedEventDef = parseEventDef(
  * open amateur swiss, all contemporaneous. (Each field miniaturized to 6;
  * the Challengers→Masters promotion crosses editions, outside one event.)
  */
+const wijkInvitational = play(
+  roundRobin(1, classical, gamePoints, {
+    tiebreaks: [{ metric: "sonnebornBerger" }],
+  }),
+);
+
 export const tataSteel: ParsedEventDef = parseEventDef(
   event(
     "tata-steel",
@@ -763,35 +709,18 @@ export const tataSteel: ParsedEventDef = parseEventDef(
       "Beerdsen",
       "Maurizzi",
     ),
-    container(
-      "wijk",
-      "Wijk aan Zee",
-      competition(
-        "masters",
-        "Masters",
-        seeds(6),
-        roundRobin(1, classical, gamePoints, {
-          tiebreaks: [{ metric: "sonnebornBerger" }],
-        }),
-      ),
-      competition(
-        "challengers",
-        "Challengers",
-        seedsFrom(7, 6),
-        roundRobin(1, classical, gamePoints, {
-          tiebreaks: [{ metric: "sonnebornBerger" }],
-        }),
-      ),
-      competition(
-        "amateurs",
-        "Amateurs",
-        open,
+    group(
+      wijkInvitational.enter(6).as("masters", "Masters"),
+      wijkInvitational.enterFrom(7, 6).as("challengers", "Challengers"),
+      play(
         swiss(9, rapid(2700, 30), gamePoints, {
           bye: byePoints(0.5, 0.5),
           tiebreaks: [{ metric: "buchholz" }],
         }),
-      ),
-    ),
+      )
+        .open()
+        .as("amateurs", "Amateurs"),
+    ).as("wijk", "Wijk aan Zee"),
   ),
 );
 
@@ -864,12 +793,9 @@ const gctFinalsMatch = seriesOf(
 );
 
 const gctStops = GCT_EVENTS.map((e) =>
-  competition(
-    e.id,
-    e.name,
-    seeds(10),
-    e.kind === "classical" ? gctClassical : gctRapidBlitz,
-  ),
+  play(e.kind === "classical" ? gctClassical : gctRapidBlitz)
+    .enter(10)
+    .as(e.id, e.name),
 );
 
 /** The competitions whose placements pay tour points — GRENKE's elite RR included. */
@@ -900,22 +826,19 @@ export const grandChessTour: ParsedEventDef = parseEventDef(
       "Giri",
       "Duda",
     ),
-    container(
-      "tour",
-      "Grand Chess Tour",
+    group(
       ...gctStops,
       grenkeCompetition,
-      competition(
-        "finals",
-        "GCT Finals São Paulo",
-        tourTop(gctSources, GCT_POINTS, 4),
+      play(
         knockout(gctFinalsMatch, {
           thirdPlace: true,
           bye: byeAdvance,
           terms: { pairing: "match" },
         }),
-      ),
-    ),
+      )
+        .from(tourTop(gctSources, GCT_POINTS, 4))
+        .as("finals", "GCT Finals São Paulo"),
+    ).as("tour", "Grand Chess Tour"),
   ),
 );
 
