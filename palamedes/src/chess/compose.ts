@@ -9,6 +9,16 @@
  * Patterns are values, and composition is function application — a whole
  * competition built here (GRENKE) drops into another event (the Grand Chess
  * Tour) by reference, unchanged.
+ *
+ * Cross-competition FLOW is composed the same way: the flow combinators
+ * (`top`, `ranks`, `tourTop`) take the source competition BY VALUE and
+ * compile to its id, so a consumer's entries are built out of the
+ * competitions it draws on. The def-use graph of the authoring code IS the
+ * intake DAG: a source that doesn't exist is unwritable, drawing from a
+ * container is a type error (only a `LeafData` ranks), and declaration
+ * order makes an authored cycle impossible. Bare ids remain the wire
+ * format underneath — hand-written data still parses, backstopped by the
+ * registry's DAG validation.
  */
 
 type Kinded = { readonly kind: string; readonly [key: string]: unknown };
@@ -33,12 +43,25 @@ export type CompetitorData = {
   readonly roster?: readonly string[] | undefined;
 };
 
-export type CompetitionData = {
+/** A leaf: it intakes entrants and runs a pool or an encounter. */
+export type LeafData = {
   readonly id: string;
   readonly name?: string | undefined;
-  readonly entries?: EntriesData | undefined;
+  readonly entries: EntriesData;
   readonly run: RunData;
 };
+
+/** A container: it runs sub-competitions and intakes nothing. */
+export type ContainerData = {
+  readonly id: string;
+  readonly name?: string | undefined;
+  readonly run: {
+    readonly kind: "competitions";
+    readonly competitions: readonly CompetitionData[];
+  };
+};
+
+export type CompetitionData = LeafData | ContainerData;
 
 export type EventData = {
   readonly id: string;
@@ -70,7 +93,7 @@ export const competition = (
   name: string | undefined,
   entries: EntriesData,
   run: RunData,
-): CompetitionData => ({
+): LeafData => ({
   id,
   ...(name === undefined ? {} : { name }),
   entries,
@@ -82,7 +105,7 @@ export const container = (
   id: string,
   name: string | undefined,
   ...competitions: readonly CompetitionData[]
-): CompetitionData => ({
+): ContainerData => ({
   id,
   ...(name === undefined ? {} : { name }),
   run: { kind: "competitions", competitions },
@@ -109,28 +132,31 @@ export const seedsFrom = (start: number, count: number): readonly SeedData[] =>
 export const seedsAt = (...ns: readonly number[]): readonly SeedData[] =>
   ns.map((seed) => ({ kind: "registration", seed }));
 
+// Flow combinators: the source is the competition VALUE, compiled to its
+// id. Only leaves rank, so only LeafData is accepted.
+
 /** Ranks 1..count of a finished competition ("the top 16 advance"). */
-export const top = (of: string, count: number): readonly SeedData[] =>
+export const top = (of: LeafData, count: number): readonly SeedData[] =>
   ranks(of, ...Array.from({ length: count }, (_, i) => i + 1));
 
 /** Specific ranks of a finished competition (cross-group semifinals). */
 export const ranks = (
-  of: string,
+  of: LeafData,
   ...ns: readonly number[]
-): readonly SeedData[] => ns.map((rank) => ({ kind: "rank", of, rank }));
+): readonly SeedData[] => ns.map((rank) => ({ kind: "rank", of: of.id, rank }));
 
 /**
  * Ranks 1..count of the aggregated standings over several competitions,
  * placements converted to points through a table (the tour).
  */
 export const tourTop = (
-  over: readonly string[],
+  over: readonly LeafData[],
   points: readonly number[],
   count: number,
 ): readonly SeedData[] =>
   Array.from({ length: count }, (_, i) => ({
     kind: "placements",
-    over,
+    over: over.map((leaf) => leaf.id),
     points,
     rank: i + 1,
   }));

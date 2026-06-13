@@ -170,17 +170,30 @@ setting) — pure scheduling, generic over kinds.
 Definitions stay plain data, but nobody writes the wire shapes by hand:
 `compose.ts` is a library of NAMED patterns that compose into them — spine
 (`event`/`competition`/`container`), intakes (`open`, `seeds`/`seedsFrom`/
-`seedsAt`, `top`/`ranks`, `tourTop`), pools (`swiss`/`roundRobin`/
-`knockout`), encounters (`game`/`matchOf`/`seriesOf` and the sugar
-`bestOf`/`duel`/`untilDecided`), the seat cycles (`alternate`, `sameSeats`,
-`drawnSeats`, `zigzag`, `uniformBoards`) and the point tables (`gamePoints`,
-`matchPoints`, `pointsTable`, `phased`). Every builder returns the same
-`unknown`-shaped literal an arbiter would write; `parseEventDef` validates
-the result, so an invalid composition fails at parse with arbiter-grade
-errors, never with a cast. The World Championship reads as
-`untilDecided(bestOf(14, classical), duel(rapid), duel(blitz), armageddon)`
-— and because patterns are values, a whole competition built once (GRENKE)
-drops into another event by reference.
+`seedsAt`, and the flow combinators `top`/`ranks`/`tourTop`), pools
+(`swiss`/`roundRobin`/`knockout`), encounters (`game`/`matchOf`/`seriesOf`
+and the sugar `bestOf`/`duel`/`untilDecided`), the seat cycles
+(`alternate`, `sameSeats`, `drawnSeats`, `zigzag`, `uniformBoards`) and the
+point tables (`gamePoints`, `matchPoints`, `pointsTable`, `phased`). Every
+builder returns the same `unknown`-shaped literal an arbiter would write;
+`parseEventDef` validates the result, so an invalid composition fails at
+parse with arbiter-grade errors, never with a cast. The World Championship
+reads as
+`untilDecided(bestOf(14, classical), duel(rapid), duel(blitz), armageddon)`.
+
+Cross-competition flow is composed EXPLICITLY, by value: the flow
+combinators take the source competition itself — `top(q1, 16)`,
+`ranks(knockout, 1, 4, 5, 8)`, `tourTop([...stops, grenkeClassic], …)` —
+and compile to its id. A consumer's entries are therefore built out of the
+competitions it draws on, and the def-use graph of the authoring code IS
+the intake DAG: a source that doesn't exist is unwritable, drawing from a
+container is a type error (`LeafData` vs `ContainerData` — only leaves
+rank), and declaration order makes an authored cycle impossible. Bare ids
+remain the wire format underneath, so hand-written or machine-emitted data
+still parses, backstopped by the registry's DAG validation. And because
+patterns are values, a whole competition built once (GRENKE) drops into
+another event by reference — with its inner elite round robin joining the
+tour's placement sources the same way, as a value.
 
 ## The chess vocabulary (a registry like any other)
 

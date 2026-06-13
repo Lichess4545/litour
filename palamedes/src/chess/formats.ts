@@ -3,7 +3,7 @@ import {
   bestOf,
   byeAdvance,
   byePoints,
-  type CompetitionData,
+  type ContainerData,
   competition,
   container,
   drawOdds,
@@ -348,6 +348,9 @@ const miniGroupRR = roundRobin(1, rapid(900, 10), gamePoints, {
   tiebreaks: [{ metric: "sonnebornBerger" }],
 });
 
+const miniGroupA = competition("a", undefined, seedsAt(1, 4, 5), miniGroupRR);
+const miniGroupB = competition("b", undefined, seedsAt(2, 3, 6), miniGroupRR);
+
 export const miniChampionship: ParsedEventDef = parseEventDef(
   event(
     "mini-championship",
@@ -356,20 +359,15 @@ export const miniChampionship: ParsedEventDef = parseEventDef(
     container(
       "mini-championship",
       "Groups into knockout with bronze final",
-      container(
-        "groups",
-        undefined,
-        competition("a", undefined, seedsAt(1, 4, 5), miniGroupRR),
-        competition("b", undefined, seedsAt(2, 3, 6), miniGroupRR),
-      ),
+      container("groups", undefined, miniGroupA, miniGroupB),
       competition(
         "ko",
         undefined,
         [
-          ...ranks("a", 1),
-          ...ranks("b", 2),
-          ...ranks("b", 1),
-          ...ranks("a", 2),
+          ...ranks(miniGroupA, 1),
+          ...ranks(miniGroupB, 2),
+          ...ranks(miniGroupB, 1),
+          ...ranks(miniGroupA, 2),
         ],
         knockout(
           game(
@@ -505,12 +503,34 @@ const universityOtbGroup = roundRobin(2, matchOf(4, classical), matchPoints, {
 });
 
 /**
- * FIDE World University Team Championship — the full pipeline. Two open
- * online team-swiss qualifiers each send their top 16 into a 32-team
- * knockout that plays only two rounds (`rounds: 2` truncates the bracket);
- * the eight survivors travel to the venue: two double round robins, then
- * cross-group semifinals with a bronze final.
+ * FIDE World University Team Championship — the full pipeline, composed by
+ * value: each consumer's entries are built from the competitions it draws
+ * on. Two open online team-swiss qualifiers each send their top 16 into a
+ * 32-team knockout that plays only two rounds (`rounds: 2` truncates the
+ * bracket); the eight survivors travel to the venue: two double round
+ * robins, then cross-group semifinals with a bronze final.
  */
+const wuQ1 = competition("q1", undefined, open, universitySwiss);
+const wuQ2 = competition("q2", undefined, open, universitySwiss);
+const wuKnockout = competition(
+  "knockout",
+  undefined,
+  [...top(wuQ1, 16), ...top(wuQ2, 16)],
+  cutKnockout(twoMatchTie(4, rapid(900, 10))),
+);
+const wuGroupA = competition(
+  "a",
+  undefined,
+  ranks(wuKnockout, 1, 4, 5, 8),
+  universityOtbGroup,
+);
+const wuGroupB = competition(
+  "b",
+  undefined,
+  ranks(wuKnockout, 2, 3, 6, 7),
+  universityOtbGroup,
+);
+
 export const worldUniversityChampionship: ParsedEventDef = parseEventDef(
   event(
     "world-university",
@@ -519,42 +539,17 @@ export const worldUniversityChampionship: ParsedEventDef = parseEventDef(
     container(
       "world-university",
       "World University Team Championship",
-      container(
-        "qualifiers",
-        undefined,
-        competition("q1", undefined, open, universitySwiss),
-        competition("q2", undefined, open, universitySwiss),
-      ),
-      competition(
-        "knockout",
-        undefined,
-        [...top("q1", 16), ...top("q2", 16)],
-        cutKnockout(twoMatchTie(4, rapid(900, 10))),
-      ),
-      container(
-        "otb-groups",
-        undefined,
-        competition(
-          "a",
-          undefined,
-          ranks("knockout", 1, 4, 5, 8),
-          universityOtbGroup,
-        ),
-        competition(
-          "b",
-          undefined,
-          ranks("knockout", 2, 3, 6, 7),
-          universityOtbGroup,
-        ),
-      ),
+      container("qualifiers", undefined, wuQ1, wuQ2),
+      wuKnockout,
+      container("otb-groups", undefined, wuGroupA, wuGroupB),
       competition(
         "medals",
         undefined,
         [
-          ...ranks("a", 1),
-          ...ranks("b", 2),
-          ...ranks("b", 1),
-          ...ranks("a", 2),
+          ...ranks(wuGroupA, 1),
+          ...ranks(wuGroupB, 2),
+          ...ranks(wuGroupB, 1),
+          ...ranks(wuGroupA, 2),
         ],
         knockout(matchOf(4, classical, { tie: manualTie }), {
           seeding: "adjacent",
@@ -579,6 +574,24 @@ const CORPORATE_POOLS = [
  * rounds; the final eight play an over-the-board knockout with a bronze
  * final.
  */
+const corporatePools = CORPORATE_POOLS.map((id) =>
+  competition(
+    id,
+    undefined,
+    open,
+    swiss(7, matchOf(4, rapid(600, 5)), matchPoints, {
+      bye: byePoints(1, 2),
+      tiebreaks: [{ metric: "gamesWon" }],
+    }),
+  ),
+);
+const corporateKnockout = competition(
+  "knockout",
+  undefined,
+  corporatePools.flatMap((pool) => top(pool, 8)),
+  cutKnockout(twoMatchTie(4, rapid(600, 5))),
+);
+
 export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
   event(
     "world-corporate",
@@ -587,31 +600,12 @@ export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
     container(
       "world-corporate",
       "World Corporate Championship",
-      container(
-        "pools",
-        undefined,
-        ...CORPORATE_POOLS.map((id) =>
-          competition(
-            id,
-            undefined,
-            open,
-            swiss(7, matchOf(4, rapid(600, 5)), matchPoints, {
-              bye: byePoints(1, 2),
-              tiebreaks: [{ metric: "gamesWon" }],
-            }),
-          ),
-        ),
-      ),
-      competition(
-        "knockout",
-        undefined,
-        CORPORATE_POOLS.flatMap((pool) => top(pool, 8)),
-        cutKnockout(twoMatchTie(4, rapid(600, 5))),
-      ),
+      container("pools", undefined, ...corporatePools),
+      corporateKnockout,
       competition(
         "finals",
         undefined,
-        top("knockout", 8),
+        top(corporateKnockout, 8),
         knockout(matchOf(4, rapid(1500, 10), { tie: manualTie }), {
           thirdPlace: true,
           bye: byeAdvance,
@@ -628,28 +622,32 @@ export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
  * GRENKE: an elite double round robin and a huge open swiss — completely
  * different formats — under one roof, at the same time. Exported as a
  * COMPETITION too: the whole thing drops into the Grand Chess Tour below as
- * a tour stop, by reference.
+ * a tour stop, by reference — and the tour draws on `grenkeClassic` the
+ * value, not a name.
  */
-export const grenkeCompetition: CompetitionData = container(
+const grenkeClassic = competition(
+  "classic",
+  "GRENKE Classic",
+  seeds(6),
+  roundRobin(2, classical, gamePoints, {
+    tiebreaks: [{ metric: "sonnebornBerger" }],
+  }),
+);
+const grenkeOpen = competition(
+  "open",
+  "GRENKE Open",
+  open,
+  swiss(9, classical, gamePoints, {
+    bye: byePoints(0.5, 0.5),
+    tiebreaks: [{ metric: "buchholz" }, { metric: "sonnebornBerger" }],
+  }),
+);
+
+export const grenkeCompetition: ContainerData = container(
   "grenke",
   "GRENKE Karlsruhe",
-  competition(
-    "classic",
-    "GRENKE Classic",
-    seeds(6),
-    roundRobin(2, classical, gamePoints, {
-      tiebreaks: [{ metric: "sonnebornBerger" }],
-    }),
-  ),
-  competition(
-    "open",
-    "GRENKE Open",
-    open,
-    swiss(9, classical, gamePoints, {
-      bye: byePoints(0.5, 0.5),
-      tiebreaks: [{ metric: "buchholz" }, { metric: "sonnebornBerger" }],
-    }),
-  ),
+  grenkeClassic,
+  grenkeOpen,
 );
 
 export const grenke: ParsedEventDef = parseEventDef(
@@ -865,8 +863,17 @@ const gctFinalsMatch = seriesOf(
   { stop: { untilDecided: true }, name: "Finals match", legName: "game" },
 );
 
+const gctStops = GCT_EVENTS.map((e) =>
+  competition(
+    e.id,
+    e.name,
+    seeds(10),
+    e.kind === "classical" ? gctClassical : gctRapidBlitz,
+  ),
+);
+
 /** The competitions whose placements pay tour points — GRENKE's elite RR included. */
-const GCT_SOURCES = [...GCT_EVENTS.map((e) => e.id), "classic"];
+const gctSources = [...gctStops, grenkeClassic];
 
 /**
  * The Grand Chess Tour: whole tournaments — two classical round robins,
@@ -896,19 +903,12 @@ export const grandChessTour: ParsedEventDef = parseEventDef(
     container(
       "tour",
       "Grand Chess Tour",
-      ...GCT_EVENTS.map((e) =>
-        competition(
-          e.id,
-          e.name,
-          seeds(10),
-          e.kind === "classical" ? gctClassical : gctRapidBlitz,
-        ),
-      ),
+      ...gctStops,
       grenkeCompetition,
       competition(
         "finals",
         "GCT Finals São Paulo",
-        tourTop(GCT_SOURCES, GCT_POINTS, 4),
+        tourTop(gctSources, GCT_POINTS, 4),
         knockout(gctFinalsMatch, {
           thirdPlace: true,
           bye: byeAdvance,
