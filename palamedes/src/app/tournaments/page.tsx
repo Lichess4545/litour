@@ -27,25 +27,27 @@ export default function TournamentsPage() {
         click any composite node to fold or unfold the recursion.
       </p>
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FORMAT_EXAMPLES.map((format) => (
-          <Link
-            key={format.slug}
-            href={`/tournaments/${format.slug}`}
-            className="group focus-visible:outline-none"
-          >
-            <Card className="h-full transition-colors group-hover:border-foreground/30 group-focus-visible:ring-2 group-focus-visible:ring-ring">
-              <CardHeader>
-                <CardTitle className="text-base">{format.title}</CardTitle>
-                <CardDescription>{format.blurb}</CardDescription>
-                <p className="pt-1 text-muted-foreground text-xs">
-                  {format.def.competitors.length} competitors ·{" "}
-                  {allLeaves(format.def).length} competition
-                  {allLeaves(format.def).length === 1 ? "" : "s"}
-                </p>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+        {FORMAT_EXAMPLES.map((format) => {
+          const leafCount = allLeaves(format.def).length;
+          return (
+            <Link
+              key={format.slug}
+              href={`/tournaments/${format.slug}`}
+              className="group focus-visible:outline-none"
+            >
+              <Card className="h-full transition-colors group-hover:border-foreground/30 group-focus-visible:ring-2 group-focus-visible:ring-ring">
+                <CardHeader>
+                  <CardTitle className="text-base">{format.title}</CardTitle>
+                  <CardDescription>{format.blurb}</CardDescription>
+                  <p className="pt-1 text-muted-foreground text-xs">
+                    {format.def.competitors.length} competitors · {leafCount}{" "}
+                    competition{leafCount === 1 ? "" : "s"}
+                  </p>
+                </CardHeader>
+              </Card>
+            </Link>
+          );
+        })}
       </div>
     </main>
   );

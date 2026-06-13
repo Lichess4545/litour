@@ -1,6 +1,7 @@
 import {
   type AnyEncounterDef,
   type CompetitionDef,
+  type EntriesDef,
   isOpenEntries,
   type PoolDef,
   type SeedRef,
@@ -380,25 +381,11 @@ function concretifyPool(
   };
 }
 
-/** Every leaf id in a concrete competition's subtree (the ids seeds reference). */
-function subtreeLeafIds(comp: ConcreteCompetition, into: Set<string>): void {
-  if (comp.run.kind === "competitions") {
-    for (const child of comp.run.competitions) subtreeLeafIds(child, into);
-    return;
-  }
-  into.add(comp.id);
-}
-
-/** Every source id any leaf in the subtree draws entrants from. */
-function subtreeSources(comp: ConcreteCompetition, into: Set<string>): void {
-  if (comp.run.kind === "competitions") {
-    for (const child of comp.run.competitions) subtreeSources(child, into);
-    return;
-  }
-  for (const intake of comp.intakes) {
-    for (const source of intake.from) into.add(source);
-  }
-}
+/** Every leaf in a concrete competition's subtree (the ids seeds reference). */
+const leavesOf = (comp: ConcreteCompetition): readonly ConcreteCompetition[] =>
+  comp.run.kind === "competitions"
+    ? comp.run.competitions.flatMap(leavesOf)
+    : [comp];
 
 /**
  * Tier a container's children among themselves: a child whose subtree draws
@@ -410,18 +397,14 @@ function subtreeSources(comp: ConcreteCompetition, into: Set<string>): void {
 function withSiblingTiers(
   children: readonly ConcreteCompetition[],
 ): readonly ConcreteCompetition[] {
-  const leafSets = children.map((child) => {
-    const ids = new Set<string>();
-    subtreeLeafIds(child, ids);
-    return ids;
-  });
-  const externalSources = children.map((child, i) => {
-    const sources = new Set<string>();
-    subtreeSources(child, sources);
-    return [...sources].filter(
-      (source) => !(leafSets[i]?.has(source) ?? false),
-    );
-  });
+  const leafSets = children.map(
+    (child) => new Set(leavesOf(child).map((leaf) => leaf.id)),
+  );
+  const externalSources = children.map((child, i) =>
+    leavesOf(child)
+      .flatMap((leaf) => leaf.intakes.flatMap((intake) => intake.from))
+      .filter((source) => !(leafSets[i]?.has(source) ?? false)),
+  );
   const tiers = children.map(() => 0);
   for (let pass = 0; pass < children.length; pass += 1) {
     let changed = false;
@@ -441,14 +424,27 @@ function withSiblingTiers(
   return children.map((child, i) => ({ ...child, tier: tiers[i] ?? 0 }));
 }
 
+/** The intake's processing label: "winner", "#3", "top 8", "4 seeds". */
+function takeLabel(
+  ranks: readonly (number | undefined)[],
+  topN: boolean,
+): string | undefined {
+  if (ranks.length !== 1) {
+    return topN ? `top ${ranks.length}` : `${ranks.length} seeds`;
+  }
+  const [only] = ranks;
+  if (only === undefined) return undefined;
+  return only === 1 ? "winner" : `#${only}`;
+}
+
 function concretifyLeaf(
   comp: CompetitionDef,
   run: PoolDef | AnyEncounterDef,
+  entries: EntriesDef,
   def: ParsedEventDef,
   registry: ModelRegistry,
   nameOf: (id: string) => string,
 ): ConcreteCompetition {
-  const entries = comp.entries ?? { open: true };
   const open = isOpenEntries(entries);
   const entrants = open ? ("open" as const) : entries.length;
   const entrantsLine = open ? "open entry" : `${entrants} entrants`;
@@ -513,7 +509,6 @@ function concretifyLeaf(
   for (const [sourceId, source] of bySource) {
     const sorted = source.ranks.flatMap((r) => (r === undefined ? [] : [r]));
     sorted.sort((x, y) => x - y);
-    const [only] = source.ranks;
     const topN =
       sorted.length === source.ranks.length &&
       sorted.every((rank, i) => rank === i + 1);
@@ -526,16 +521,7 @@ function concretifyLeaf(
         lines: [],
       },
       from: [sourceId],
-      take:
-        source.ranks.length === 1
-          ? only === 1
-            ? "winner"
-            : only !== undefined
-              ? `#${only}`
-              : undefined
-          : topN
-            ? `top ${source.ranks.length}`
-            : `${source.ranks.length} seeds`,
+      take: takeLabel(source.ranks, topN),
     });
   }
   [...aggregations.values()].forEach((acc, i) => {
@@ -601,6 +587,17 @@ function concretifyLeaf(
   };
 }
 
+/** One line of a container card: a child and its field size. */
+function sizeLine(child: ConcreteCompetition): string {
+  if (child.entrants === "open") return `${child.id} · open entry`;
+  if (child.entrants !== undefined) {
+    return `${child.id} · ${child.entrants} entrants`;
+  }
+  const count =
+    child.run.kind === "competitions" ? child.run.competitions.length : 0;
+  return `${child.id} · ${count} competitions`;
+}
+
 function concretifyCompetition(
   comp: CompetitionDef,
   def: ParsedEventDef,
@@ -609,7 +606,14 @@ function concretifyCompetition(
 ): ConcreteCompetition {
   const run = comp.run;
   if (!isContainer(run)) {
-    return concretifyLeaf(comp, run, def, registry, nameOf);
+    const entries = comp.entries;
+    if (entries === undefined) {
+      // Parsed defs guarantee entries on every leaf.
+      throw new Error(
+        `competition ${comp.id} has no entries — the def was not parsed`,
+      );
+    }
+    return concretifyLeaf(comp, run, entries, def, registry, nameOf);
   }
   const children = withSiblingTiers(
     run.competitions.map((child) =>
@@ -625,15 +629,7 @@ function concretifyCompetition(
       kind: "competitions",
       title,
       badge: `${children.length} competitions`,
-      lines: children.map((child) => {
-        const size =
-          child.entrants === undefined
-            ? `${child.run.kind === "competitions" ? child.run.competitions.length : 0} competitions`
-            : child.entrants === "open"
-              ? "open entry"
-              : `${child.entrants} entrants`;
-        return `${child.id} · ${size}`;
-      }),
+      lines: children.map(sizeLine),
     },
     intakes: [],
     tier: 0,

@@ -68,12 +68,20 @@ export class EventRun {
   }
 
   submit(input: Input): this {
+    // Compare error counts, not just the last index: a correction can
+    // retroactively orphan an EARLIER pairing input, and a test should
+    // never silently lose a move.
+    const before = this.state().errors.length;
     this.log.push(input);
     const state = this.state();
-    const error = state.errors.find((e) => e.index === this.log.length - 1);
-    if (error !== undefined) {
+    const fresh = state.errors.slice(before);
+    if (fresh.length > 0) {
       throw new Error(
-        `input ${error.index} (${input.kind}) rejected: ${error.reason}`,
+        fresh
+          .map(
+            (e) => `input ${e.index} (${e.input.kind}) rejected: ${e.reason}`,
+          )
+          .join("; "),
       );
     }
     return this;
@@ -105,7 +113,7 @@ export class EventRun {
 
   private solePoolPath(): NodePath {
     const pools = allLeaves(this.def)
-      .filter((ref) => isPool(ref.comp.run))
+      .filter((ref) => isPool(ref.run))
       .map((ref) => ref.path);
     const sole = pools[0];
     if (sole === undefined) throw new Error("event has no pool");

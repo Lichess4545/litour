@@ -105,6 +105,10 @@ export const seedsFrom = (start: number, count: number): readonly SeedData[] =>
     seed: start + i,
   }));
 
+/** Specific registration slots (split groups: 1, 4, 5). */
+export const seedsAt = (...ns: readonly number[]): readonly SeedData[] =>
+  ns.map((seed) => ({ kind: "registration", seed }));
+
 /** Ranks 1..count of a finished competition ("the top 16 advance"). */
 export const top = (of: string, count: number): readonly SeedData[] =>
   ranks(of, ...Array.from({ length: count }, (_, i) => i + 1));

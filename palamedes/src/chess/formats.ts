@@ -21,9 +21,9 @@ import {
   pointsTable,
   ranks,
   roundRobin,
-  type SeedData,
   sameSeats,
   seeds,
+  seedsAt,
   seedsFrom,
   seriesOf,
   swiss,
@@ -62,9 +62,6 @@ const team = (id: string, name: string, boards: number) => ({
   name,
   roster: Array.from({ length: boards }, (_, i) => `${id}${i + 1}`),
 });
-
-const seedNos = (...ns: readonly number[]): readonly SeedData[] =>
-  ns.map((seed) => ({ kind: "registration", seed }));
 
 // ---------------------------------------------------------------------------
 
@@ -345,6 +342,12 @@ export const wuccKnockoutUpfront: ParsedEventDef = wuccKnockout(
  * knockout (A1 vs B2, B1 vs A2) with a third-place playoff — the WUCC/FIDE
  * Corporate shape.
  */
+/** Both qualifying groups run the same regulation — one definition, shared. */
+const miniGroupRR = roundRobin(1, rapid(900, 10), gamePoints, {
+  bye: byePoints(0, 0),
+  tiebreaks: [{ metric: "sonnebornBerger" }],
+});
+
 export const miniChampionship: ParsedEventDef = parseEventDef(
   event(
     "mini-championship",
@@ -356,24 +359,8 @@ export const miniChampionship: ParsedEventDef = parseEventDef(
       container(
         "groups",
         undefined,
-        competition(
-          "a",
-          undefined,
-          seedNos(1, 4, 5),
-          roundRobin(1, rapid(900, 10), gamePoints, {
-            bye: byePoints(0, 0),
-            tiebreaks: [{ metric: "sonnebornBerger" }],
-          }),
-        ),
-        competition(
-          "b",
-          undefined,
-          seedNos(2, 3, 6),
-          roundRobin(1, rapid(900, 10), gamePoints, {
-            bye: byePoints(0, 0),
-            tiebreaks: [{ metric: "sonnebornBerger" }],
-          }),
-        ),
+        competition("a", undefined, seedsAt(1, 4, 5), miniGroupRR),
+        competition("b", undefined, seedsAt(2, 3, 6), miniGroupRR),
       ),
       competition(
         "ko",
@@ -853,26 +840,26 @@ const gctRapidBlitz = roundRobin(
  * blitz worth 2/1, and armageddon if the weighted points are still level —
  * the weighting is just per-game point schedules summing up the series.
  */
+const finalsClassical = game(
+  { initial: 5400, increment: 30 },
+  { name: "Classical", points: { win: 6, draw: 3, loss: 0 } },
+);
+const finalsRapid = game(
+  { initial: 1500, increment: 10 },
+  { name: "Rapid", points: { win: 4, draw: 2, loss: 0 } },
+);
+const finalsBlitz = game(
+  { initial: 300, increment: 3 },
+  { name: "Blitz", points: { win: 2, draw: 1, loss: 0 } },
+);
 const gctFinalsMatch = seriesOf(
   [
-    ...Array.from({ length: 2 }, () =>
-      game(
-        { initial: 5400, increment: 30 },
-        { name: "Classical", points: { win: 6, draw: 3, loss: 0 } },
-      ),
-    ),
-    ...Array.from({ length: 2 }, () =>
-      game(
-        { initial: 1500, increment: 10 },
-        { name: "Rapid", points: { win: 4, draw: 2, loss: 0 } },
-      ),
-    ),
-    ...Array.from({ length: 2 }, () =>
-      game(
-        { initial: 300, increment: 3 },
-        { name: "Blitz", points: { win: 2, draw: 1, loss: 0 } },
-      ),
-    ),
+    finalsClassical,
+    finalsClassical,
+    finalsRapid,
+    finalsRapid,
+    finalsBlitz,
+    finalsBlitz,
     armageddon,
   ],
   { stop: { untilDecided: true }, name: "Finals match", legName: "game" },

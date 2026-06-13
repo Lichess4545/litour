@@ -326,11 +326,17 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     null,
   );
   const focusRef = useRef<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `graph` is the intentional trigger — refocus after every layout reflow, not only when the flow instance appears.
   useEffect(() => {
+    if (flow === null) return;
     const focus = focusRef.current;
+    if (focus === null) return;
+    // Only fit to a target the committed layout actually contains — reading
+    // the graph is what makes it an honest dependency (the effect exists to
+    // re-run after every layout reflow).
+    if (focus !== "*" && !graph.nodes.some((node) => node.id === focus)) {
+      return;
+    }
     focusRef.current = null;
-    if (flow === null || focus === null) return;
     const frame = requestAnimationFrame(() => {
       void (focus === "*"
         ? flow.fitView({ padding: 0.15, duration: 400 })
@@ -393,8 +399,6 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     [graph],
   );
 
-  if (!mounted) return <div className="h-full min-h-0" />;
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-2">
@@ -415,59 +419,63 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
         </span>
       </div>
       <div className="min-h-0 flex-1">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onInit={setFlow}
-          fitView
-          fitViewOptions={{ padding: 0.15 }}
-          minZoom={0.05}
-          nodesConnectable={false}
-          onNodeClick={(_, node) => {
-            if (graph.collapsibles.has(node.id)) {
-              focusRef.current = node.id;
-              setExpanded((prev) => {
-                const next = new Set(prev);
-                next.delete(node.id);
-                return next;
-              });
-            } else if (graph.expandables.has(node.id)) {
-              focusRef.current = node.id;
-              setExpanded((prev) => new Set(prev).add(node.id));
-            }
-          }}
-          proOptions={{ hideAttribution: false }}
-        >
-          {/* Blueprint paper: fine grid plus stronger major lines. */}
-          <Background
-            id="grid-minor"
-            variant={BackgroundVariant.Lines}
-            gap={24}
-            color="#dbeafe"
-            bgColor="#eff6ff"
-          />
-          <Background
-            id="grid-major"
-            variant={BackgroundVariant.Lines}
-            gap={120}
-            color="#bfdbfe"
-          />
-          <Controls showInteractive={false} />
-          <MiniMap
-            pannable
-            zoomable
-            className="!h-44 !w-64 rounded-lg border"
-            nodeStrokeWidth={4}
-            nodeColor={(node) =>
-              node.type === "frame" ? "rgba(99, 102, 241, 0.10)" : "#94a3b8"
-            }
-            nodeStrokeColor={(node) =>
-              node.type === "frame" ? "#818cf8" : "#64748b"
-            }
-            maskColor="rgba(148, 163, 184, 0.25)"
-          />
-        </ReactFlow>
+        {/* The canvas depends on measured container size: mount-gated, while
+            the toolbar shell renders identically on server and client. */}
+        {mounted ? (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onInit={setFlow}
+            fitView
+            fitViewOptions={{ padding: 0.15 }}
+            minZoom={0.05}
+            nodesConnectable={false}
+            onNodeClick={(_, node) => {
+              if (graph.collapsibles.has(node.id)) {
+                focusRef.current = node.id;
+                setExpanded((prev) => {
+                  const next = new Set(prev);
+                  next.delete(node.id);
+                  return next;
+                });
+              } else if (graph.expandables.has(node.id)) {
+                focusRef.current = node.id;
+                setExpanded((prev) => new Set(prev).add(node.id));
+              }
+            }}
+            proOptions={{ hideAttribution: false }}
+          >
+            {/* Blueprint paper: fine grid plus stronger major lines. */}
+            <Background
+              id="grid-minor"
+              variant={BackgroundVariant.Lines}
+              gap={24}
+              color="#dbeafe"
+              bgColor="#eff6ff"
+            />
+            <Background
+              id="grid-major"
+              variant={BackgroundVariant.Lines}
+              gap={120}
+              color="#bfdbfe"
+            />
+            <Controls showInteractive={false} />
+            <MiniMap
+              pannable
+              zoomable
+              className="!h-44 !w-64 rounded-lg border"
+              nodeStrokeWidth={4}
+              nodeColor={(node) =>
+                node.type === "frame" ? "rgba(99, 102, 241, 0.10)" : "#94a3b8"
+              }
+              nodeStrokeColor={(node) =>
+                node.type === "frame" ? "#818cf8" : "#64748b"
+              }
+              maskColor="rgba(148, 163, 184, 0.25)"
+            />
+          </ReactFlow>
+        ) : null}
       </div>
     </div>
   );

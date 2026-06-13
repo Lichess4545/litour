@@ -10,6 +10,7 @@ import {
   type ConcreteRoundsRun,
   manyList,
 } from "@/tournament/concrete";
+import { assertNever } from "@/tournament/core";
 
 /**
  * Layout only: project the concrete structure (`@/tournament/concrete`) onto
@@ -144,13 +145,9 @@ const card = (
 });
 
 /** The card face of a non-encounter concrete card (scoring, standings, …). */
-const plainCard = (
-  concrete: ConcreteCard,
-  options?: { step?: boolean; drill?: boolean },
-): FlowCardData =>
+const plainCard = (concrete: ConcreteCard): FlowCardData =>
   card(concrete.kind, concrete.title, concrete.lines, {
     badge: concrete.badge,
-    ...options,
   });
 
 /** The card face of one concrete node, with an optional leading label line. */
@@ -353,18 +350,6 @@ function iconItem(
   );
 }
 
-/** A run of identical siblings: one ×N card, unfoldable to the full list. */
-function foldedRun(
-  id: string,
-  face: FlowCardData,
-  title: string,
-  buildAll: () => Sub,
-  expanded: ReadonlySet<string>,
-): Sub {
-  if (!expanded.has(id)) return cardSub(id, face);
-  return frameSub(id, title, buildAll(), true);
-}
-
 /** Items fold when at least this many identical siblings repeat. */
 const FOLD_AT = 4;
 
@@ -411,6 +396,9 @@ export function buildGraph(
         return `s:${id}/run`;
       case "competitions":
         return `s:${id}`;
+      default:
+        // A missed run kind would silently drop seed edges.
+        return assertNever(spot.runKind);
     }
   };
 
@@ -633,193 +621,190 @@ function poolLaneSub(
     prev = to;
   };
 
-  {
-    const rounds = manyList(run.rounds);
-    const roundItem = (
-      round: ConcreteRound,
-      ghost: boolean,
-      i: number,
-    ): Sub => {
-      const roundId = `${pid}/r${i + 1}`;
-      return ghost
-        ? cardSub(
-            roundId,
-            card("round", round.label, [], { step: true, ghost: true }),
-          )
-        : item(
-            roundId,
-            round.label,
-            card("round", round.label, [], { drill: true, step: true }),
-            () => roundSub(round, roundId, expanded),
-            expanded,
-          );
-    };
-    // Standings update and re-pairing happen between EVERY round; after the
-    // last round only the standings remain. Both render as icons — the
-    // between one wears the pairing system's icon.
-    const processIcon = (last: boolean, processId: string): Sub =>
-      iconItem(
-        processId,
-        last
-          ? {
-              kind: "standings",
-              title: "Final standings",
-              badge: undefined,
-              lines: [],
-            }
-          : {
-              kind: run.between.repair?.kind ?? "standings",
-              title: "standings · pair next round",
-              badge: undefined,
-              lines: [],
-            },
-        expanded,
-        () => processSub(last ? run.final : run.between, processId, expanded),
-      );
-
-    // Identical rounds fold into one ×N step whose repeating unit INCLUDES
-    // the between-rounds process: collapsed, the process icon loops back to
-    // the rounds ("next round"); unfolded, the full interleaved chain shows.
-    const signature = (round: ConcreteRound): string =>
-      JSON.stringify({ ...round, label: "" });
-    const firstRound = rounds[0];
-    const uniform =
-      firstRound !== undefined &&
-      rounds.length >= FOLD_AT &&
-      rounds.every(
-        ({ item: round, ghost }) =>
-          !ghost && signature(round) === signature(firstRound.item),
-      );
-    if (uniform) {
-      const lastRound = rounds[rounds.length - 1];
-      const runId = `${pid}/rs`;
-      const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
-      const finalId = `${pid}/out`;
-      if (!expanded.has(runId)) {
-        // The cycle, drawn as one: rounds above, standings·pair below,
-        // joined right and left into a circle; ×N rides the return arc.
-        const betweenId = `${pid}/between`;
-        const stack = column(
-          [
-            cardSub(
-              runId,
-              card("round", range, [], { drill: true, step: true }),
-            ),
-            processIcon(false, betweenId),
-          ],
-          GAP,
-          "center",
+  const rounds = manyList(run.rounds);
+  const roundItem = (round: ConcreteRound, ghost: boolean, i: number): Sub => {
+    const roundId = `${pid}/r${i + 1}`;
+    return ghost
+      ? cardSub(
+          roundId,
+          card("round", round.label, [], { step: true, ghost: true }),
+        )
+      : item(
+          roundId,
+          round.label,
+          card("round", round.label, [], { drill: true, step: true }),
+          () => roundSub(round, roundId, expanded),
+          expanded,
         );
-        items.push(stack);
-        connect(runId);
-        loops.push(
-          {
-            id: `c:${runId}->${betweenId}`,
-            source: runId,
-            target: betweenId,
-            fromHandle: "r",
-            toHandle: "ri",
-            kind: "chain",
-          },
-          {
-            id: `c:${betweenId}->${runId}`,
-            source: betweenId,
-            target: runId,
-            label: `×${rounds.length}`,
-            fromHandle: "lo",
-            toHandle: "l",
-            kind: "chain",
-          },
-          {
-            id: `c:${betweenId}->${finalId}`,
-            source: betweenId,
-            target: finalId,
-            fromHandle: "r",
-            toHandle: "l",
-            kind: "chain",
-          },
-        );
-        // The final standings sit after the cycle; the exit edge above is
-        // the connection.
-        items.push(processIcon(true, finalId));
-        prev = finalId;
-      } else {
-        items.push(
-          frameSub(
-            runId,
-            `${range} ×${rounds.length}`,
-            (() => {
-              const chainIds: string[] = [];
-              const pieces: Sub[] = [];
-              rounds.forEach(({ item: round, ghost }, i) => {
-                chainIds.push(`${pid}/r${i + 1}`);
-                pieces.push(roundItem(round, ghost, i));
-                if (i < rounds.length - 1) {
-                  const betweenId = `${pid}/after${i + 1}`;
-                  chainIds.push(betweenId);
-                  pieces.push(processIcon(false, betweenId));
-                }
-              });
-              const chain = row(pieces, GAP);
-              const chainEdges: FlowGraphEdge[] = chainIds
-                .slice(1)
-                .map((target, i) => ({
-                  id: `c:${chainIds[i] ?? ""}->${target}`,
-                  source: chainIds[i] ?? "",
-                  target,
-                  fromHandle: "r" as const,
-                  toHandle: "l" as const,
-                  kind: "chain" as const,
-                }));
-              return { ...chain, edges: [...chain.edges, ...chainEdges] };
-            })(),
-            true,
-          ),
-        );
-        connect(runId);
-        items.push(processIcon(true, finalId));
-        connect(finalId);
-      }
-    } else {
-      rounds.forEach(({ item: round, ghost }, i) => {
-        const roundId = `${pid}/r${i + 1}`;
-        const prevRoundId = `${pid}/r${i}`;
-        items.push(roundItem(round, ghost, i));
-        const bracket = i > 0 && round.inflows !== undefined;
-        if (
-          bracket &&
-          expanded.has(prevRoundId) &&
-          expanded.has(roundId) &&
-          round.inflows !== undefined
-        ) {
-          // Both rounds open: draw the bracket — winners (and losers, for
-          // the bronze) flow pairing-to-pairing.
-          for (const flow of round.inflows) {
-            for (const from of flow.from) {
-              loops.push({
-                id: `b:${prevRoundId}/p${from.pair}->${roundId}/p${flow.pair}`,
-                source: `${prevRoundId}/p${from.pair}`,
-                target: `${roundId}/p${flow.pair}`,
-                label: from.take,
-                fromHandle: "r",
-                toHandle: "l",
-                kind: "chain",
-              });
-            }
+  };
+  // Standings update and re-pairing happen between EVERY round; after the
+  // last round only the standings remain. Both render as icons — the
+  // between one wears the pairing system's icon.
+  const processIcon = (last: boolean, processId: string): Sub =>
+    iconItem(
+      processId,
+      last
+        ? {
+            kind: "standings",
+            title: "Final standings",
+            badge: undefined,
+            lines: [],
           }
-          prev = roundId;
-        } else {
-          connect(roundId);
-        }
-        const last = i === rounds.length - 1;
-        const nextBracket = rounds[i + 1]?.item.inflows !== undefined;
-        if (last || !nextBracket) {
-          const processId = last ? `${pid}/out` : `${pid}/after${i + 1}`;
-          items.push(processIcon(last, processId));
-          connect(processId);
-        }
-      });
+        : {
+            kind: run.between.repair?.kind ?? "standings",
+            title: "standings · pair next round",
+            badge: undefined,
+            lines: [],
+          },
+      expanded,
+      () => processSub(last ? run.final : run.between, processId, expanded),
+    );
+
+  // Identical rounds fold into one ×N step whose repeating unit INCLUDES
+  // the between-rounds process: collapsed, the process icon loops back to
+  // the rounds ("next round"); unfolded, the full interleaved chain shows.
+  const signature = (round: ConcreteRound): string =>
+    JSON.stringify({ ...round, label: "" });
+  const firstRound = rounds[0];
+  const uniform =
+    firstRound !== undefined &&
+    rounds.length >= FOLD_AT &&
+    rounds.every(
+      ({ item: round, ghost }) =>
+        !ghost && signature(round) === signature(firstRound.item),
+    );
+  if (uniform) {
+    const lastRound = rounds[rounds.length - 1];
+    const runId = `${pid}/rs`;
+    const range = `${firstRound.item.label} … ${lastRound?.item.label ?? ""}`;
+    const finalId = `${pid}/out`;
+    if (!expanded.has(runId)) {
+      // The cycle, drawn as one: rounds above, standings·pair below,
+      // joined right and left into a circle; ×N rides the return arc.
+      const betweenId = `${pid}/between`;
+      const stack = column(
+        [
+          cardSub(runId, card("round", range, [], { drill: true, step: true })),
+          processIcon(false, betweenId),
+        ],
+        GAP,
+        "center",
+      );
+      items.push(stack);
+      connect(runId);
+      loops.push(
+        {
+          id: `c:${runId}->${betweenId}`,
+          source: runId,
+          target: betweenId,
+          fromHandle: "r",
+          toHandle: "ri",
+          kind: "chain",
+        },
+        {
+          id: `c:${betweenId}->${runId}`,
+          source: betweenId,
+          target: runId,
+          label: `×${rounds.length}`,
+          fromHandle: "lo",
+          toHandle: "l",
+          kind: "chain",
+        },
+        {
+          id: `c:${betweenId}->${finalId}`,
+          source: betweenId,
+          target: finalId,
+          fromHandle: "r",
+          toHandle: "l",
+          kind: "chain",
+        },
+      );
+      // The final standings sit after the cycle; the exit edge above is
+      // the connection.
+      items.push(processIcon(true, finalId));
+      prev = finalId;
+    } else {
+      items.push(
+        frameSub(
+          runId,
+          `${range} ×${rounds.length}`,
+          (() => {
+            const chainIds: string[] = [];
+            const pieces: Sub[] = [];
+            rounds.forEach(({ item: round, ghost }, i) => {
+              chainIds.push(`${pid}/r${i + 1}`);
+              pieces.push(roundItem(round, ghost, i));
+              if (i < rounds.length - 1) {
+                const betweenId = `${pid}/after${i + 1}`;
+                chainIds.push(betweenId);
+                pieces.push(processIcon(false, betweenId));
+              }
+            });
+            const chain = row(pieces, GAP);
+            const chainEdges: FlowGraphEdge[] = chainIds.flatMap(
+              (source, i) => {
+                const target = chainIds[i + 1];
+                if (target === undefined) return [];
+                return [
+                  {
+                    id: `c:${source}->${target}`,
+                    source,
+                    target,
+                    fromHandle: "r" as const,
+                    toHandle: "l" as const,
+                    kind: "chain" as const,
+                  },
+                ];
+              },
+            );
+            return { ...chain, edges: [...chain.edges, ...chainEdges] };
+          })(),
+          true,
+        ),
+      );
+      connect(runId);
+      items.push(processIcon(true, finalId));
+      connect(finalId);
     }
+  } else {
+    rounds.forEach(({ item: round, ghost }, i) => {
+      const roundId = `${pid}/r${i + 1}`;
+      const prevRoundId = `${pid}/r${i}`;
+      items.push(roundItem(round, ghost, i));
+      const bracket = i > 0 && round.inflows !== undefined;
+      if (
+        bracket &&
+        expanded.has(prevRoundId) &&
+        expanded.has(roundId) &&
+        round.inflows !== undefined
+      ) {
+        // Both rounds open: draw the bracket — winners (and losers, for
+        // the bronze) flow pairing-to-pairing.
+        for (const flow of round.inflows) {
+          for (const from of flow.from) {
+            loops.push({
+              id: `b:${prevRoundId}/p${from.pair}->${roundId}/p${flow.pair}`,
+              source: `${prevRoundId}/p${from.pair}`,
+              target: `${roundId}/p${flow.pair}`,
+              label: from.take,
+              fromHandle: "r",
+              toHandle: "l",
+              kind: "chain",
+            });
+          }
+        }
+        prev = roundId;
+      } else {
+        connect(roundId);
+      }
+      const last = i === rounds.length - 1;
+      const nextBracket = rounds[i + 1]?.item.inflows !== undefined;
+      if (last || !nextBracket) {
+        const processId = last ? `${pid}/out` : `${pid}/after${i + 1}`;
+        items.push(processIcon(last, processId));
+        connect(processId);
+      }
+    });
   }
 
   const laid = row(items, GAP);
@@ -901,13 +886,13 @@ function roundSub(
     const last = pairings[pairings.length - 1];
     const runId = `${pid}/ps`;
     const range = `${first.item.label} … ${last?.item.label ?? ""}`;
-    stack = foldedRun(
+    stack = item(
       runId,
+      `${range} ×${pairings.length}`,
       {
         ...nodeCard(first.item.node, range, { drill: true }),
         count: pairings.length,
       },
-      `${range} ×${pairings.length}`,
       () =>
         column(
           pairings.map(({ item: pairing, ghost }, i) =>

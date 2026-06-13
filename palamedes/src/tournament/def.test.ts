@@ -263,6 +263,32 @@ describe("parseEventDef", () => {
     ).toContain("exceeds the 2 points reachable");
   });
 
+  it("reports a malformed seed entry as issues instead of throwing (roster pass)", () => {
+    // A team-shaped leaf forces the roster-need pass over the entries; the
+    // second entry passes the outer { kind } shape but fails its kind schema.
+    const data = baseEvent({
+      competitors: [
+        { id: "a", name: "A", roster: ["a1", "a2"] },
+        { id: "b", name: "B", roster: ["b1", "b2"] },
+      ],
+      competition: {
+        id: "g",
+        entries: [
+          { kind: "registration", seed: 1 },
+          { kind: "rank", of: "elsewhere" }, // missing rank
+        ],
+        run: {
+          kind: "match",
+          boards: 2,
+          board: { kind: "game", clock: { initial: 300, increment: 2 } },
+          seats: { cycle: ["keep", "flip"] },
+        },
+      },
+    });
+    expect(() => safeParseEventDef(data)).not.toThrow();
+    expect(safeParseEventDef(data).success).toBe(false);
+  });
+
   it("rejects rosters smaller than the deepest match", () => {
     const messages = failureMessages(
       baseEvent({

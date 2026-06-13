@@ -1,9 +1,11 @@
 import {
   type AnyEncounterDef,
+  assertNever,
   type Clock,
   type CompetitionDef,
   type CompetitorId,
   compRootPath,
+  type EntriesDef,
   type EventDef,
   type GameResultCode,
   type Input,
@@ -168,11 +170,40 @@ function staleEntrant(
 // ---------------------------------------------------------------------------
 // Definition lookups and entrant resolution
 
-/** A competition plus its node path (meaningful for leaves; ids are flat). */
+/** A leaf's runnable rule: a pool or an encounter — never sub-competitions. */
+export type LeafRun = PoolDef | AnyEncounterDef;
+
+/** Any competition — leaf or container — plus its node path. */
 export type CompRef = {
   readonly comp: CompetitionDef;
   readonly path: NodePath;
 };
+
+/**
+ * A leaf with its parse-time guarantees carried in the type: a runnable run
+ * and present entries. Everything past the lookup seam consumes this proof
+ * instead of re-checking it.
+ */
+export type LeafRef = {
+  readonly comp: CompetitionDef;
+  readonly run: LeafRun;
+  readonly entries: EntriesDef;
+  readonly path: NodePath;
+};
+
+function asLeaf(ref: CompRef): LeafRef | undefined {
+  const run = ref.comp.run;
+  if (isContainer(run)) return undefined;
+  const entries = ref.comp.entries;
+  if (entries === undefined) {
+    // Parsed defs guarantee entries on every leaf; reaching this means the
+    // def skipped parseEventDef.
+    throw new Error(
+      `competition ${ref.comp.id} has no entries — the def was not parsed`,
+    );
+  }
+  return { comp: ref.comp, run, entries, path: ref.path };
+}
 
 /** Any competition — leaf or container — by its globally-unique id. */
 export function findCompetition(
@@ -188,30 +219,34 @@ export function findCompetition(
 }
 
 /** Every leaf, in definition order; containers contribute only their children. */
-export function allLeaves(def: EventDef): readonly CompRef[] {
-  const leaves: CompRef[] = [];
+export function allLeaves(def: EventDef): readonly LeafRef[] {
+  const leaves: LeafRef[] = [];
   const walk = (comp: CompetitionDef): void => {
     if (isContainer(comp.run)) {
       for (const child of comp.run.competitions) walk(child);
       return;
     }
-    leaves.push({ comp, path: compRootPath(comp.id) });
+    const leaf = asLeaf({ comp, path: compRootPath(comp.id) });
+    if (leaf !== undefined) leaves.push(leaf);
   };
   walk(def.competition);
   return leaves;
 }
 
-function compAt(state: StateView, path: NodePath): CompRef | string {
+function leafById(state: StateView, id: string): LeafRef | string {
+  const found = findCompetition(state.def, id);
+  if (found === undefined) return `unknown competition ${id}`;
+  return (
+    asLeaf(found) ?? `${id} is a container; only leaf competitions hold nodes`
+  );
+}
+
+function compAt(state: StateView, path: NodePath): LeafRef | string {
   const [compSeg, ...rest] = pathSegments(path);
   if (rest.length > 0 || compSeg?.kind !== "comp") {
     return `expected a comp-<id> path, got ${path}`;
   }
-  const ref = findCompetition(state.def, compSeg.id);
-  if (ref === undefined) return `unknown competition ${compSeg.id}`;
-  if (isContainer(ref.comp.run)) {
-    return `${compSeg.id} is a container; only leaf competitions hold nodes`;
-  }
-  return ref;
+  return leafById(state, compSeg.id);
 }
 
 /**
@@ -220,21 +255,25 @@ function compAt(state: StateView, path: NodePath): CompRef | string {
  */
 export function resolveEntrants(
   state: StateView,
-  ref: CompRef,
+  ref: LeafRef,
 ): readonly CompetitorId[] | undefined {
-  const entries = ref.comp.entries;
   // Open leaves have no field until registration binds one.
-  if (entries === undefined || isOpenEntries(entries)) return undefined;
+  if (isOpenEntries(ref.entries)) return undefined;
   const entrants: CompetitorId[] = [];
-  for (const entry of entries) {
+  for (const entry of ref.entries) {
     const kind = state.registry.seeds.get(entry.kind);
-    if (kind === undefined) return undefined;
+    if (kind === undefined) {
+      throw new Error(
+        `unknown seed kind "${entry.kind}" — the def was not parsed against this registry`,
+      );
+    }
     const id = kind.resolve(entry, {
       competitors: state.def.competitors,
       ranking: (of) => {
         const source = findCompetition(state.def, of);
         if (source === undefined) return undefined;
-        return rankingOf(state, source);
+        const leaf = asLeaf(source);
+        return leaf === undefined ? undefined : rankingOf(state, leaf);
       },
     });
     if (id === undefined) return undefined;
@@ -256,10 +295,9 @@ export function totalRoundsOf(
 /** Final order of a completed leaf: standings for pools, [winner, loser] for encounters (entry order on a draw). */
 export function rankingOf(
   state: StateView,
-  ref: CompRef,
+  ref: LeafRef,
 ): readonly CompetitorId[] | undefined {
-  const run = ref.comp.run;
-  if (isContainer(run)) return undefined; // containers rank nothing themselves
+  const run = ref.run;
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) return undefined;
 
@@ -368,18 +406,10 @@ function resolveNode(state: StateView, path: NodePath): Resolved {
   if (compSeg?.kind !== "comp") {
     return { ok: false, reason: `path must start with comp-<id>: ${path}` };
   }
-  const found = findCompetition(state.def, compSeg.id);
-  if (found === undefined) {
-    return { ok: false, reason: `unknown competition ${compSeg.id}` };
-  }
-  const run = found.comp.run;
-  if (isContainer(run)) {
-    return {
-      ok: false,
-      reason: `${compSeg.id} is a container; only leaf competitions hold nodes`,
-    };
-  }
-  const ref = found;
+  const refOr = leafById(state, compSeg.id);
+  if (typeof refOr === "string") return { ok: false, reason: refOr };
+  const ref = refOr;
+  const run = ref.run;
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
     return {
@@ -543,7 +573,7 @@ function applyInput(state: MutableState, input: Input): string | undefined {
       if (segments.length === 1) {
         const ref = compAt(state, input.node);
         if (typeof ref === "string") return ref;
-        if (isPool(ref.comp.run)) {
+        if (isPool(ref.run)) {
           return "pool pairings assign colors; colorDraw applies to root encounters and drawn child seats";
         }
         state.colorDraws.set(input.node, input.whiteSeat);
@@ -578,6 +608,10 @@ function applyInput(state: MutableState, input: Input): string | undefined {
       state.forfeits.set(input.node, input.winner);
       return undefined;
     }
+
+    default:
+      // `undefined` means ACCEPTED, so a missed variant must not fall through.
+      return assertNever(input);
   }
 }
 
@@ -587,8 +621,8 @@ function applyPairingsSet(
 ): string | undefined {
   const ref = compAt(state, input.pool);
   if (typeof ref === "string") return ref;
-  if (!isPool(ref.comp.run)) return `${input.pool} is not a pool`;
-  const pool = ref.comp.run;
+  if (!isPool(ref.run)) return `${input.pool} is not a pool`;
+  const pool = ref.run;
 
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
@@ -684,8 +718,6 @@ export function nextActions(state: EventState): readonly Action[] {
   let allComplete = true;
 
   for (const ref of allLeaves(state.def)) {
-    const run = ref.comp.run;
-    if (isContainer(run)) continue; // unreachable: allLeaves yields leaves
     const entrants = resolveEntrants(state, ref);
     if (entrants === undefined) {
       actions.push({ kind: "awaitSeeding", competition: ref.comp.id });
@@ -695,12 +727,12 @@ export function nextActions(state: EventState): readonly Action[] {
     if (rankingOf(state, ref) !== undefined) continue;
     allComplete = false;
 
-    if (isPool(run)) {
-      collectPoolActions(state, ref, run, entrants, actions);
+    if (isPool(ref.run)) {
+      collectPoolActions(state, ref, ref.run, entrants, actions);
     } else {
       const sides = rootSides(entrants);
       if (sides === undefined) continue;
-      const node = evalRoot(state, run, ref.path, sides);
+      const node = evalRoot(state, ref.run, ref.path, sides);
       collectNodeActions(node, sides, undefined, actions);
     }
   }
@@ -720,11 +752,15 @@ function eventWinner(state: EventState): CompetitorId | undefined {
   const leaves = allLeaves(state.def);
   const sources = new Set<string>();
   for (const ref of leaves) {
-    const entries = ref.comp.entries;
-    if (entries === undefined || isOpenEntries(entries)) continue;
-    for (const entry of entries) {
+    if (isOpenEntries(ref.entries)) continue;
+    for (const entry of ref.entries) {
       const kind = state.registry.seeds.get(entry.kind);
-      for (const origin of kind?.origins?.(entry) ?? []) {
+      if (kind === undefined) {
+        throw new Error(
+          `unknown seed kind "${entry.kind}" — the def was not parsed against this registry`,
+        );
+      }
+      for (const origin of kind.origins?.(entry) ?? []) {
         sources.add(origin.of);
       }
     }
@@ -732,13 +768,12 @@ function eventWinner(state: EventState): CompetitorId | undefined {
   const sinks = leaves.filter((ref) => !sources.has(ref.comp.id));
   const sink = sinks[0];
   if (sinks.length !== 1 || sink === undefined) return undefined;
-  const run = sink.comp.run;
-  if (!isContainer(run) && !isPool(run)) {
+  if (!isPool(sink.run)) {
     // A drawn deciding match has no champion even though the event is over.
     const entrants = resolveEntrants(state, sink);
     const sides = entrants === undefined ? undefined : rootSides(entrants);
     if (sides === undefined) return undefined;
-    const d = evalRoot(state, run, sink.path, sides).outcome.decision;
+    const d = evalRoot(state, sink.run, sink.path, sides).outcome.decision;
     if (d.kind !== "win") return undefined;
   }
   return rankingOf(state, sink)?.[0];
@@ -746,7 +781,7 @@ function eventWinner(state: EventState): CompetitorId | undefined {
 
 function collectPoolActions(
   state: EventState,
-  ref: CompRef,
+  ref: LeafRef,
   pool: PoolDef,
   entrants: readonly CompetitorId[],
   actions: Action[],
@@ -868,6 +903,9 @@ function collectNodeActions(
           between: competitors,
         });
         break;
+      default:
+        // A missed NodeWork variant would silently drop host work.
+        assertNever(work);
     }
   }
   node.children.forEach((child, index) => {
@@ -889,7 +927,7 @@ function collectNodeActions(
 
 function buildPairingContext(
   state: EventState,
-  ref: CompRef,
+  ref: LeafRef,
   pool: PoolDef,
   entrants: readonly CompetitorId[],
   round: number,
@@ -989,9 +1027,9 @@ export function proposePairings(
   }
   const ref = compAt(state, poolPath);
   if (typeof ref === "string") return { ok: false, error: ref };
-  if (!isPool(ref.comp.run))
+  if (!isPool(ref.run))
     return { ok: false, error: `${poolPath} is not a pool` };
-  const system = ref.comp.run.pairing.system;
+  const system = ref.run.pairing.system;
   const kind = state.registry.pairings.get(system);
   if (kind === undefined) {
     return {
@@ -999,7 +1037,7 @@ export function proposePairings(
       error: `pairing system "${system}" has no registered proposer: record a pairingsSet input directly`,
     };
   }
-  const result = kind.propose(ref.comp.run.pairing, awaiting.context);
+  const result = kind.propose(ref.run.pairing, awaiting.context);
   if (!result.ok) return result;
   return {
     ok: true,
@@ -1036,16 +1074,16 @@ export function standingsOf(
 ): readonly StandingsRow[] {
   const ref = compAt(state, poolPath);
   if (typeof ref === "string") throw new Error(ref);
-  if (!isPool(ref.comp.run)) throw new Error(`${poolPath} is not a pool`);
+  if (!isPool(ref.run)) throw new Error(`${poolPath} is not a pool`);
   const entrants = resolveEntrants(state, ref);
   if (entrants === undefined) {
     throw new Error(`${poolPath} is waiting on its seeding sources`);
   }
-  const total = totalRoundsOf(state, ref.comp.run, entrants.length);
+  const total = totalRoundsOf(state, ref.run, entrants.length);
   return poolStandings(
     state.registry,
     state,
-    ref.comp.run,
+    ref.run,
     ref.path,
     entrants,
     poolRounds(state, ref.path, total),

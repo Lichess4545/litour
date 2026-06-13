@@ -913,6 +913,22 @@ type CompetitionAt = {
   readonly path: readonly (string | number)[];
 };
 
+/** A leaf during validation: run narrowed, entries still possibly absent. */
+type LeafAt = CompetitionAt & {
+  readonly run: PoolDef | AnyEncounterDef;
+};
+
+/** Relay a failed kind-schema parse into the event's issue list. */
+function relayParseIssues(
+  issue: Issue,
+  error: z.ZodError,
+  base: readonly (string | number)[] = [],
+): void {
+  for (const zi of error.issues) {
+    issue(zi.message, [...base, ...zi.path.map(String)]);
+  }
+}
+
 function* walkCompetitions(
   comp: CompetitionDef,
   base: readonly (string | number)[],
@@ -980,7 +996,7 @@ function validateEvent(
   // Leaves intake; containers don't. The sizes table seeds validate against
   // covers every leaf.
   const sizes = new Map<string, number | "open">();
-  const leaves: CompetitionAt[] = [];
+  const leaves: LeafAt[] = [];
   for (const at of all) {
     if (isContainer(at.comp.run)) {
       if (at.comp.entries !== undefined) {
@@ -991,7 +1007,7 @@ function validateEvent(
       }
       continue;
     }
-    leaves.push(at);
+    leaves.push({ comp: at.comp, run: at.comp.run, path: at.path });
     const entries = at.comp.entries;
     if (entries === undefined) {
       found.push({
@@ -1003,9 +1019,7 @@ function validateEvent(
     sizes.set(at.comp.id, isOpenEntries(entries) ? "open" : entries.length);
   }
 
-  for (const { comp, path } of leaves) {
-    const run = comp.run;
-    if (isContainer(run)) continue; // unreachable: leaves filtered above
+  for (const { comp, run, path } of leaves) {
     const entries = comp.entries;
 
     if (entries !== undefined && !isOpenEntries(entries)) {
@@ -1020,11 +1034,7 @@ function validateEvent(
         }
         const parsed = seedKind.schema.safeParse(entry);
         if (!parsed.success) {
-          for (const zi of parsed.error.issues)
-            found.push({
-              message: zi.message,
-              path: [...path, "entries", ei, ...zi.path.map(String)],
-            });
+          relayParseIssues(issueAt([...path, "entries", ei]), parsed.error);
           return;
         }
         seedKind.validate?.(
@@ -1045,9 +1055,12 @@ function validateEvent(
         path: [...path, "entries"],
       });
     }
-    // Unknown kinds were already reported by the schema layer; recursing
-    // into them through ops would throw.
-    const known = registry.encounters.has(encounter.kind);
+    // Recursing into ops decodes payloads through THROWING parses, so gate
+    // on the payload actually validating — kind registration alone is not
+    // enough (the schema layer reported the issues; we must not re-trip them).
+    const known =
+      registry.encounters.has(encounter.kind) &&
+      registry.encounterSchema.safeParse(encounter).success;
     if (known) {
       registry.ops.validate(encounter, issueAt([...path, "run"]));
     }
@@ -1066,7 +1079,15 @@ function validateEvent(
     if (need > 0 && entries !== undefined && !isOpenEntries(entries)) {
       entries.forEach((entry, ei) => {
         const seedKind = registry.seeds.get(entry.kind);
-        const id = seedKind?.resolve(entry, {
+        // resolve() also decodes through a throwing parse: only feed it
+        // entries the seed pass above proved valid.
+        if (
+          seedKind === undefined ||
+          !seedKind.schema.safeParse(entry).success
+        ) {
+          return;
+        }
+        const id = seedKind.resolve(entry, {
           competitors: event.competitors,
           ranking: () => undefined, // runtime-resolved seeds are checked at lineup time
         });
@@ -1095,7 +1116,7 @@ function validateEvent(
  * longer constrains references, only actual cycles do.
  */
 function intakeCycleIssues(
-  leaves: readonly CompetitionAt[],
+  leaves: readonly LeafAt[],
   registry: RegistryCore,
 ): readonly Found[] {
   const sourcesOf = new Map<string, readonly string[]>();
@@ -1168,10 +1189,15 @@ function validatePoolDef(
     }
     return;
   }
+  // Kind validators recurse into the encounter through throwing decodes:
+  // only hand them a payload that actually validates.
+  const encounterValid =
+    registry.encounters.has(pool.encounter.kind) &&
+    registry.encounterSchema.safeParse(pool.encounter).success;
+
   const parsed = pairing.schema.safeParse(pool.pairing);
   if (!parsed.success) {
-    for (const zi of parsed.error.issues)
-      issue(zi.message, ["pairing", ...zi.path.map(String)]);
+    relayParseIssues(issue, parsed.error, ["pairing"]);
   } else {
     if (pairing.totalRounds === undefined && pool.rounds === undefined) {
       issue(`${pool.pairing.system} pools must declare rounds`, ["rounds"]);
@@ -1182,7 +1208,7 @@ function validatePoolDef(
         ["rounds"],
       );
     }
-    if (registry.encounters.has(pool.encounter.kind)) {
+    if (encounterValid) {
       pairing.validate?.(
         pool.pairing,
         entrants,
@@ -1203,9 +1229,8 @@ function validatePoolDef(
   } else {
     const parsedScore = scoring.schema.safeParse(pool.score);
     if (!parsedScore.success) {
-      for (const zi of parsedScore.error.issues)
-        issue(zi.message, ["score", ...zi.path.map(String)]);
-    } else if (registry.encounters.has(pool.encounter.kind)) {
+      relayParseIssues(issue, parsedScore.error, ["score"]);
+    } else if (encounterValid) {
       scoring.validate?.(
         pool.score,
         pool.encounter,
@@ -1226,8 +1251,7 @@ function validatePoolDef(
     }
     const parsedRef = metric.schema.safeParse(ref);
     if (!parsedRef.success) {
-      for (const zi of parsedRef.error.issues)
-        issue(zi.message, ["tiebreaks", i, ...zi.path.map(String)]);
+      relayParseIssues(issue, parsedRef.error, ["tiebreaks", i]);
     }
   });
 }

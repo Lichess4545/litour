@@ -38,6 +38,11 @@ export type Color = "white" | "black";
 
 export const otherSide = (side: Side): Side => (side === 0 ? 1 : 0);
 
+/** Exhaustiveness sink: a reachable call means a union variant was missed. */
+export function assertNever(value: never): never {
+  throw new Error(`unreachable: ${JSON.stringify(value)}`);
+}
+
 // ---------------------------------------------------------------------------
 // Node paths
 //
@@ -364,17 +369,32 @@ export type Slot = {
 // ---------------------------------------------------------------------------
 // The event spine — one recursive node
 
-/** An encounter def is its kind name plus a kind-owned payload. */
-export type AnyEncounterDef = { readonly kind: string } & Record<
-  string,
-  unknown
->;
+// Ref payloads are readonly all the way down: the registry memoizes decoded
+// defs by object identity, so a mutable payload would serve stale decodes.
 
-export type PairingRef = { readonly system: string } & Record<string, unknown>;
-export type ScoreRef = { readonly kind: string } & Record<string, unknown>;
-export type MetricRef = { readonly metric: string } & Record<string, unknown>;
-export type SeedRef = { readonly kind: string } & Record<string, unknown>;
-export type TieRef = { readonly kind: string } & Record<string, unknown>;
+/** An encounter def is its kind name plus a kind-owned payload. */
+export type AnyEncounterDef = {
+  readonly kind: string;
+  readonly [key: string]: unknown;
+};
+
+export type PairingRef = {
+  readonly system: string;
+  readonly [key: string]: unknown;
+};
+export type ScoreRef = {
+  readonly kind: string;
+  readonly [key: string]: unknown;
+};
+export type MetricRef = {
+  readonly metric: string;
+  readonly [key: string]: unknown;
+};
+export type SeedRef = {
+  readonly kind: string;
+  readonly [key: string]: unknown;
+};
+export type TieRef = { readonly kind: string; readonly [key: string]: unknown };
 
 export type ByeRule =
   | {
