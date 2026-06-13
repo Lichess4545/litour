@@ -11,7 +11,7 @@ import {
   worldChampionship,
   worldUniversityChampionship,
 } from "@/chess/formats";
-import { chessRegistry } from "@/chess/registry";
+import { chessRegistry, parseEventDef } from "@/chess/registry";
 import { type ConcreteCompetition, concretify } from "./concrete";
 import { competitorIdSchema } from "./core";
 
@@ -171,6 +171,73 @@ describe("concretify — sizes are explicit", () => {
   });
 });
 
+describe("sibling tiers", () => {
+  it("a sibling-level container cycle still terminates with finite tiers", () => {
+    // Leaf chain a1 ← b1 ← a2 ← b2 is acyclic and parses, but grouping
+    // (a1,a2) and (b1,b2) makes each container draw on the other — the
+    // bounded relaxation must stop instead of chasing a fixpoint.
+    const game = { kind: "game", clock: { initial: 300, increment: 2 } };
+    const duelFrom = (id: string, source: string) => ({
+      id,
+      entries: [
+        { kind: "rank", of: source, rank: 1 },
+        { kind: "rank", of: source, rank: 2 },
+      ],
+      run: game,
+    });
+    const def = parseEventDef({
+      id: "sibling-cycle",
+      name: "Sibling cycle",
+      competitors: [
+        { id: "p1", name: "P1" },
+        { id: "p2", name: "P2" },
+      ],
+      competition: {
+        id: "root",
+        run: {
+          kind: "competitions",
+          competitions: [
+            {
+              id: "ga",
+              run: {
+                kind: "competitions",
+                competitions: [duelFrom("a1", "b1"), duelFrom("a2", "b2")],
+              },
+            },
+            {
+              id: "gb",
+              run: {
+                kind: "competitions",
+                competitions: [
+                  duelFrom("b1", "a2"),
+                  {
+                    id: "b2",
+                    entries: [
+                      { kind: "registration", seed: 1 },
+                      { kind: "registration", seed: 2 },
+                    ],
+                    run: game,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    // Reaching this line IS the termination claim; the bound also keeps the
+    // mutually-lifting tiers to at most one bump per child per pass.
+    const event = concretify(def, chessRegistry);
+    const tiers = childrenOf(event.root).map((child) => child.tier);
+    expect(tiers).toHaveLength(2);
+    for (const tier of tiers) {
+      expect(Number.isInteger(tier)).toBe(true);
+      expect(tier).toBeGreaterThanOrEqual(0);
+      expect(tier).toBeLessThanOrEqual(2 * tiers.length);
+    }
+  });
+});
+
 describe("sectioned events — parallel divisions in one container", () => {
   it("sections register and score separately, contemporaneously", () => {
     const event = concretify(grenke, chessRegistry);
@@ -195,6 +262,13 @@ describe("sectioned events — parallel divisions in one container", () => {
 });
 
 describe("the Grand Chess Tour — composition, terminology, tour standings", () => {
+  const finalsRun = () => {
+    const event = concretify(grandChessTour, chessRegistry);
+    const run = childOf(event.root, "finals")?.run;
+    if (run?.kind !== "rounds") throw new Error("expected a rounds run");
+    return run;
+  };
+
   it("a whole tournament (GRENKE) sits inside the tour as one more stop", () => {
     const event = concretify(grandChessTour, chessRegistry);
     const stops = childrenOf(event.root);
@@ -232,13 +306,13 @@ describe("the Grand Chess Tour — composition, terminology, tour standings", ()
       "classic",
     ]);
     expect(intake?.take).toBe("top 4");
-    const run = finals?.run;
-    if (run?.kind !== "rounds") throw new Error("expected a rounds run");
+  });
+
+  it("the finals knockout names its pairings and draws the bracket", () => {
+    const run = finalsRun();
     const semis = run.rounds.items[0];
     if (semis?.pairings.open !== false)
       throw new Error("expected known pairings");
-    // The knockout names its pairings; the bracket flows carry
-    // winners to the final and losers to the bronze.
     expect(semis.pairings.items.map((p) => p.label)).toEqual([
       "semifinal 1",
       "semifinal 2",
@@ -266,11 +340,19 @@ describe("the Grand Chess Tour — composition, terminology, tour standings", ()
         ],
       },
     ]);
+  });
+
+  it("every word on the cards comes from the definition", () => {
+    const run = finalsRun();
+    const semis = run.rounds.items[0];
+    if (semis?.pairings.open !== false)
+      throw new Error("expected known pairings");
     const match = semis.pairings.items[0]?.node;
     expect(match?.title).toBe("Finals match");
     expect(match?.children[0]?.role).toBe("game 1");
     expect(match?.children[0]?.title).toBe("Classical");
     // A Rapid & Blitz stop: 27 rounds, scoring describing its phases.
+    const event = concretify(grandChessTour, chessRegistry);
     const zagreb = childOf(event.root, "zagreb")?.run;
     if (zagreb?.kind !== "rounds") throw new Error("expected a rounds run");
     expect(zagreb.rounds.open).toBe(false);

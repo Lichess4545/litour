@@ -26,12 +26,15 @@ import type { ModelRegistry, SlotOutcome } from "./registry";
  * consults its instance beyond nominal points.
  */
 
+// Path-keyed maps take the branded NodePath; `lineups` is deliberately a
+// composite string key (`path#side` via lineupKey), as is the engine's
+// pairings map (`path#round` via pairingsKey).
 export type EngineIndexes = {
-  readonly results: ReadonlyMap<string, GameResultCode>;
+  readonly results: ReadonlyMap<NodePath, GameResultCode>;
   readonly lineups: ReadonlyMap<string, readonly PlayerId[]>;
-  readonly decisions: ReadonlyMap<string, Side>;
-  readonly colorDraws: ReadonlyMap<string, Side>;
-  readonly forfeits: ReadonlyMap<string, Side>;
+  readonly decisions: ReadonlyMap<NodePath, Side>;
+  readonly colorDraws: ReadonlyMap<NodePath, Side>;
+  readonly forfeits: ReadonlyMap<NodePath, Side>;
 };
 
 export const lineupKey = (matchPath: NodePath, side: Side): string =>
@@ -78,6 +81,7 @@ function makeView(indexes: EngineIndexes, ctx: EvalCtx): NodeView {
 }
 
 const CHILD_GUARD = 10_000;
+// Must match the labels CHILD_LABEL excludes in core.ts's path grammar.
 const RESERVED_LABELS = new Set(["comp", "round", "pair"]);
 
 export function evalNode(

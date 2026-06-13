@@ -27,6 +27,7 @@ const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
 describe("armageddon showdown", () => {
   it("schedules one game with asymmetric clocks, white side first by default", () => {
     const run = runEvent(armageddonShowdown);
+    expect(run.scheduled()).toHaveLength(1);
     const [game] = run.scheduled();
     expect(game).toMatchObject({
       white: "magnus",
@@ -679,6 +680,25 @@ describe("quads", () => {
     expect(run.actions()).toContainEqual(
       expect.objectContaining({ kind: "awaitPairings", pool: q2 }),
     );
+  });
+
+  it("two finished quads complete the event with NO single champion (two sinks)", () => {
+    const run = runEvent(quads);
+    for (const pool of [compRootPath("quad-1"), compRootPath("quad-2")]) {
+      for (let round = 1; round <= 3; round += 1) {
+        run.pairRound(pool);
+        for (const game of run.scheduled()) {
+          run.submit({ kind: "gameResult", game: game.path, result: "1-0" });
+        }
+      }
+    }
+    // Neither quad feeds the other: the intake DAG has two sinks, so the
+    // event finishes without crowning anyone.
+    expect(run.actions()).toContainEqual({
+      kind: "eventComplete",
+      winner: undefined,
+    });
+    expect(run.winnerName()).toBeUndefined();
   });
 });
 

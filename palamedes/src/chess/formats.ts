@@ -31,14 +31,14 @@ import {
 import { parseEventDef } from "./registry";
 
 /**
- * The acceptance table of design/tournament-model.md as executable
+ * The acceptance catalog of design/tournament-model.md as executable
  * definitions, authored on the compose combinators the way an arbiter or
  * tournament designer would: regulations built bottom-up, intakes attached,
  * identity stamped last — all of it plain data parsed against the chess
- * registry, so if one of these stops validating, the model broke. Several
- * defs are miniaturized (fewer players or boards, auto-pairable seeding) so
- * the test suite can drive them end-to-end; each notes its deltas from the
- * published format.
+ * registry, so if one of these stops validating, the model broke. Most defs
+ * are miniaturized (fewer players, boards, or rounds) so the test suite can
+ * drive them end-to-end; the ones whose SHAPE changes (boards, seeding,
+ * truncated brackets) note their deltas.
  */
 
 // --- format-local vocabulary -----------------------------------------------
@@ -50,6 +50,10 @@ const armageddon = game(
   { initial: 600, increment: 0, whiteInitial: 600, blackInitial: 420 },
   { tie: drawOdds("black") },
 );
+
+/** Two team matches with flipped colors; the arbiter decides aggregate ties. */
+const twoMatchTie = (boards: number, g: EncounterData) =>
+  seriesOf([matchOf(boards, g), matchOf(boards, g)], { tie: manualTie });
 
 const players = (...names: readonly string[]) =>
   names.map((name) => ({ id: name.toLowerCase(), name }));
@@ -130,24 +134,26 @@ export const worldCup: ParsedEventDef = parseEventDef(
   ),
 );
 
-/** Individual swiss (LoneWolf): game points, classical tiebreaks, full-point bye. */
+/** The LoneWolf regulation: game points, classical tiebreaks, full-point bye. */
+const loneWolfSwiss = (rounds: number) =>
+  play(
+    swiss(rounds, rapid(2700, 45), gamePoints, {
+      bye: byePoints(1, 1),
+      tiebreaks: [
+        { metric: "sonnebornBerger" },
+        { metric: "buchholz" },
+        { metric: "headToHead" },
+      ],
+    }),
+  );
+
+/** Individual swiss (LoneWolf) — 3-round, 5-player miniature of the league. */
 export const loneWolf: ParsedEventDef = parseEventDef(
   event(
     "lone-wolf",
     "LoneWolf individual swiss",
     players("Alice", "Bob", "Carol", "Dave", "Erin"),
-    play(
-      swiss(3, rapid(2700, 45), gamePoints, {
-        bye: byePoints(1, 1),
-        tiebreaks: [
-          { metric: "sonnebornBerger" },
-          { metric: "buchholz" },
-          { metric: "headToHead" },
-        ],
-      }),
-    )
-      .enter(5)
-      .as("swiss"),
+    loneWolfSwiss(3).enter(5).as("swiss"),
   ),
 );
 
@@ -300,14 +306,7 @@ const wuccKnockout = (legRelease: "lockstep" | "independent", suffix: string) =>
         team("mona", "Monash University", 2),
         team("auck", "Auckland University", 2),
       ],
-      play(
-        knockout(
-          seriesOf([matchOf(2, rapid(600, 5)), matchOf(2, rapid(600, 5))], {
-            tie: manualTie,
-          }),
-          { legRelease },
-        ),
-      )
+      play(knockout(twoMatchTie(2, rapid(600, 5)), { legRelease }))
         .enter(4)
         .as("bracket"),
     ),
@@ -466,10 +465,6 @@ export const teamSwissCascade: ParsedEventDef = parseEventDef(
 // ---------------------------------------------------------------------------
 // The full championship pipelines (university & corporate)
 
-/** Two team matches with flipped colors; the arbiter decides aggregate ties. */
-const twoMatchTie = (boards: number, g: EncounterData) =>
-  seriesOf([matchOf(boards, g), matchOf(boards, g)], { tie: manualTie });
-
 /** A 32-team knockout cut to two rounds: the eight survivors advance. */
 const cutKnockout = (encounter: EncounterData) =>
   knockout(encounter, { rounds: 2, bye: byeAdvance, legRelease: "lockstep" });
@@ -579,10 +574,10 @@ export const worldCorporateChampionship: ParsedEventDef = parseEventDef(
 
 /**
  * GRENKE: an elite double round robin and a huge open swiss — completely
- * different formats — under one roof, at the same time. Exported as a
- * COMPETITION too: the whole thing drops into the Grand Chess Tour below as
- * a tour stop, by reference — and the tour draws on `grenkeClassic` the
- * value, not a name.
+ * different formats — under one roof, at the same time. Built once as a
+ * COMPETITION: the same value is the standalone event below AND a Grand
+ * Chess Tour stop, and the tour draws on `grenkeClassic` the value, not a
+ * name.
  */
 const grenkeClassic = play(
   roundRobin(2, classical, gamePoints, {
@@ -600,10 +595,10 @@ const grenkeOpen = play(
   .open()
   .as("open", "GRENKE Open");
 
-export const grenkeCompetition: ContainerData = group(
-  grenkeClassic,
-  grenkeOpen,
-).as("grenke", "GRENKE Karlsruhe");
+const grenkeCompetition: ContainerData = group(grenkeClassic, grenkeOpen).as(
+  "grenke",
+  "GRENKE Karlsruhe",
+);
 
 export const grenke: ParsedEventDef = parseEventDef(
   event(
@@ -621,17 +616,8 @@ export const grenke: ParsedEventDef = parseEventDef(
   ),
 );
 
-/** A LoneWolf-style swiss section (registration decides who enters which). */
-const loneWolfSection = play(
-  swiss(11, rapid(2700, 45), gamePoints, {
-    bye: byePoints(1, 1),
-    tiebreaks: [
-      { metric: "sonnebornBerger" },
-      { metric: "buchholz" },
-      { metric: "headToHead" },
-    ],
-  }),
-).open();
+/** A full-length LoneWolf section (registration decides who enters which). */
+const loneWolfSection = loneWolfSwiss(11).open();
 
 /**
  * Sections: one event, two divisions running contemporaneously — separate

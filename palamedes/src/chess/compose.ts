@@ -1,10 +1,10 @@
 /**
  * The authoring combinator library: named patterns that compose into event
- * definitions. Everything here is PLAIN DATA — no casts, no branded types.
- * A builder returns the same `unknown`-shaped literal an arbiter would write
- * by hand; `parseEventDef` validates the result against a registry, so an
- * invalid composition fails at parse with arbiter-grade errors, never at
- * compile time.
+ * definitions. Everything built here is PLAIN DATA — no casts, no branded
+ * types. A builder returns the same `unknown`-shaped literal an arbiter
+ * would write by hand; `parseEventDef` validates the result against a
+ * registry, so an invalid composition fails at parse with arbiter-grade
+ * errors, never at compile time.
  *
  * Patterns are values, and composition is function application — a whole
  * competition built here (GRENKE) drops into another event (the Grand Chess
@@ -15,19 +15,17 @@
  * leaf; an intake attaches next (`.open()`, `.enter(n)`, `.enterFrom`,
  * `.enterAt`, `.from(flows…)`); identity arrives LAST (`.as(id)` /
  * `.as(id, name)`). `group(…).as(id, name?)` does the same for containers.
- * Plans are immutable and reusable — `play(universitySwiss).open()` is both
- * qualifiers; `.as("q1")` and `.as("q2")` are the two competitions. Every
- * terminal returns the same plain data the constructors below produce.
+ * Plans are immutable and reusable — in formats.ts one open plan
+ * (`universityQualifier`) is both qualifiers; `.as("q1")` and `.as("q2")`
+ * are the two competitions. Every terminal returns the same plain data the
+ * constructors below produce.
  *
- * Cross-competition FLOW is composed the same way: the flow combinators
- * (`top`, `ranks`, `tourTop`) take the source competition BY VALUE and
- * compile to its id, so a consumer's entries are built out of the
- * competitions it draws on. The def-use graph of the authoring code IS the
- * intake DAG: a source that doesn't exist is unwritable, drawing from a
- * container is a type error (only a `LeafData` ranks), and declaration
- * order makes an authored cycle impossible. Bare ids remain the wire
- * format underneath — hand-written data still parses, backstopped by the
- * registry's DAG validation.
+ * Cross-competition FLOW is composed by value: the flow combinators (`top`,
+ * `ranks`, `tourTop`) take the source competition itself and compile to its
+ * id — the def-use graph of the authoring code IS the intake DAG (the full
+ * argument: design/tournament-model.md § "The authoring combinators").
+ * Bare ids stay the wire format; the registry's DAG validation backstops
+ * hand-written data.
  */
 
 type Kinded = { readonly kind: string; readonly [key: string]: unknown };
@@ -96,83 +94,45 @@ export const event = (
   competition: CompetitionData,
 ): EventData => ({ id, name, competitors, competition });
 
-/** A leaf competition: an intake playing a pool or an encounter. */
-export function competition(
-  id: string,
-  entries: EntriesData,
-  run: RunData,
-): LeafData;
-export function competition(
-  id: string,
-  name: string,
-  entries: EntriesData,
-  run: RunData,
-): LeafData;
-export function competition(
-  ...args:
-    | [id: string, entries: EntriesData, run: RunData]
-    | [id: string, name: string, entries: EntriesData, run: RunData]
-): LeafData {
-  if (args.length === 3) {
-    const [id, entries, run] = args;
-    return { id, entries, run };
-  }
-  const [id, name, entries, run] = args;
-  return { id, name, entries, run };
-}
+// The data constructors the fluent layer compiles to. Internal on purpose:
+// the fluent layer is the one authoring surface, and these are its output
+// shape, not a second dialect.
 
-/**
- * Attach an intake to a regulation — composition's last small piece before
- * identity. The result mints leaves: stamp it with an id (and optional
- * display name) once per appearance.
- */
-export const field =
+/** Bind an intake to a regulation; the result mints leaves per identity. */
+const field =
   (entries: EntriesData, run: RunData) =>
   (id: string, name?: string): LeafData =>
     name === undefined ? { id, entries, run } : { id, name, entries, run };
 
 /** A container competition: it runs sub-competitions and intakes nothing. */
-export function container(
+const container = (
   id: string,
   competitions: readonly CompetitionData[],
-): ContainerData;
-export function container(
-  id: string,
-  name: string,
-  competitions: readonly CompetitionData[],
-): ContainerData;
-export function container(
-  ...args:
-    | [id: string, competitions: readonly CompetitionData[]]
-    | [id: string, name: string, competitions: readonly CompetitionData[]]
-): ContainerData {
-  if (args.length === 2) {
-    const [id, competitions] = args;
-    return { id, run: { kind: "competitions", competitions } };
-  }
-  const [id, name, competitions] = args;
-  return { id, name, run: { kind: "competitions", competitions } };
-}
+  name?: string,
+): ContainerData => {
+  const run = { kind: "competitions", competitions } as const;
+  return name === undefined ? { id, run } : { id, name, run };
+};
 
 // ---------------------------------------------------------------------------
-// Intakes — where a leaf's entrants come from
+// Intakes — where a leaf's entrants come from (internal: the LeafPlan
+// methods are their public face)
 
 /** Registration-bound: the field is unknown until entries are bound. */
-export const open = { open: true } as const;
+const open = { open: true } as const;
 
 /** Registration slots 1..count. */
-export const seeds = (count: number): readonly SeedData[] =>
-  seedsFrom(1, count);
+const seeds = (count: number): readonly SeedData[] => seedsFrom(1, count);
 
 /** Registration slots start..start+count-1. */
-export const seedsFrom = (start: number, count: number): readonly SeedData[] =>
+const seedsFrom = (start: number, count: number): readonly SeedData[] =>
   Array.from({ length: count }, (_, i) => ({
     kind: "registration",
     seed: start + i,
   }));
 
 /** Specific registration slots (split groups: 1, 4, 5). */
-export const seedsAt = (...ns: readonly number[]): readonly SeedData[] =>
+const seedsAt = (...ns: readonly number[]): readonly SeedData[] =>
   ns.map((seed) => ({ kind: "registration", seed }));
 
 // Flow combinators: the source is the competition VALUE, compiled to its
@@ -205,9 +165,7 @@ export const tourTop = (
   }));
 
 // ---------------------------------------------------------------------------
-// The fluent layer — ergonomics on top of the same constructors. Builders
-// are immutable and ephemeral; every terminal (`.as`) returns the plain
-// data `competition`/`container`/`field` produce, nothing more.
+// The fluent layer — ergonomics on top of the same constructors.
 
 /** A regulation awaiting its intake. Immutable — share and re-seed freely. */
 export class LeafPlan {
@@ -256,9 +214,7 @@ export class GroupPlan {
   constructor(private readonly competitions: readonly CompetitionData[]) {}
 
   as(id: string, name?: string): ContainerData {
-    return name === undefined
-      ? container(id, this.competitions)
-      : container(id, name, this.competitions);
+    return container(id, this.competitions, name);
   }
 }
 
@@ -270,21 +226,30 @@ export const group = (...competitions: readonly CompetitionData[]): GroupPlan =>
   new GroupPlan(competitions);
 
 // ---------------------------------------------------------------------------
-// Seats — how colors flow (cycle values, not concepts)
+// Seats — how colors flow (cycle values, not concepts). Frozen: these
+// singletons are shared by every def ever authored, and the decode memo
+// assumes payloads never change.
 
 /** Series seats: colors alternate leg to leg. */
-export const alternate = {
+export const alternate = Object.freeze({
   source: "inherit",
-  cycle: ["keep", "flip"],
-} as const;
+  cycle: Object.freeze(["keep", "flip"] as const),
+} as const);
 /** Series seats: every leg keeps the parent's colors. */
-export const sameSeats = { source: "inherit", cycle: ["keep"] } as const;
+export const sameSeats = Object.freeze({
+  source: "inherit",
+  cycle: Object.freeze(["keep"] as const),
+} as const);
 /** Series seats: a drawing of lots decides who holds white. */
-export const drawnSeats = { source: "draw" } as const;
+export const drawnSeats = Object.freeze({ source: "draw" } as const);
 /** Board seats: colors alternate down the boards. */
-export const zigzag = { cycle: ["keep", "flip"] } as const;
+export const zigzag = Object.freeze({
+  cycle: Object.freeze(["keep", "flip"] as const),
+} as const);
 /** Board seats: every board gets the team's color. */
-export const uniformBoards = { cycle: ["keep"] } as const;
+export const uniformBoards = Object.freeze({
+  cycle: Object.freeze(["keep"] as const),
+} as const);
 
 export type SeriesSeats =
   | { readonly source: "inherit"; readonly cycle: readonly ("keep" | "flip")[] }
@@ -295,9 +260,11 @@ export type BoardSeats = { readonly cycle: readonly ("keep" | "flip")[] };
 // Scoring, ties, byes
 
 /** Standings keep the encounter's own sums (game points). */
-export const gamePoints: ScoreData = { kind: "passThrough" };
+export const gamePoints: ScoreData = Object.freeze({ kind: "passThrough" });
 /** Plain match points: win 2, draw 1, loss 0. */
-export const matchPoints: ScoreData = pointsTable(1, { win: 2, loss: 0 });
+export const matchPoints: ScoreData = Object.freeze(
+  pointsTable(1, { win: 2, loss: 0 }),
+);
 
 /** A win/loss table, optionally keyed by the deciding leg (Norway's 3/1.5/1/0). */
 export function pointsTable(
@@ -323,14 +290,14 @@ export const drawOdds = (color: "white" | "black"): TieData => ({
   color,
 });
 /** Ties go to the arbiter. */
-export const manualTie: TieData = { kind: "manual" };
+export const manualTie: TieData = Object.freeze({ kind: "manual" });
 
 export const byePoints = (standings: number, encounter: number): ByeData => ({
   kind: "points",
   standings,
   encounter,
 });
-export const byeAdvance: ByeData = { kind: "advance" };
+export const byeAdvance: ByeData = Object.freeze({ kind: "advance" });
 
 // ---------------------------------------------------------------------------
 // Pools — N entrants, a pairing system, ONE encounter template, a scoring rule

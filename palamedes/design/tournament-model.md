@@ -101,8 +101,10 @@ parse, never a cast.
 - **`PairingKind`** — `propose(options, ctx)` over a context that carries
   everything a JavaFo TRF encodes (seeds, scores, per-round
   opponent/color/unplayed history, previous round winners); optional
-  `totalRounds`, `pairsInRound` (eliminative systems shrink),
-  `progression` (rank by survival), `defaultBye`, `validate`.
+  `totalRounds`, `pairsInRound` (eliminative systems shrink), `pairLabels`
+  (semantic names: "final", "bronze final"), `flows` (bracket advancement
+  the viewer draws), `progression` (rank by survival), `defaultBye`,
+  `validate`.
   Proposals only take effect as recorded `pairingsSet` inputs, so external
   engines (bbpPairings) and manual arbiters use the same door; an
   *unregistered* system is even allowed in a def (rounds then required) —
@@ -185,13 +187,13 @@ On top of the constructors sits the FLUENT layer, and authoring runs
 bottom-up through it: build the rules, attach the intake, stamp identity
 last. `play(rules)` starts a leaf; `.open()` / `.enter(n)` /
 `.enterFrom(start, n)` / `.enterAt(…)` / `.from(flows…)` attaches the
-intake; `.as(id)` or `.as(id, name)` mints the competition — so
-`play(universitySwiss).open()` is both qualifiers, stamped `.as("q1")` and
-`.as("q2")`. `group(…).as(id, name?)` does the same for containers. Plans
-are immutable and ephemeral; every terminal returns the plain data the
-constructors produce. No `undefined` placeholders, no entry spreads: names
-appear only where they exist, and `.from(top(q1, 16), top(q2, 16))`
-concatenates flows variadically.
+intake; `.as(id)` or `.as(id, name)` mints the competition — so one open
+plan (`universityQualifier` in `formats.ts`) is both qualifiers, stamped
+`.as("q1")` and `.as("q2")`. `group(…).as(id, name?)` does the same for
+containers. Plans are immutable and reusable; every terminal returns the
+plain data the constructors produce. No `undefined` placeholders, no entry
+spreads: names appear only where they exist, and
+`.from(top(q1, 16), top(q2, 16))` concatenates flows variadically.
 
 Cross-competition flow is composed EXPLICITLY, by value: the flow
 combinators take the source competition itself — `top(q1, 16)`,

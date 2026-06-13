@@ -4,7 +4,6 @@ import {
   type ConcreteCompetition,
   type ConcreteEvent,
   type ConcreteNode,
-  type ConcretePairing,
   type ConcreteProcess,
   type ConcreteRound,
   type ConcreteRoundsRun,
@@ -38,7 +37,7 @@ import { assertNever } from "@/tournament/core";
  * cards; intake edges target the most specific visible node.
  */
 
-export const flowCardDataSchema = z.object({
+export const flowCardDataSchema = z.strictObject({
   /** The colored chip: spine concepts or the encounter kind's name. */
   chip: z.string(),
   title: z.string(),
@@ -353,6 +352,38 @@ function iconItem(
 /** Items fold when at least this many identical siblings repeat. */
 const FOLD_AT = 4;
 
+/**
+ * Whether a round's pairings fold into one `…/ps` stack — the SAME decision
+ * roundSub makes when laying the round out, shared so bracket edges always
+ * target nodes that exist (an edge against a folded-away `/p<n>` would be
+ * silently dropped by React Flow).
+ */
+function pairingsFolded(round: ConcreteRound): boolean {
+  const pairings = manyList(round.pairings);
+  const first = pairings[0];
+  if (first === undefined || pairings.length < FOLD_AT) return false;
+  const firstSignature = JSON.stringify(first.item.node);
+  return pairings.every(
+    ({ item: pairing, ghost }) =>
+      !ghost && JSON.stringify(pairing.node) === firstSignature,
+  );
+}
+
+/** A left-to-right "then" edge — the lane and chain workhorse. */
+const chainEdge = (
+  source: string,
+  target: string,
+  label?: string,
+): FlowGraphEdge => ({
+  id: `c:${source}->${target}`,
+  source,
+  target,
+  ...(label === undefined ? {} : { label }),
+  fromHandle: "r",
+  toHandle: "l",
+  kind: "chain",
+});
+
 // ---------------------------------------------------------------------------
 // The levels
 
@@ -475,6 +506,13 @@ type CompVisibility = {
   readonly runKind: "rounds" | "encounter" | "competitions";
 };
 
+/**
+ * Where each competition is drawable right now: its own node when its
+ * parent's interior is rendered, else the deepest visible ancestor (the
+ * anchor seed edges fall back to). The `forced` rule here MUST mirror the
+ * layout's forced-expansion rule — the root always, an only child — or
+ * sourceAnchor returns ids buildGraph never laid out.
+ */
 function collectVisibility(
   root: ConcreteCompetition,
   expanded: ReadonlySet<string>,
@@ -608,16 +646,7 @@ function poolLaneSub(
   const loops: FlowGraphEdge[] = [];
   let prev: string | undefined;
   const connect = (to: string): void => {
-    if (prev !== undefined) {
-      loops.push({
-        id: `c:${prev}->${to}`,
-        source: prev,
-        target: to,
-        fromHandle: "r",
-        toHandle: "l",
-        kind: "chain",
-      });
-    }
+    if (prev !== undefined) loops.push(chainEdge(prev, to));
     prev = to;
   };
 
@@ -662,16 +691,17 @@ function poolLaneSub(
 
   // Identical rounds fold into one ×N step whose repeating unit INCLUDES
   // the between-rounds process: collapsed, the process icon loops back to
-  // the rounds ("next round"); unfolded, the full interleaved chain shows.
+  // the rounds on the ×N return arc; unfolded, the full chain shows.
   const signature = (round: ConcreteRound): string =>
     JSON.stringify({ ...round, label: "" });
   const firstRound = rounds[0];
+  const firstSignature =
+    firstRound === undefined ? "" : signature(firstRound.item);
   const uniform =
     firstRound !== undefined &&
     rounds.length >= FOLD_AT &&
     rounds.every(
-      ({ item: round, ghost }) =>
-        !ghost && signature(round) === signature(firstRound.item),
+      ({ item: round, ghost }) => !ghost && signature(round) === firstSignature,
     );
   if (uniform) {
     const lastRound = rounds[rounds.length - 1];
@@ -744,17 +774,7 @@ function poolLaneSub(
             const chainEdges: FlowGraphEdge[] = chainIds.flatMap(
               (source, i) => {
                 const target = chainIds[i + 1];
-                if (target === undefined) return [];
-                return [
-                  {
-                    id: `c:${source}->${target}`,
-                    source,
-                    target,
-                    fromHandle: "r" as const,
-                    toHandle: "l" as const,
-                    kind: "chain" as const,
-                  },
-                ];
+                return target === undefined ? [] : [chainEdge(source, target)];
               },
             );
             return { ...chain, edges: [...chain.edges, ...chainEdges] };
@@ -779,13 +799,30 @@ function poolLaneSub(
         round.inflows !== undefined
       ) {
         // Both rounds open: draw the bracket — winners (and losers, for
-        // the bronze) flow pairing-to-pairing.
+        // the bronze) flow pairing-to-pairing. A round whose pairings are
+        // folded exposes only its `…/ps` stack, so edges anchor there
+        // (deduped) until it is unfolded.
+        const prevRound = rounds[i - 1]?.item;
+        const anchor = (
+          rid: string,
+          r: ConcreteRound | undefined,
+          pair: number,
+        ): string =>
+          r !== undefined && pairingsFolded(r) && !expanded.has(`${rid}/ps`)
+            ? `${rid}/ps`
+            : `${rid}/p${pair}`;
+        const drawn = new Set<string>();
         for (const flow of round.inflows) {
           for (const from of flow.from) {
+            const source = anchor(prevRoundId, prevRound, from.pair);
+            const target = anchor(roundId, round, flow.pair);
+            const id = `b:${source}->${target}:${from.take}`;
+            if (drawn.has(id)) continue;
+            drawn.add(id);
             loops.push({
-              id: `b:${prevRoundId}/p${from.pair}->${roundId}/p${flow.pair}`,
-              source: `${prevRoundId}/p${from.pair}`,
-              target: `${roundId}/p${flow.pair}`,
+              id,
+              source,
+              target,
               label: from.take,
               fromHandle: "r",
               toHandle: "l",
@@ -799,6 +836,8 @@ function poolLaneSub(
       }
       const last = i === rounds.length - 1;
       const nextBracket = rounds[i + 1]?.item.inflows !== undefined;
+      // No standings·pair icon before a bracket round: its pairings come
+      // from the previous round's winners (inflows), not from standings.
       if (last || !nextBracket) {
         const processId = last ? `${pid}/out` : `${pid}/after${i + 1}`;
         items.push(processIcon(last, processId));
@@ -827,16 +866,7 @@ function processSub(
   const edges: FlowGraphEdge[] =
     process.repair === undefined
       ? []
-      : [
-          {
-            id: `c:${pid}/standings->${pid}/repair`,
-            source: `${pid}/standings`,
-            target: `${pid}/repair`,
-            fromHandle: "r" as const,
-            toHandle: "l" as const,
-            kind: "chain" as const,
-          },
-        ];
+      : [chainEdge(`${pid}/standings`, `${pid}/repair`)];
   return { ...laid, edges: [...laid.edges, ...edges] };
 }
 
@@ -868,21 +898,14 @@ function roundSub(
         );
   };
 
-  // Identical pairings fold into one ×N card, unfoldable to the full stack.
-  const signature = (pairing: ConcretePairing): string =>
-    JSON.stringify(pairing.node);
+  // Identical pairings fold into one ×N card, unfoldable to the full stack
+  // (the shared pairingsFolded decision — bracket edges depend on it).
   const first = pairings[0];
-  const uniform =
-    first !== undefined &&
-    pairings.length >= FOLD_AT &&
-    pairings.every(
-      ({ item: pairing, ghost }) =>
-        !ghost && signature(pairing) === signature(first.item),
-    );
+  const uniform = pairingsFolded(round);
 
   let stack: Sub;
   let feedIds: readonly string[];
-  if (uniform) {
+  if (uniform && first !== undefined) {
     const last = pairings[pairings.length - 1];
     const runId = `${pid}/ps`;
     const range = `${first.item.label} … ${last?.item.label ?? ""}`;
@@ -922,14 +945,9 @@ function roundSub(
     stack.w + GAP * 3,
     (stack.h - scoring.h) / 2,
   );
-  const edges: FlowGraphEdge[] = feedIds.map((feedId) => ({
-    id: `c:${feedId}->${scoringId}`,
-    source: feedId,
-    target: scoringId,
-    fromHandle: "r" as const,
-    toHandle: "l" as const,
-    kind: "chain" as const,
-  }));
+  const edges: FlowGraphEdge[] = feedIds.map((feedId) =>
+    chainEdge(feedId, scoringId),
+  );
   const laid = merge(
     [stack, placedScoring],
     stack.w + GAP * 3 + scoring.w,
@@ -977,15 +995,11 @@ function childrenSub(
     const gated = node.children.some((child) => child.gate !== undefined);
     if (!gated) {
       const laid = row(node.children.map(childItem), GAP);
-      const edges: FlowGraphEdge[] = node.children.slice(1).map((_, i) => ({
-        id: `c:${pid}/c${i + 1}->${pid}/c${i + 2}`,
-        source: `${pid}/c${i + 1}`,
-        target: `${pid}/c${i + 2}`,
-        label: "then",
-        fromHandle: "r" as const,
-        toHandle: "l" as const,
-        kind: "chain" as const,
-      }));
+      const edges: FlowGraphEdge[] = node.children
+        .slice(1)
+        .map((_, i) =>
+          chainEdge(`${pid}/c${i + 1}`, `${pid}/c${i + 2}`, "then"),
+        );
       return { ...laid, edges: [...laid.edges, ...edges] };
     }
 
@@ -1079,16 +1093,16 @@ function childrenSub(
   });
   const first = node.children[0];
   const last = node.children[node.children.length - 1];
+  const firstStripped = first === undefined ? "" : JSON.stringify(strip(first));
+  const repeatGate = JSON.stringify(node.children[1]?.gate);
   const uniform =
     first !== undefined &&
     last !== undefined &&
     node.children.length >= FOLD_AT &&
     node.children.every(
       (child, i) =>
-        JSON.stringify(strip(child)) === JSON.stringify(strip(first)) &&
-        (i === 0 ||
-          JSON.stringify(child.gate) ===
-            JSON.stringify(node.children[1]?.gate)),
+        JSON.stringify(strip(child)) === firstStripped &&
+        (i === 0 || JSON.stringify(child.gate) === repeatGate),
     );
   if (!uniform) return sequenceSub();
 

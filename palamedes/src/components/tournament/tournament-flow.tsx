@@ -34,9 +34,7 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { chessRegistry } from "@/chess/registry";
-import { concretify } from "@/tournament/concrete";
-import type { ParsedEventDef } from "@/tournament/registry";
+import type { ConcreteEvent } from "@/tournament/concrete";
 import {
   buildGraph,
   CARD_W,
@@ -51,9 +49,13 @@ import {
 /**
  * In-place zoom: expanding a card swaps it for a bordered frame holding the
  * next level of resolution while the rest of the canvas stays put, so one
- * view can mix altitudes — stages beside an opened stage, rounds beside an
- * opened round — with every arrow still attached. Clicking a frame folds it
- * back into its card.
+ * view can mix altitudes — a container opened beside collapsed siblings,
+ * rounds beside an opened round — with every arrow still attached. Clicking
+ * a frame folds it back into its card.
+ *
+ * The component receives the CONCRETE structure, already converted on the
+ * server: the display iterates it and never touches a definition or the
+ * registry.
  */
 
 const CHIP_STYLES: Record<string, string> = {
@@ -301,15 +303,12 @@ function Frame(props: NodeProps<FrameNode>) {
 
 const nodeTypes: NodeTypes = { card: FlowCard, frame: Frame };
 
-export function TournamentFlow({ def }: { def: ParsedEventDef }) {
+export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
   // The canvas depends on measured container size; rendering it on the
-  // server only produces hydration mismatches. Mount-gate it.
+  // server only produces hydration mismatches. Mount-gate the canvas alone —
+  // the toolbar shell renders identically on server and client.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-
-  // The definition → concrete conversion happens once; everything below
-  // (including every expansion) iterates the resulting structure.
-  const concrete = useMemo(() => concretify(def, chessRegistry), [def]);
 
   /** Ids currently expanded in place (collapsed descendants are remembered). */
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -334,6 +333,9 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
     // the graph is what makes it an honest dependency (the effect exists to
     // re-run after every layout reflow).
     if (focus !== "*" && !graph.nodes.some((node) => node.id === focus)) {
+      // Target left the layout: abandon the intent rather than ambush the
+      // camera on some unrelated later reflow.
+      focusRef.current = null;
       return;
     }
     focusRef.current = null;
@@ -419,8 +421,6 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
         </span>
       </div>
       <div className="min-h-0 flex-1">
-        {/* The canvas depends on measured container size: mount-gated, while
-            the toolbar shell renders identically on server and client. */}
         {mounted ? (
           <ReactFlow
             nodes={nodes}
@@ -444,7 +444,6 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
                 setExpanded((prev) => new Set(prev).add(node.id));
               }
             }}
-            proOptions={{ hideAttribution: false }}
           >
             {/* Blueprint paper: fine grid plus stronger major lines. */}
             <Background
@@ -475,7 +474,11 @@ export function TournamentFlow({ def }: { def: ParsedEventDef }) {
               maskColor="rgba(148, 163, 184, 0.25)"
             />
           </ReactFlow>
-        ) : null}
+        ) : (
+          // Pre-hydration placeholder: echo the blueprint paper so the
+          // static shell looks intentional instead of blank.
+          <div aria-hidden className="h-full w-full bg-[#eff6ff]" />
+        )}
       </div>
     </div>
   );

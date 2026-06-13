@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FORMAT_EXAMPLES } from "@/chess/formats";
+import { chessRegistry } from "@/chess/registry";
 import { TournamentFlow } from "@/components/tournament/tournament-flow";
+import { concretify } from "@/tournament/concrete";
 
 // The slug universe is a closed compile-time set; 404 unknown ones without
 // rendering.
@@ -29,6 +31,11 @@ export default async function TournamentPage(
   const format = FORMAT_EXAMPLES.find((f) => f.slug === slug);
   if (format === undefined) notFound();
 
+  // The definition → concrete conversion is deterministic server work (the
+  // route is static, so it runs at build); only the interactive layout over
+  // the result lives client-side.
+  const concrete = concretify(format.def, chessRegistry);
+
   return (
     <main className="flex h-dvh flex-col">
       <header className="border-b px-6 py-4">
@@ -47,7 +54,7 @@ export default async function TournamentPage(
       </header>
       <div className="min-h-0 flex-1">
         {/* Keyed by slug: the collapse state inside is meaningful only for this def. */}
-        <TournamentFlow key={format.slug} def={format.def} />
+        <TournamentFlow key={format.slug} concrete={concrete} />
       </div>
     </main>
   );

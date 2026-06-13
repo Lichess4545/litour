@@ -25,8 +25,8 @@ import {
  * Sizes are explicit. `Many<T>` either knows all of its items or is open —
  * registration-bound — in which case it carries example items plus one
  * faded continuation ("… pairing n"). When real registrations and pairings
- * exist, a state-bound conversion produces the same shapes with every item
- * known and named.
+ * exist, a state-bound conversion will produce the same shapes with every
+ * item known and named.
  */
 
 /** A collection whose size the definition may not know. */
@@ -449,10 +449,9 @@ function concretifyLeaf(
   const entrants = open ? ("open" as const) : entries.length;
   const entrantsLine = open ? "open entry" : `${entrants} entrants`;
 
-  // Every leaf's participants come from generator nodes: open or
-  // origin-less seeds are a registration process; single-origin seeds are a
-  // source competition's standings output (with "top N" processing);
-  // multi-origin seeds aggregate several standings (the tour).
+  // Classify each seed by origin count: none → registration; one → that
+  // source's standings (with "top N" processing); several → an aggregation
+  // (the tour).
   const bySource = new Map<string, { ranks: (number | undefined)[] }>();
   const aggregations = new Map<
     string,

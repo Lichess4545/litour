@@ -320,6 +320,17 @@ describe("review-driven regressions", () => {
     expect(corrected.errors.map((e) => e.reason)).toEqual([
       expect.stringContaining("no longer an entrant"),
     ]);
+
+    // The builder's submit must surface the same RETROACTIVE error (it
+    // lands at the earlier pairing input's index, not the last one) — every
+    // format test stands on this guarantee.
+    expect(() =>
+      run.submit({
+        kind: "gameResult",
+        game: path("comp-a/round-1/pair-2"),
+        result: "0-1",
+      }),
+    ).toThrow(/no longer an entrant/);
   });
 
   it("a drawn deciding match completes the event with no champion", () => {

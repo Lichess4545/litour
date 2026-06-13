@@ -111,15 +111,33 @@ export const placementsSeed: SeedKind = defineSeedKind({
     ],
   }),
   validate: (ref, ctx, issue) => {
+    // `resolve` can only say "not finished yet" (undefined), never "never":
+    // an unattainable rank must die here or the event hangs in awaitSeeding
+    // forever. The sum of closed source sizes bounds the combined field
+    // (overlap can only shrink it); any open source waives the check.
+    let bound: number | undefined = 0;
     ref.over.forEach((source, i) => {
       if (source === ctx.self) {
         issue(`${ctx.self} cannot aggregate its own ranking`, ["over", i]);
+        bound = undefined;
         return;
       }
-      if (!ctx.sizes.has(source)) {
+      const size = ctx.sizes.get(source);
+      if (size === undefined) {
         issue(`unknown competition "${source}"`, ["over", i]);
+        bound = undefined;
+      } else if (size === "open") {
+        bound = undefined;
+      } else if (bound !== undefined) {
+        bound += size;
       }
     });
+    if (bound !== undefined && ref.rank > bound) {
+      issue(
+        `rank ${ref.rank} exceeds the at most ${bound} competitors across these sources`,
+        ["rank"],
+      );
+    }
   },
 });
 

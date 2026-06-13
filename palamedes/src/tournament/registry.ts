@@ -40,6 +40,11 @@ import {
  * stores an erased interface whose methods accept the raw def and decode it
  * through the instance's own zod schema, memoized per def object (defs are
  * immutable data, so this is a one-time parse — never a cast).
+ *
+ * Instances must be pure: the engine re-invokes nextSlot/outcome/work/
+ * points/value/resolve/propose freely and memoizes decodes, so every
+ * instance method must be a deterministic function of its arguments — no
+ * IO, no randomness, no retained views.
  */
 
 // ---------------------------------------------------------------------------
@@ -858,6 +863,21 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
       .optional(),
   });
 
+  // Dispatch `run` on its discriminant so a malformed pool reports POOL
+  // issues at pool paths — an undiscriminated union would surface whichever
+  // branch failed last ("unknown encounter kind pool" for a pool typo).
+  const runSchema: z.ZodType<RunDef> = z
+    .looseObject({ kind: z.string() })
+    .superRefine((run, ctx) => {
+      if (run.kind === "pool") {
+        relayIssues(poolSchema.safeParse(run), ctx);
+      } else if (run.kind === "competitions") {
+        relayIssues(competitionsSchema.safeParse(run), ctx);
+      } else {
+        relayIssues(registry.encounterSchema.safeParse(run), ctx);
+      }
+    });
+
   // The recursive spine schema: a competition's run may hold competitions,
   // which hold runs — z.lazy breaks the cycle.
   const competitionSchema: z.ZodType<CompetitionDef> = z.lazy(() =>
@@ -870,7 +890,7 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
           z.object({ open: z.literal(true) }),
         ])
         .optional(),
-      run: z.union([poolSchema, competitionsSchema, registry.encounterSchema]),
+      run: runSchema,
     }),
   );
 
@@ -947,6 +967,8 @@ function validateEvent(
   event: EventDef,
   registry: RegistryCore,
 ): readonly Found[] {
+  // Runs inside the event schema's superRefine: zod reaches it only after
+  // the structural parse succeeded, so the spine's required fields exist.
   const found: Found[] = [];
   const issueAt =
     (base: readonly (string | number)[]): Issue =>
@@ -981,8 +1003,8 @@ function validateEvent(
 
   const all = [...walkCompetitions(event.competition, ["competition"])];
 
-  // Ids are globally unique — containers and leaves share one namespace
-  // (paths are flat, seeds reference by bare id).
+  // Containers and leaves share one namespace (seeds reference by bare id)
+  // — see "Node paths" in core.ts.
   const compIds = new Set<string>();
   for (const { comp, path } of all) {
     if (compIds.has(comp.id))
@@ -1023,6 +1045,22 @@ function validateEvent(
     const entries = comp.entries;
 
     if (entries !== undefined && !isOpenEntries(entries)) {
+      // One seed cannot fill two slots: structurally identical refs always
+      // resolve to the same competitor, so the field would repeat them.
+      const seenRefs = new Map<string, number>();
+      entries.forEach((entry, ei) => {
+        const key = JSON.stringify(entry);
+        const firstIndex = seenRefs.get(key);
+        if (firstIndex !== undefined) {
+          found.push({
+            message: `entry ${ei} repeats entry ${firstIndex}; one seed cannot fill two slots`,
+            path: [...path, "entries", ei],
+          });
+        } else {
+          seenRefs.set(key, ei);
+        }
+      });
+
       entries.forEach((entry, ei) => {
         const seedKind = registry.seeds.get(entry.kind);
         if (seedKind === undefined) {
@@ -1112,8 +1150,7 @@ function validateEvent(
 
 /**
  * The intake graph (consumer → the sources its seeds draw from) must be a
- * DAG. This replaces the old "earlier stage" ordering: definition order no
- * longer constrains references, only actual cycles do.
+ * DAG: definition order never constrains references, only actual cycles do.
  */
 function intakeCycleIssues(
   leaves: readonly LeafAt[],
@@ -1141,30 +1178,60 @@ function intakeCycleIssues(
   const found: Found[] = [];
   const reported = new Set<string>();
   const state = new Map<string, "visiting" | "done">();
-  const stack: string[] = [];
-  const visit = (id: string): void => {
-    const mark = state.get(id);
-    if (mark === "done") return;
-    if (mark === "visiting") {
-      const cycle = [...stack.slice(stack.indexOf(id)), id];
-      const canonical = [...cycle.slice(0, -1)].sort().join("|");
-      if (!reported.has(canonical)) {
-        reported.add(canonical);
-        found.push({
-          message: `intake cycle: ${cycle.join(" → ")}`,
-          path: entriesPath.get(id) ?? [],
-        });
+  // Iterative DFS: an intake chain can be arbitrarily long, and recursing
+  // here would risk the very overflow the parse bound exists to prevent.
+  const visit = (start: string): void => {
+    if (state.has(start)) return;
+    type Frame = {
+      readonly id: string;
+      readonly sources: readonly string[];
+      next: number;
+    };
+    const stack: Frame[] = [
+      { id: start, sources: sourcesOf.get(start) ?? [], next: 0 },
+    ];
+    const onPath: string[] = [start];
+    state.set(start, "visiting");
+    for (
+      let frame = stack[stack.length - 1];
+      frame !== undefined;
+      frame = stack[stack.length - 1]
+    ) {
+      if (frame.next >= frame.sources.length) {
+        stack.pop();
+        onPath.pop();
+        state.set(frame.id, "done");
+        continue;
       }
-      return;
+      const source = frame.sources[frame.next];
+      frame.next += 1;
+      if (source === undefined) continue;
+      const mark = state.get(source);
+      if (mark === "done") continue;
+      if (mark === "visiting") {
+        const cycle = [...onPath.slice(onPath.indexOf(source)), source];
+        const canonical = [...cycle.slice(0, -1)].sort().join("|");
+        if (!reported.has(canonical)) {
+          reported.add(canonical);
+          found.push({
+            message: `intake cycle: ${cycle.join(" → ")}`,
+            path: entriesPath.get(source) ?? [],
+          });
+        }
+        continue;
+      }
+      // Sources without entries of their own (open or registration leaves)
+      // terminate chains; unknown ids were reported by the seed's validate.
+      if (sourcesOf.has(source)) {
+        state.set(source, "visiting");
+        stack.push({
+          id: source,
+          sources: sourcesOf.get(source) ?? [],
+          next: 0,
+        });
+        onPath.push(source);
+      }
     }
-    state.set(id, "visiting");
-    stack.push(id);
-    for (const source of sourcesOf.get(id) ?? []) {
-      // Unknown source ids were already reported by the seed's validate.
-      if (sourcesOf.has(source)) visit(source);
-    }
-    stack.pop();
-    state.set(id, "done");
   };
   for (const id of sourcesOf.keys()) visit(id);
   return found;
@@ -1172,54 +1239,20 @@ function intakeCycleIssues(
 
 function validatePoolDef(
   pool: PoolDef,
-  /** Undefined when the group is open: entrant-count checks wait for binding. */
+  /** Undefined when the leaf is open: entrant-count checks wait for binding. */
   entrants: number | undefined,
   registry: RegistryCore,
   issue: Issue,
 ): void {
-  const pairing = registry.pairings.get(pool.pairing.system);
-  if (pairing === undefined) {
-    // Open world: unknown systems are fine (pairings arrive as inputs), but
-    // then the schedule length cannot be derived.
-    if (pool.rounds === undefined) {
-      issue(
-        `unregistered pairing system "${pool.pairing.system}" requires explicit rounds`,
-        ["pairing"],
-      );
-    }
-    return;
-  }
   // Kind validators recurse into the encounter through throwing decodes:
   // only hand them a payload that actually validates.
   const encounterValid =
     registry.encounters.has(pool.encounter.kind) &&
     registry.encounterSchema.safeParse(pool.encounter).success;
 
-  const parsed = pairing.schema.safeParse(pool.pairing);
-  if (!parsed.success) {
-    relayParseIssues(issue, parsed.error, ["pairing"]);
-  } else {
-    if (pairing.totalRounds === undefined && pool.rounds === undefined) {
-      issue(`${pool.pairing.system} pools must declare rounds`, ["rounds"]);
-    }
-    if (pairing.totalRounds !== undefined && pool.rounds !== undefined) {
-      issue(
-        `${pool.pairing.system} pools derive their round count; omit rounds`,
-        ["rounds"],
-      );
-    }
-    if (encounterValid) {
-      pairing.validate?.(
-        pool.pairing,
-        entrants,
-        pool.encounter,
-        registry.ops,
-        registry.ties,
-        (m, p = []) => issue(m, ["pairing", ...p]),
-      );
-    }
-  }
-
+  // Scoring and tiebreaks are checked regardless of the pairing system: an
+  // unregistered system is legal (pairings arrive as inputs) and must not
+  // waive the rest of the pool's validation.
   const scoring = registry.scorings.get(pool.score.kind);
   if (scoring === undefined) {
     issue(
@@ -1254,6 +1287,43 @@ function validatePoolDef(
       relayParseIssues(issue, parsedRef.error, ["tiebreaks", i]);
     }
   });
+
+  const pairing = registry.pairings.get(pool.pairing.system);
+  if (pairing === undefined) {
+    // Open world: unknown systems are fine (pairings arrive as inputs), but
+    // then the schedule length cannot be derived.
+    if (pool.rounds === undefined) {
+      issue(
+        `unregistered pairing system "${pool.pairing.system}" requires explicit rounds`,
+        ["pairing"],
+      );
+    }
+    return;
+  }
+  const parsed = pairing.schema.safeParse(pool.pairing);
+  if (!parsed.success) {
+    relayParseIssues(issue, parsed.error, ["pairing"]);
+  } else {
+    if (pairing.totalRounds === undefined && pool.rounds === undefined) {
+      issue(`${pool.pairing.system} pools must declare rounds`, ["rounds"]);
+    }
+    if (pairing.totalRounds !== undefined && pool.rounds !== undefined) {
+      issue(
+        `${pool.pairing.system} pools derive their round count; omit rounds`,
+        ["rounds"],
+      );
+    }
+    if (encounterValid) {
+      pairing.validate?.(
+        pool.pairing,
+        entrants,
+        pool.encounter,
+        registry.ops,
+        registry.ties,
+        (m, p = []) => issue(m, ["pairing", ...p]),
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,15 +1335,82 @@ const brandSchema = (registry: ModelRegistry) =>
 /** An EventDef that passed every registry refinement; the engine only accepts this. */
 export type ParsedEventDef = z.infer<ReturnType<typeof brandSchema>>;
 
+// The recursive schemas (and the walks behind them) descend the def with
+// native recursion, so the structure must be bounded BEFORE zod runs — a
+// stack overflow would escape even safeParse as a RangeError. The node cap
+// also bounds the intake DFS and rejects cyclic objects. These are DoS
+// ceilings for untrusted input, not format limits: the largest real def
+// (the Grand Chess Tour) is dozens of nodes and ~6 levels deep, so the
+// headroom is three-plus orders of magnitude.
+const MAX_DEF_DEPTH = 200;
+const MAX_DEF_NODES = 50_000;
+
+type Admitted =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Iterative structural admission for untrusted definition data: bound depth
+ * and node count, then sever aliasing with the caller's object so the
+ * parsed def — and the decode memos keyed on its identity — cannot change
+ * underneath the engine.
+ */
+function admitDefData(data: unknown): Admitted {
+  const stack: { readonly value: unknown; readonly depth: number }[] = [
+    { value: data, depth: 0 },
+  ];
+  let nodes = 0;
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
+    if (frame.depth > MAX_DEF_DEPTH) {
+      return {
+        ok: false,
+        reason: `definition nests deeper than ${MAX_DEF_DEPTH} levels`,
+      };
+    }
+    nodes += 1;
+    if (nodes > MAX_DEF_NODES) {
+      return {
+        ok: false,
+        reason: `definition exceeds ${MAX_DEF_NODES} nodes`,
+      };
+    }
+    const value = frame.value;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        stack.push({ value: item, depth: frame.depth + 1 });
+      }
+    } else if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) {
+        stack.push({ value: item, depth: frame.depth + 1 });
+      }
+    }
+  }
+  try {
+    return { ok: true, value: structuredClone(data) };
+  } catch {
+    // Functions, symbols, and other non-data refuse to clone: definitions
+    // are PLAIN DATA by contract, so refuse them as data, with a reason.
+    return { ok: false, reason: "definition contains non-data values" };
+  }
+}
+
+/** A schema that fails with the admission reason — typed issues, no throw. */
+const refuseSchema = (reason: string): z.ZodType<ParsedEventDef> =>
+  z.custom<ParsedEventDef>(() => false, { message: reason });
+
 /** Parse and fully validate an event definition against a registry; throws listing every issue. */
 export function parseEventDef(
   data: unknown,
   registry: ModelRegistry,
 ): ParsedEventDef {
-  return brandSchema(registry).parse(data);
+  const admitted = admitDefData(data);
+  if (!admitted.ok) return refuseSchema(admitted.reason).parse(data);
+  return brandSchema(registry).parse(admitted.value);
 }
 
 /** Like `parseEventDef` but returns the issues instead of throwing. */
 export function safeParseEventDef(data: unknown, registry: ModelRegistry) {
-  return brandSchema(registry).safeParse(data);
+  const admitted = admitDefData(data);
+  if (!admitted.ok) return refuseSchema(admitted.reason).safeParse(data);
+  return brandSchema(registry).safeParse(admitted.value);
 }

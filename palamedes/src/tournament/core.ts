@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * The fixed algebra — the laws every kind composes against. This file
  * deliberately contains NO tournament vocabulary (no swiss, no zigzag, no
- * match points): those are registered instances in `kinds/`. What is fixed:
+ * match points): those are registered instances in `src/chess/`. What is fixed:
  *
  * - identities and node paths;
  * - the two-sided `Outcome` every encounter produces;
@@ -111,6 +111,11 @@ export const pathPrefix = (path: NodePath, length: number): NodePath =>
 export function pathSegments(path: NodePath): readonly PathSegment[] {
   return path.split("/").map((raw): PathSegment => {
     const dash = raw.indexOf("-");
+    if (dash < 0) {
+      // Unreachable for branded paths (the grammar requires a dash in every
+      // segment); fail loudly rather than misparse if the brand was forged.
+      throw new Error(`malformed path segment "${raw}" in ${path}`);
+    }
     const label = raw.slice(0, dash);
     const rest = raw.slice(dash + 1);
     if (label === "comp") return { kind: "comp", id: rest };
@@ -171,7 +176,8 @@ export const orient = (
 // A node holds a seat (which side is "white-ish"). Each child either derives
 // its seat from the parent through a repeating keep/flip cycle, or awaits a
 // recorded lot-drawing input. zigzag boards, alternating legs, fixed colors
-// are all just cycle values — see helpers.ts for the named vocabulary.
+// are all just cycle values — `src/chess/compose.ts` names the vocabulary
+// (`alternate`, `zigzag`, `uniformBoards`, …).
 
 export const seatCycleSchema = z.array(z.enum(["keep", "flip"])).min(1);
 export type SeatCycle = z.infer<typeof seatCycleSchema>;
@@ -181,15 +187,6 @@ export const seatRuleSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("draw") }),
 ]);
 export type SeatRule = z.infer<typeof seatRuleSchema>;
-
-export const applyCycle = (
-  cycle: SeatCycle,
-  index: number,
-  seat: Side | undefined,
-): Side | undefined => {
-  if (seat === undefined) return undefined;
-  return cycle[index % cycle.length] === "flip" ? otherSide(seat) : seat;
-};
 
 // ---------------------------------------------------------------------------
 // Inputs — the recorded log the engine folds (the host-facing wire protocol)
@@ -244,51 +241,58 @@ export function resultUnplayed(result: GameResultCode): boolean {
   }
 }
 
-export const pairingPlanSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("pair"),
-    a: competitorIdSchema,
-    b: competitorIdSchema,
-    whiteSeat: sideSchema,
-  }),
-  z.object({ kind: z.literal("bye"), competitor: competitorIdSchema }),
-]);
+// The recorded log is immutable by type, not just convention: the engine
+// embeds inputs in EventState and every derived view assumes they never
+// change underneath it.
+export const pairingPlanSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("pair"),
+      a: competitorIdSchema,
+      b: competitorIdSchema,
+      whiteSeat: sideSchema,
+    }),
+    z.object({ kind: z.literal("bye"), competitor: competitorIdSchema }),
+  ])
+  .readonly();
 export type PairingPlan = z.infer<typeof pairingPlanSchema>;
 
-export const inputSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("pairingsSet"),
-    pool: nodePathSchema,
-    round: z.number().int().min(1),
-    pairings: z.array(pairingPlanSchema).min(1),
-  }),
-  z.object({
-    kind: z.literal("lineupSet"),
-    match: nodePathSchema,
-    side: sideSchema,
-    players: z.array(playerIdSchema).min(1),
-  }),
-  z.object({
-    kind: z.literal("gameResult"),
-    game: nodePathSchema,
-    result: gameResultCodeSchema,
-  }),
-  z.object({
-    kind: z.literal("manualDecision"),
-    node: nodePathSchema,
-    winner: sideSchema,
-  }),
-  z.object({
-    kind: z.literal("colorDraw"),
-    node: nodePathSchema,
-    whiteSeat: sideSchema,
-  }),
-  z.object({
-    kind: z.literal("encounterForfeit"),
-    node: nodePathSchema,
-    winner: sideSchema,
-  }),
-]);
+export const inputSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("pairingsSet"),
+      pool: nodePathSchema,
+      round: z.number().int().min(1),
+      pairings: z.array(pairingPlanSchema).min(1).readonly(),
+    }),
+    z.object({
+      kind: z.literal("lineupSet"),
+      match: nodePathSchema,
+      side: sideSchema,
+      players: z.array(playerIdSchema).min(1).readonly(),
+    }),
+    z.object({
+      kind: z.literal("gameResult"),
+      game: nodePathSchema,
+      result: gameResultCodeSchema,
+    }),
+    z.object({
+      kind: z.literal("manualDecision"),
+      node: nodePathSchema,
+      winner: sideSchema,
+    }),
+    z.object({
+      kind: z.literal("colorDraw"),
+      node: nodePathSchema,
+      whiteSeat: sideSchema,
+    }),
+    z.object({
+      kind: z.literal("encounterForfeit"),
+      node: nodePathSchema,
+      winner: sideSchema,
+    }),
+  ])
+  .readonly();
 export type Input = z.infer<typeof inputSchema>;
 export type PairingsSetInput = Extract<Input, { kind: "pairingsSet" }>;
 
@@ -482,5 +486,6 @@ export const idSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase alphanumeric with dashes");
 
+/** Power of two ≥ 2 (bracket sizes); 1 is deliberately excluded. */
 export const isPowerOfTwo = (n: number): boolean =>
   Number.isInteger(n) && n > 1 && (n & (n - 1)) === 0;

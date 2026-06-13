@@ -38,6 +38,16 @@ const failureMessages = (data: unknown): string => {
     : parsed.error.issues.map((i) => i.message).join("\n");
 };
 
+/** An encounter leaf seeded entirely from another competition's ranking. */
+const cycleDuel = (id: string, source: string) => ({
+  id,
+  entries: [
+    { kind: "rank", of: source, rank: 1 },
+    { kind: "rank", of: source, rank: 2 },
+  ],
+  run: { kind: "game", clock: { initial: 300, increment: 2 } },
+});
+
 describe("parseEventDef", () => {
   it("format examples have unique slugs (parsing happened at import)", () => {
     expect(new Set(FORMAT_EXAMPLES.map((f) => f.slug)).size).toBe(
@@ -145,26 +155,59 @@ describe("parseEventDef", () => {
   });
 
   it("rejects an intake cycle between competitions", () => {
-    const duel = (id: string, source: string) => ({
-      id,
-      entries: [
-        { kind: "rank", of: source, rank: 1 },
-        { kind: "rank", of: source, rank: 2 },
-      ],
-      run: { kind: "game", clock: { initial: 300, increment: 2 } },
-    });
     const messages = failureMessages(
       baseEvent({
         competition: {
           id: "root",
           run: {
             kind: "competitions",
-            competitions: [duel("x", "y"), duel("y", "x")],
+            competitions: [cycleDuel("x", "y"), cycleDuel("y", "x")],
           },
         },
       }),
     );
     expect(messages).toContain("intake cycle: x → y → x");
+  });
+
+  it("reports a longer intake cycle exactly once", () => {
+    // A pairwise check would miss this; only a real DFS finds x → y → z → x,
+    // and the canonical dedupe must keep it to ONE issue.
+    const parsed = safeParseEventDef(
+      baseEvent({
+        competition: {
+          id: "root",
+          run: {
+            kind: "competitions",
+            competitions: [
+              cycleDuel("x", "y"),
+              cycleDuel("y", "z"),
+              cycleDuel("z", "x"),
+            ],
+          },
+        },
+      }),
+    );
+    expect(parsed.success).toBe(false);
+    const cycles = parsed.success
+      ? []
+      : parsed.error.issues.filter((i) => i.message.includes("intake cycle"));
+    expect(cycles).toHaveLength(1);
+  });
+
+  it("rejects a leaf whose entries repeat the same seed", () => {
+    const messages = failureMessages(
+      baseEvent({
+        competition: {
+          id: "g",
+          entries: [
+            { kind: "registration", seed: 1 },
+            { kind: "registration", seed: 1 },
+          ],
+          run: { kind: "game", clock: { initial: 300, increment: 2 } },
+        },
+      }),
+    );
+    expect(messages).toContain("one seed cannot fill two slots");
   });
 
   it("rejects duplicate competition ids across the whole tree", () => {
@@ -265,28 +308,50 @@ describe("parseEventDef", () => {
 
   it("reports a malformed seed entry as issues instead of throwing (roster pass)", () => {
     // A team-shaped leaf forces the roster-need pass over the entries; the
-    // second entry passes the outer { kind } shape but fails its kind schema.
-    const data = baseEvent({
-      competitors: [
-        { id: "a", name: "A", roster: ["a1", "a2"] },
-        { id: "b", name: "B", roster: ["b1", "b2"] },
-      ],
-      competition: {
-        id: "g",
-        entries: [
-          { kind: "registration", seed: 1 },
-          { kind: "rank", of: "elsewhere" }, // missing rank
+    // second entry passes the outer { kind } shape but fails its kind schema
+    // — feeding it to a throwing decoder would escape safeParse entirely.
+    const messages = failureMessages(
+      baseEvent({
+        competitors: [
+          { id: "a", name: "A", roster: ["a1", "a2"] },
+          { id: "b", name: "B", roster: ["b1", "b2"] },
         ],
-        run: {
-          kind: "match",
-          boards: 2,
-          board: { kind: "game", clock: { initial: 300, increment: 2 } },
-          seats: { cycle: ["keep", "flip"] },
+        competition: {
+          id: "g",
+          entries: [
+            { kind: "registration", seed: 1 },
+            { kind: "rank", of: "elsewhere" }, // missing rank
+          ],
+          run: {
+            kind: "match",
+            boards: 2,
+            board: { kind: "game", clock: { initial: 300, increment: 2 } },
+            seats: { cycle: ["keep", "flip"] },
+          },
         },
-      },
-    });
-    expect(() => safeParseEventDef(data)).not.toThrow();
-    expect(safeParseEventDef(data).success).toBe(false);
+      }),
+    );
+    expect(messages).not.toBe("");
+  });
+
+  it("refuses pathologically deep definitions with an issue, not a stack overflow", () => {
+    let competition: Record<string, unknown> = {
+      id: "leaf",
+      entries: [
+        { kind: "registration", seed: 1 },
+        { kind: "registration", seed: 2 },
+      ],
+      run: { kind: "game", clock: { initial: 300, increment: 2 } },
+    };
+    for (let depth = 0; depth < 5000; depth += 1) {
+      competition = {
+        id: `c${depth}`,
+        run: { kind: "competitions", competitions: [competition] },
+      };
+    }
+    expect(failureMessages(baseEvent({ competition }))).toContain(
+      "nests deeper",
+    );
   });
 
   it("rejects rosters smaller than the deepest match", () => {
@@ -353,6 +418,8 @@ describe("node paths", () => {
       "comp-a/board-x",
       "leg-1", // grammar requires a comp root
       "comp-a/pair-1", // a pair only exists inside a round
+      "comp-a/round-1/pair-1/pair-2", // child labels may not shadow the spine
+      "comp-a/comp-1",
       "stage-a/group-b", // the pre-recursion grammar
     ]) {
       expect(nodePathSchema.safeParse(bad).success).toBe(false);

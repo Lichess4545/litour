@@ -6,7 +6,6 @@ import {
   type CompetitorId,
   compRootPath,
   type EntriesDef,
-  type EventDef,
   type GameResultCode,
   type Input,
   isOpenEntries,
@@ -87,11 +86,11 @@ export function pairingsAt(
 type MutableState = {
   readonly def: ParsedEventDef;
   readonly registry: ModelRegistry;
-  readonly results: Map<string, GameResultCode>;
+  readonly results: Map<NodePath, GameResultCode>;
   readonly lineups: Map<string, readonly PlayerId[]>;
-  readonly decisions: Map<string, Side>;
-  readonly colorDraws: Map<string, Side>;
-  readonly forfeits: Map<string, Side>;
+  readonly decisions: Map<NodePath, Side>;
+  readonly colorDraws: Map<NodePath, Side>;
+  readonly forfeits: Map<NodePath, Side>;
   readonly pairings: Map<string, readonly PairingPlan[]>;
 };
 
@@ -125,15 +124,14 @@ export function materialize(
       pairingInputIndexes.set(pairingsKey(input.pool, input.round), index);
     }
   });
-  const finished: EventState = { ...state, inputs, errors };
 
-  // A correction in a rank-source group can re-seed a later stage AFTER its
+  // A correction in a source leaf can re-seed a downstream leaf AFTER its
   // pairings were accepted; surface the orphaned pairings instead of letting
   // standings silently skip them.
   for (const index of pairingInputIndexes.values()) {
     const input = inputs[index];
     if (input?.kind !== "pairingsSet") continue;
-    const orphan = staleEntrant(finished, input);
+    const orphan = staleEntrant(state, input);
     if (orphan !== undefined) {
       errors.push({
         index,
@@ -142,7 +140,10 @@ export function materialize(
       });
     }
   }
-  return finished;
+
+  // Snapshot the log: the caller may keep appending to its own array (the
+  // builder does), and a fold's value must not change after it returns.
+  return { ...state, inputs: [...inputs], errors };
 }
 
 /** Append one input and re-derive (the fold is cheap at chess scale). */
@@ -182,10 +183,11 @@ export type CompRef = {
 /**
  * A leaf with its parse-time guarantees carried in the type: a runnable run
  * and present entries. Everything past the lookup seam consumes this proof
- * instead of re-checking it.
+ * instead of re-checking it — `comp` is deliberately narrowed so the wide
+ * `comp.run`/`comp.entries` channel cannot re-open it.
  */
 export type LeafRef = {
-  readonly comp: CompetitionDef;
+  readonly comp: Pick<CompetitionDef, "id" | "name">;
   readonly run: LeafRun;
   readonly entries: EntriesDef;
   readonly path: NodePath;
@@ -207,7 +209,7 @@ function asLeaf(ref: CompRef): LeafRef | undefined {
 
 /** Any competition — leaf or container — by its globally-unique id. */
 export function findCompetition(
-  def: EventDef,
+  def: ParsedEventDef,
   id: string,
 ): CompRef | undefined {
   const stack: CompetitionDef[] = [def.competition];
@@ -219,7 +221,7 @@ export function findCompetition(
 }
 
 /** Every leaf, in definition order; containers contribute only their children. */
-export function allLeaves(def: EventDef): readonly LeafRef[] {
+export function allLeaves(def: ParsedEventDef): readonly LeafRef[] {
   const leaves: LeafRef[] = [];
   const walk = (comp: CompetitionDef): void => {
     if (isContainer(comp.run)) {
@@ -270,10 +272,21 @@ export function resolveEntrants(
     const id = kind.resolve(entry, {
       competitors: state.def.competitors,
       ranking: (of) => {
+        // `undefined` strictly means "source not finished yet": a missing or
+        // non-leaf source would wait forever, so it fails loudly instead.
         const source = findCompetition(state.def, of);
-        if (source === undefined) return undefined;
+        if (source === undefined) {
+          throw new Error(
+            `unknown seed source "${of}" — the def was not parsed against this registry`,
+          );
+        }
         const leaf = asLeaf(source);
-        return leaf === undefined ? undefined : rankingOf(state, leaf);
+        if (leaf === undefined) {
+          throw new Error(
+            `seed source "${of}" is a container — the def was not parsed against this registry`,
+          );
+        }
+        return rankingOf(state, leaf);
       },
     });
     if (id === undefined) return undefined;
@@ -289,7 +302,15 @@ export function totalRoundsOf(
   entrants: number,
 ): number {
   const kind = state.registry.pairings.get(pool.pairing.system);
-  return kind?.totalRounds?.(pool.pairing, entrants) ?? pool.rounds ?? 0;
+  const total = kind?.totalRounds?.(pool.pairing, entrants) ?? pool.rounds;
+  if (total === undefined) {
+    // Validation forces one of the two; a zero-round pool would otherwise
+    // complete instantly and crown a winner from entry order.
+    throw new Error(
+      `pool ${pool.pairing.system} has neither a derivable nor a declared round count — the def was not parsed`,
+    );
+  }
+  return total;
 }
 
 /** Final order of a completed leaf: standings for pools, [winner, loser] for encounters (entry order on a draw). */
@@ -1060,14 +1081,7 @@ export function outcomeAt(state: EventState, path: NodePath) {
   return resolved.node.outcome;
 }
 
-/** The full evaluated tree at a pairing or root encounter (for UIs). Throws on unresolvable paths. */
-export function evaluatedNodeAt(state: EventState, path: NodePath): EvalNode {
-  const resolved = resolveNode(state, path);
-  if (!resolved.ok) throw new Error(resolved.reason);
-  return resolved.node;
-}
-
-/** Live standings of a pool group. Throws when the path is not a ready pool (reads are strict; the input fold is not). */
+/** Live standings of a pool leaf. Throws when the path is not a ready pool (reads are strict; the input fold is not). */
 export function standingsOf(
   state: EventState,
   poolPath: NodePath,
