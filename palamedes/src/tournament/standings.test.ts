@@ -235,3 +235,66 @@ describe("buchholz cut", () => {
     expectStandings(run).competitor("Bob").metric("buchholz-cut1", 4).rank(3);
   });
 });
+
+const phasedPool = (): ParsedEventDef =>
+  parseEventDef({
+    id: "phased-pool",
+    name: "Phased scoring",
+    competitors: ["A", "B", "C", "D"].map((name) => ({
+      id: name.toLowerCase(),
+      name,
+    })),
+    competition: {
+      id: "rr",
+      entries: [1, 2, 3, 4].map((seed) => ({ kind: "registration", seed })),
+      run: {
+        kind: "pool",
+        pairing: { system: "manual" },
+        rounds: 3,
+        encounter: { kind: "game", clock: { initial: 300, increment: 2 } },
+        // Round 1 scores 2/1/0; rounds 2–3 score 1/0.5/0 — the GCT
+        // rapid-then-blitz shape, keyed off each competitor's own round.
+        score: {
+          kind: "phased",
+          phases: [
+            { rounds: 1, win: 2, draw: 1, loss: 0 },
+            { rounds: 2, win: 1, draw: 0.5, loss: 0 },
+          ],
+        },
+        tiebreaks: [],
+      },
+    },
+  });
+
+describe("phased scoring", () => {
+  it("scores each competitor's game by the phase its own round falls in", () => {
+    const run = runEvent(phasedPool())
+      .pairManual([
+        ["A", "B"],
+        ["C", "D"],
+      ])
+      .game("A", "B", "1-0")
+      .game("C", "D", "1-0")
+      .pairManual([
+        ["A", "C"],
+        ["B", "D"],
+      ])
+      .game("A", "C", "1-0")
+      .game("B", "D", "1/2-1/2")
+      .pairManual([
+        ["A", "D"],
+        ["B", "C"],
+      ])
+      .game("A", "D", "1-0")
+      .game("B", "C", "1/2-1/2");
+
+    // A wins all three: 2 (round 1, phase 1) + 1 + 1 (phase 2) = 4 — flat
+    // scoring would give 3, phase-1-throughout would give 6.
+    expectStandings(run).competitor("A").points(4);
+    // C: phase-1 win (2), then loss (0), then phase-2 draw (0.5) = 2.5.
+    expectStandings(run).competitor("C").points(2.5);
+    // B: phase-1 loss (0) + two phase-2 draws (0.5 each) = 1.
+    expectStandings(run).competitor("B").points(1);
+    expectStandings(run).competitor("D").points(0.5);
+  });
+});

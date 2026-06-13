@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => ({
       // `all` reports every source file, not only the ones a test imported,
       // so untested code shows as 0% instead of vanishing from the report.
       all: true,
-      reporter: ["text", "json-summary", "html"],
+      reporter: ["text", "json", "json-summary", "html"],
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
