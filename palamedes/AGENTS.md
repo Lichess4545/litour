@@ -12,11 +12,21 @@ shadcn. It is not wired to the parent Django/FastAPI app: the root CLAUDE.md
 "Architecture rules" do not apply here; everything else there
 (command/test/git/migration policies, code style) still does.
 
+Its substantive feature is a **recursive tournament meta-model**: every
+chess format (swiss, knockout, the World Championship, the Grand Chess Tour
+with whole tournaments nested inside it) is plain data interpreted by one
+engine. `src/tournament/` is the engine (no chess vocabulary); `src/chess/`
+is the chess vocabulary built on it (kinds + the `compose.ts` authoring
+API); `src/components/tournament/` + `/tournaments` is the interactive
+viewer. The rest of the tree (`posts/`, auth, the tRPC/Prisma plumbing) is
+scaffold. The contract lives in `design/tournament-model.md`.
+
 ## Commands (suggest only — the user runs them)
 
 - Dev server: `bun run dev` (postgres comes from `devenv up`)
 - Typecheck: `bun run typecheck` · lint: `bun run lint` · autofix: `bun run fix`
-- Tests: `bun run test`
+- Tests: `bun run test` · coverage: `bun run test:coverage` (v8; HTML +
+  JSON in `coverage/`)
 - NEVER suggest `bun test` — that is Bun's built-in runner and it ignores
   `vitest.config.ts`.
 
@@ -38,6 +48,8 @@ shadcn. It is not wired to the parent Django/FastAPI app: the root CLAUDE.md
 
 Match the task, read the doc before starting:
 
+- The tournament meta-model — the engine, chess kinds, the `compose.ts`
+  authoring API, or the viewer → `design/tournament-model.md` (the contract)
 - Schema, models, migrations, seeds, or Prisma queries → `ai-docs/db.md`
 - tRPC procedures, data fetching, forms, auth wiring, client state, shadcn components → `ai-docs/trpc.md`
 - Writing or changing tests → `ai-docs/testing.md`

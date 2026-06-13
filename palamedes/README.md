@@ -39,13 +39,20 @@ run it yourself with `bun run dev`.
 
 ```
 src/
+  tournament/                # THE tournament engine — no chess vocabulary
+                             #   core · registry · evaluate · engine · standings · concrete · builder
+  chess/                     # the chess vocabulary, built on the engine
+                             #   encounters · pairings · scorings · metrics · ties · seeds
+                             #   compose.ts (authoring API) · formats.ts (the catalog)
   app/                       # routes & composition only — no business logic
     api/auth/[...all]/route.ts
     api/trpc/[trpc]/route.ts
     (auth)/sign-in/page.tsx
     posts/page.tsx
+    tournaments/             # the meta-model viewer (list + [slug])
   components/
     ui/                      # shadcn-generated — never hand-edit
+    tournament/              # the React Flow viewer (def-graph.ts layout + tournament-flow.tsx)
     posts/                   # domain components (table, form, section)
   server/                    # THE backend — server-side code only (see boundary rule)
     db.ts                    # prisma singleton (driver adapter)
@@ -60,11 +67,17 @@ src/
   env.ts                     # t3-env + zod
   test/                      # vitest setup + describeWithDb
   generated/prisma/          # prisma-generated client — never hand-edit
+design/
+  tournament-model.md        # the meta-model's design contract
 prisma/
   schema.prisma
   seed.ts
 prisma.config.ts             # Prisma 7 config (datasource url, seed command)
 ```
+
+The tournament meta-model is the substantive feature; `design/tournament-model.md`
+is its design contract. Everything else (`posts/`, auth, the tRPC/Prisma
+plumbing) is full-stack scaffold.
 
 ## The API boundary rule
 
@@ -106,13 +119,18 @@ Notes:
 ## Testing
 
 ```sh
-bun run test         # vitest run
-bun run test:watch   # vitest watch mode
+bun run test          # vitest run
+bun run test:watch    # vitest watch mode
+bun run test:coverage # vitest run --coverage (v8 → text + HTML + JSON in coverage/)
 ```
 
 > **Warning:** do NOT run `bun test` — that invokes Bun's built-in test runner,
 > which ignores `vitest.config.ts` entirely. Always `bun run test`.
 
+- The tournament engine + chess library are the well-covered core (~93–96%
+  lines); the viewer's layout is tested as a pure function (`def-graph.test.ts`);
+  the full-stack scaffold is intentionally light. Coverage excludes generated
+  code (Prisma, shadcn `ui/`) and the test setup.
 - DB-backed suites use `describeWithDb` from `src/test/db.ts`: when postgres
   isn't running they are skipped **visibly** (shown as skipped + a warning),
   never silently green.

@@ -11,6 +11,12 @@ the new API surface. Frontend: a Next.js + shadcn UI alongside the
 legacy jQuery + Bootstrap templates. Detailed dev setup, services, and
 invoke commands live in [`design/development.md`](design/development.md).
 
+**`palamedes/` is a separate, self-governing app** — a standalone Bun +
+Next.js experiment housing a recursive tournament meta-model, not wired to
+this Django/FastAPI app. It has its own `palamedes/AGENTS.md`; the
+architecture rules below do **not** apply inside it. Work there is governed
+by that file, not this one.
+
 ## Architecture rules (apply to all new code)
 
 These are non-negotiable for new features:

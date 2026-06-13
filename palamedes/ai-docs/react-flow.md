@@ -13,3 +13,14 @@ Read this before building flow, diagram, graph, or canvas UI.
   before writing code against it.
 - v12 APIs may differ from your training data — once installed, verify
   against the types in `node_modules/@xyflow/react/`.
+
+## The live example: the tournament viewer
+
+`src/components/tournament/` is the worked example, and the pattern to
+follow: keep layout out of React. `def-graph.ts` is a **pure** function
+(`buildGraph(concrete, expanded) → nodes/edges`) with no React import —
+unit-tested without a DOM in `def-graph.test.ts`. `tournament-flow.tsx` is
+the thin `"use client"` shell that renders what it returns and owns only
+the expand/collapse state. The data it draws comes pre-shaped from
+`concretify` (run server-side; see `design/tournament-model.md`), so the
+component never touches the engine or registry.
