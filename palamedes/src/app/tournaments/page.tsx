@@ -26,6 +26,17 @@ export default function TournamentsPage() {
         match) nest freely inside pools. Open one to explore its structure —
         click any composite node to fold or unfold the recursion.
       </p>
+      <p className="mt-3 text-sm">
+        <Link
+          href="/tiebreaks"
+          className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/70"
+        >
+          Browse the tiebreaks on their own →
+        </Link>{" "}
+        <span className="text-muted-foreground">
+          each as a zoomable fan-out/fan-in computation.
+        </span>
+      </p>
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FORMAT_EXAMPLES.map((format) => {
           const leafCount = allLeaves(format.def).length;

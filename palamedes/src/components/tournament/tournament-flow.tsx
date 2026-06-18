@@ -6,6 +6,7 @@ import {
   Controls,
   type Edge,
   Handle,
+  MarkerType,
   MiniMap,
   type Node,
   type NodeProps,
@@ -33,10 +34,11 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConcreteEvent } from "@/tournament/concrete";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ConcreteEvent, ConcreteTiebreak } from "@/tournament/concrete";
 import {
   buildGraph,
+  buildTiebreaksGraph,
   CARD_W,
   type FlowCardData,
   type FlowGraph,
@@ -173,6 +175,26 @@ function CardHandles() {
   );
 }
 
+/**
+ * The "this opens up" marker, on every expandable card. Shape-first (a dashed
+ * ⊕ pill) so it reads without relying on color; the matching dashed card
+ * border is the same signal at the card scale.
+ */
+function ExpandBadge({ small }: { small?: boolean }) {
+  return (
+    <span
+      role="img"
+      aria-label="expandable — click to zoom in"
+      title="click to zoom in"
+      className={`flex shrink-0 items-center justify-center rounded-full border border-primary/60 border-dashed bg-primary/10 font-bold text-primary leading-none ${
+        small ? "h-4 w-4 text-[11px]" : "h-5 w-5 text-sm"
+      }`}
+    >
+      +
+    </span>
+  );
+}
+
 function FlowCard(props: NodeProps<CardNode>) {
   // nodeTypes components receive untyped data; parse instead of casting.
   const data = flowCardDataSchema.parse(props.data);
@@ -182,7 +204,9 @@ function FlowCard(props: NodeProps<CardNode>) {
       <div
         title={data.title}
         className={`flex h-16 w-16 items-center justify-center rounded-xl border bg-card shadow-sm ${
-          data.drill ? "border-dashed hover:border-foreground/40" : ""
+          data.drill
+            ? "border-primary/50 border-dashed hover:border-primary"
+            : ""
         }`}
       >
         <CardHandles />
@@ -200,7 +224,7 @@ function FlowCard(props: NodeProps<CardNode>) {
     <div
       className={`rounded-lg border bg-card text-card-foreground shadow-sm ${
         data.step ? "px-3 py-2" : "p-3"
-      } ${data.drill ? "border-dashed hover:border-foreground/40" : ""} ${
+      } ${data.drill ? "border-primary/50 border-dashed hover:border-primary" : ""} ${
         data.ghost ? "border-dotted opacity-40" : ""
       }`}
       style={{ width: data.step ? STEP_W : CARD_W }}
@@ -217,15 +241,7 @@ function FlowCard(props: NodeProps<CardNode>) {
                 </span>
               )}
             </span>
-            {data.drill && (
-              <button
-                type="button"
-                aria-label={`Expand ${data.title}`}
-                className="text-muted-foreground text-xs"
-              >
-                ⤵
-              </button>
-            )}
+            {data.drill && <ExpandBadge small />}
           </div>
           <div className="mt-0.5 truncate whitespace-nowrap font-semibold text-xs">
             {data.title}
@@ -241,7 +257,9 @@ function FlowCard(props: NodeProps<CardNode>) {
               </span>
             )}
             {data.drill && (
-              <span className="ml-auto text-muted-foreground text-xs">⤵</span>
+              <span className="ml-auto">
+                <ExpandBadge />
+              </span>
             )}
           </div>
           <div className="mt-1.5 font-semibold text-sm leading-tight">
@@ -303,7 +321,18 @@ function Frame(props: NodeProps<FrameNode>) {
 
 const nodeTypes: NodeTypes = { card: FlowCard, frame: Frame };
 
-export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
+/**
+ * The shared zoomable canvas: it owns the expand/collapse state and rebuilds
+ * the layout from `build` on every change, recentering the camera on whatever
+ * moved. Both the whole-tournament view and the standalone tiebreak gallery
+ * are just different `build` functions over the same machinery, so the
+ * fan-out/fan-in formulas zoom identically wherever they are reached.
+ */
+function FlowCanvas({
+  build,
+}: {
+  build: (expanded: ReadonlySet<string>) => FlowGraph;
+}) {
   // The canvas depends on measured container size; rendering it on the
   // server only produces hydration mismatches. Mount-gate the canvas alone —
   // the toolbar shell renders identically on server and client.
@@ -313,10 +342,7 @@ export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
   /** Ids currently expanded in place (collapsed descendants are remembered). */
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
-  const graph: FlowGraph = useMemo(
-    () => buildGraph(concrete, expanded),
-    [concrete, expanded],
-  );
+  const graph: FlowGraph = useMemo(() => build(expanded), [build, expanded]);
 
   // After an expand/collapse the layout reflows; bring the camera to the
   // node that changed (or refit everything after "collapse all") so the
@@ -339,12 +365,20 @@ export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
       return;
     }
     focusRef.current = null;
+    // Frame the whole revealed subtree, not just the clicked node: expanding a
+    // computation node fans its inputs out to the LEFT, and in a narrow
+    // viewport that reveal is wider than the node itself — fitting to the node
+    // alone leaves the new content off-screen and the expand feels like a no-op.
+    // A node's descendants are exactly the ids prefixed by `${focus}/`.
+    const subtree = graph.nodes
+      .filter((node) => node.id === focus || node.id.startsWith(`${focus}/`))
+      .map((node) => ({ id: node.id }));
     const frame = requestAnimationFrame(() => {
       void (focus === "*"
         ? flow.fitView({ padding: 0.15, duration: 400 })
         : flow.fitView({
-            nodes: [{ id: focus }],
-            padding: 0.4,
+            nodes: subtree,
+            padding: 0.2,
             duration: 400,
             maxZoom: 1,
           }));
@@ -394,6 +428,8 @@ export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
         targetHandle: edge.toHandle,
         ...(edge.label === undefined ? {} : { label: edge.label }),
         labelStyle: { fontSize: 10 },
+        // Arrowheads make the flow direction explicit at every edge.
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
         ...(edge.kind === "seed"
           ? { animated: true, style: { strokeDasharray: "6 3" } }
           : {}),
@@ -482,4 +518,26 @@ export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
       </div>
     </div>
   );
+}
+
+/** The whole tournament, zoomable from the event down into each tiebreak. */
+export function TournamentFlow({ concrete }: { concrete: ConcreteEvent }) {
+  const build = useCallback(
+    (expanded: ReadonlySet<string>) => buildGraph(concrete, expanded),
+    [concrete],
+  );
+  return <FlowCanvas build={build} />;
+}
+
+/** Just the tiebreaks, each its own zoomable fan-out/fan-in formula. */
+export function TiebreaksFlow({
+  tiebreaks,
+}: {
+  tiebreaks: readonly ConcreteTiebreak[];
+}) {
+  const build = useCallback(
+    (expanded: ReadonlySet<string>) => buildTiebreaksGraph(tiebreaks, expanded),
+    [tiebreaks],
+  );
+  return <FlowCanvas build={build} />;
 }

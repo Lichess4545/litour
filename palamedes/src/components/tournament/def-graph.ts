@@ -7,9 +7,11 @@ import {
   type ConcreteProcess,
   type ConcreteRound,
   type ConcreteRoundsRun,
+  type ConcreteTiebreak,
   manyList,
 } from "@/tournament/concrete";
 import { assertNever } from "@/tournament/core";
+import type { ComputationNode } from "@/tournament/expr/describe";
 
 /**
  * Layout only: project the concrete structure (`@/tournament/concrete`) onto
@@ -349,6 +351,159 @@ function iconItem(
   );
 }
 
+/** What one element of a fanned collection is called (the branch noun). */
+const ELEMENT_NOUN: Partial<Record<ComputationNode["op"], string>> = {
+  opponents: "opponent",
+  rounds: "round",
+};
+
+/**
+ * Illustrative branch count for a fan — the same "a couple of examples plus a
+ * faded … n" idiom the rest of the viewer uses for open sizes (concrete's
+ * `OPEN_EXAMPLES`). An opponent list is registration-bound, so its width is
+ * genuinely unknown at design time; two examples + a ghost is the honest,
+ * already-established way to draw "for each of these".
+ */
+const FAN_EXAMPLES = 2;
+
+/** A child placed into a parent op's input column, plus the node ids that wire
+ * into the parent: one for a plain input, one per branch for a fanned `map`. */
+type Input = { readonly sub: Sub; readonly outIds: readonly string[] };
+
+/**
+ * A tiebreak's computation as a dataflow graph read LEFT-TO-RIGHT: inputs on
+ * the left flow rightward (along arrows) into the op that consumes them, ending
+ * at the result on the right. Every op is one node EXCEPT `map`, which fans:
+ * its collection fans OUT into one branch per element (a couple of examples + a
+ * faded `… n`), and the branches flow on into whatever consumes the map — so
+ * `sum(map)` reads as the branches fanning back IN to the sum, and Buchholz's
+ * `sum(drop(sort(concat(map, byes))))` flows opponents → scores → combined-with
+ * → sort → drop → sum. A node with hidden inputs is drawn expandable; expanding
+ * it reveals those inputs to its left. `element`, when set, names the current
+ * branch so a lambda variable and `opponent(thisLine)` read as "this opponent".
+ */
+function computationGraph(
+  node: ComputationNode,
+  id: string,
+  expanded: ReadonlySet<string>,
+  element?: string,
+): Sub {
+  // Inside a branch, `opponent(thisLine)` IS the branch's opponent — show that
+  // rather than "the opponent of <this game>".
+  if (
+    element !== undefined &&
+    node.op === "opponent" &&
+    node.children[0]?.op === "var"
+  ) {
+    return cardSub(id, card("opponent", element, [], { step: true }));
+  }
+
+  const hasInputs = node.children.length > 0;
+  const open = hasInputs && expanded.has(id);
+  const label =
+    node.op === "var" && element !== undefined ? element : node.label;
+  const self = cardSub(
+    id,
+    card(node.op, label, [], { step: true, drill: hasInputs && !open }),
+  );
+  if (!open) return self;
+
+  const inputs = node.children.map((child, i) =>
+    inputSub(child, `${id}/${i}`, expanded, element),
+  );
+  const inputCol = column(
+    inputs.map((input) => input.sub),
+    GAP,
+    "center",
+  );
+  const laid = row([inputCol, self], GAP * 2);
+  return {
+    ...laid,
+    edges: [
+      ...laid.edges,
+      // Inputs on the left flow right into the op that consumes them.
+      ...inputs.flatMap((input) =>
+        input.outIds.map((from) => chainEdge(from, id)),
+      ),
+    ],
+    collapsibles: new Set([id, ...laid.collapsibles]),
+  };
+}
+
+/** One input to an op: a fanned `map`, or a plain nested node. */
+function inputSub(
+  child: ComputationNode,
+  id: string,
+  expanded: ReadonlySet<string>,
+  element?: string,
+): Input {
+  if (child.op === "map") return fanInput(child, id, expanded);
+  return { sub: computationGraph(child, id, expanded, element), outIds: [id] };
+}
+
+/**
+ * A `map` drawn as a fan-out: `over` (the collection) on the LEFT fans into
+ * illustrative element branches to its right — each the per-element body,
+ * drillable into its own sub-graph. The branch ids ARE the fan's outputs: the
+ * consuming op (further right) wires every one of them in, and that wiring is
+ * the fan-IN.
+ */
+function fanInput(
+  map: ComputationNode,
+  id: string,
+  expanded: ReadonlySet<string>,
+): Input {
+  const over = map.children[0];
+  const body = map.children[1];
+  const noun = over === undefined ? "item" : (ELEMENT_NOUN[over.op] ?? "item");
+  const source =
+    over === undefined
+      ? cardSub(`${id}/src`, card("var", "items", [], { step: true }))
+      : computationGraph(over, `${id}/src`, expanded);
+
+  const branchSub = (bid: string, label: string, ghost: boolean): Sub => {
+    const hint = body === undefined ? [] : [body.label];
+    if (ghost || body === undefined || body.children.length === 0) {
+      return cardSub(
+        bid,
+        card(body?.op ?? "var", label, hint, { step: true, ghost }),
+      );
+    }
+    return item(
+      bid,
+      label,
+      card(body.op, label, hint, { step: true, drill: true }),
+      () => computationGraph(body, `${bid}/b`, expanded, label),
+      expanded,
+    );
+  };
+
+  const branchIds: string[] = [];
+  const branchSubs: Sub[] = [];
+  for (let i = 0; i < FAN_EXAMPLES; i += 1) {
+    const bid = `${id}/e${i + 1}`;
+    branchIds.push(bid);
+    branchSubs.push(branchSub(bid, `${noun} ${i + 1}`, false));
+  }
+  const ghostId = `${id}/en`;
+  branchIds.push(ghostId);
+  branchSubs.push(branchSub(ghostId, `… ${noun} n`, true));
+
+  const branches = column(branchSubs, GAP, "center");
+  const laid = row([source, branches], GAP * 2);
+  return {
+    sub: {
+      ...laid,
+      // The collection on the left fans out into each element branch.
+      edges: [
+        ...laid.edges,
+        ...branchIds.map((bid) => chainEdge(`${id}/src`, bid)),
+      ],
+    },
+    outIds: branchIds,
+  };
+}
+
 /** Items fold when at least this many identical siblings repeat. */
 const FOLD_AT = 4;
 
@@ -493,6 +648,49 @@ export function buildGraph(
   return {
     nodes: laid.nodes,
     edges,
+    expandables: laid.expandables,
+    collapsibles: laid.collapsibles,
+  };
+}
+
+/**
+ * One tiebreak as an always-present frame — the "full node" that bounds its
+ * entire computation, titled with the tiebreak's name — holding the formula,
+ * which decomposes left-to-right inside it. The frame is non-collapsible: the
+ * box around a tiebreak is always there; you fold the formula within it, never
+ * the box itself. Shared by the standings and the standalone gallery so a
+ * tiebreak is enclosed the same way wherever it is shown.
+ */
+function tiebreakSub(
+  tb: ConcreteTiebreak,
+  id: string,
+  expanded: ReadonlySet<string>,
+): Sub {
+  return frameSub(
+    id,
+    tb.label,
+    computationGraph(tb.computation, `${id}/c`, expanded),
+    false,
+  );
+}
+
+/**
+ * A standalone gallery of tiebreaks: each one its own framed computation,
+ * stacked vertically. Exactly the `tiebreakSub` the tournament standings show
+ * — just without a tournament around them — so `/tiebreaks` is an extra door
+ * to the same zoomable formulas, never a different rendering of them.
+ */
+export function buildTiebreaksGraph(
+  tiebreaks: readonly ConcreteTiebreak[],
+  expanded: ReadonlySet<string>,
+): FlowGraph {
+  const laid = column(
+    tiebreaks.map((tb, i) => tiebreakSub(tb, `tb${i}`, expanded)),
+    LANE_GAP * 2,
+  );
+  return {
+    nodes: laid.nodes,
+    edges: laid.edges,
     expandables: laid.expandables,
     collapsibles: laid.collapsibles,
   };
@@ -857,7 +1055,15 @@ function processSub(
   expanded: ReadonlySet<string>,
 ): Sub {
   const items: Sub[] = [
-    iconItem(`${pid}/standings`, process.standings, expanded),
+    iconItem(`${pid}/standings`, process.standings, expanded, () =>
+      column(
+        process.tiebreaks.map((tb, i) =>
+          tiebreakSub(tb, `${pid}/standings/tb${i}`, expanded),
+        ),
+        GAP,
+        "center",
+      ),
+    ),
     ...(process.repair === undefined
       ? []
       : [iconItem(`${pid}/repair`, process.repair, expanded)]),

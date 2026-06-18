@@ -3,9 +3,11 @@ import {
   type CompetitionDef,
   type EntriesDef,
   isOpenEntries,
+  type MetricRef,
   type PoolDef,
   type SeedRef,
 } from "./core";
+import { type ComputationNode, describeExpr } from "./expr/describe";
 import {
   type Arrangement,
   isContainer,
@@ -103,8 +105,16 @@ export type ConcreteCard = {
  * (unless the schedule is over) the pairing system pairs the next round.
  * The round itself owns none of this — it outputs scored points.
  */
+/** One tiebreak of the standings, as a drillable computation formula. */
+export type ConcreteTiebreak = {
+  readonly label: string;
+  readonly computation: ComputationNode;
+};
+
 export type ConcreteProcess = {
   readonly standings: ConcreteCard;
+  /** Each tiebreak as a drillable computation formula, in declared order. */
+  readonly tiebreaks: readonly ConcreteTiebreak[];
   /** Undefined after the final round: nothing left to pair. */
   readonly repair: ConcreteCard | undefined;
 };
@@ -281,6 +291,30 @@ function entryName(
   return "TBD";
 }
 
+/**
+ * Each tiebreak ref resolved to a drillable computation formula: its label and
+ * the `describeExpr` of its metric's expression (or a bare node when the metric
+ * has no expression). Shared by the pool standings and the standalone tiebreak
+ * gallery, so both render the exact same formulas.
+ */
+export function concretifyTiebreaks(
+  refs: readonly MetricRef[],
+  registry: ModelRegistry,
+): readonly ConcreteTiebreak[] {
+  return refs.map((ref) => {
+    const metric = registry.metrics.get(ref.metric);
+    const label = metric?.label(ref) ?? ref.metric;
+    const exprOf = metric?.expr;
+    return {
+      label,
+      computation:
+        exprOf === undefined
+          ? { label, op: "metric", children: [] }
+          : describeExpr(exprOf(ref)),
+    };
+  });
+}
+
 function concretifyPool(
   pool: PoolDef,
   entrants: number | "open",
@@ -334,6 +368,7 @@ function concretifyPool(
       return `tie: ${metric?.label(ref) ?? ref.metric}`;
     }),
   };
+  const tiebreaks = concretifyTiebreaks(pool.tiebreaks, registry);
   const repair: ConcreteCard = {
     kind: pool.pairing.system,
     title: `Pair next ${roundWord.toLowerCase()}`,
@@ -376,8 +411,8 @@ function concretifyPool(
     system: pool.pairing.system,
     scoring,
     rounds,
-    between: { standings, repair },
-    final: { standings, repair: undefined },
+    between: { standings, repair, tiebreaks },
+    final: { standings, repair: undefined, tiebreaks },
   };
 }
 
