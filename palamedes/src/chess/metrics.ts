@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { DECIDED_BY } from "@/tournament/core";
 import {
   defineMetricKind,
   type MetricKind,
@@ -8,9 +7,11 @@ import {
 } from "@/tournament/registry";
 
 /**
- * Built-in tiebreak metrics. A metric is a named formula over precomputed
- * standings lines — there is no smaller primitive underneath Buchholz, so
- * this registry is the composition point: new formulas are new instances.
+ * The differential oracle. These hand-written implementations are NO LONGER
+ * registered — `./tiebreaks` provides the live, data-defined metrics. They are
+ * kept as the frozen reference that `tiebreaks/definitions.test.ts` pins the
+ * expression versions against, formula for formula. Change a tiebreak's
+ * behavior in `tiebreaks/definitions.ts`, never here.
  */
 
 const played = (row: MetricRow): readonly PlayedLine[] =>
@@ -161,16 +162,5 @@ export const headToHeadMetric: MetricKind = defineMetricKind({
   },
 });
 
-// gamesWon excludes drawOdds wins; keep the rule visible where the name is minted.
-void DECIDED_BY;
-
-export const builtinMetrics: readonly MetricKind[] = [
-  encounterPointsMetric,
-  matchWinsMetric,
-  gamesWonMetric,
-  boardPointsMetric,
-  buchholzMetric,
-  sonnebornBergerMetric,
-  extendedSBMetric,
-  headToHeadMetric,
-];
+// gamesWon's draw-odds exclusion lives in standings.ts (gamesWonFor), where the
+// per-line `gamesWon` count these formulas read is computed.

@@ -28,6 +28,7 @@ import {
   type Slot,
   type TieRef,
 } from "./core";
+import type { Expr } from "./expr/ast";
 
 /**
  * The typeclass layer. A tournament model is `core.ts` (the laws) plus a
@@ -340,7 +341,11 @@ export type MetricKind = {
     ref: MetricRef,
     row: MetricRow,
     all: ReadonlyMap<CompetitorId, MetricRow>,
+    /** Competitors currently tied with `row` during ranking; absent → everyone on equal points. */
+    tied?: ReadonlySet<CompetitorId>,
   ): number;
+  /** This metric's computation as data, for the viewer to render as a formula. */
+  expr?(ref: MetricRef): Expr;
 };
 
 export type TieKind = {
@@ -585,16 +590,22 @@ export type MetricKindSpec<M> = {
     ref: M,
     row: MetricRow,
     all: ReadonlyMap<CompetitorId, MetricRow>,
+    tied?: ReadonlySet<CompetitorId>,
   ): number;
+  expr?(ref: M): Expr;
 };
 
 export function defineMetricKind<M>(spec: MetricKindSpec<M>): MetricKind {
   const decode = memoDecode(spec.schema);
+  const exprOf = spec.expr;
   return {
     metric: spec.metric,
     schema: spec.schema,
     label: (ref) => spec.label(decode(ref)),
-    value: (ref, row, all) => spec.value(decode(ref), row, all),
+    value: (ref, row, all, tied) => spec.value(decode(ref), row, all, tied),
+    ...(exprOf === undefined
+      ? {}
+      : { expr: (ref: MetricRef) => exprOf(decode(ref)) }),
   };
 }
 

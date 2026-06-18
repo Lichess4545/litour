@@ -3,10 +3,11 @@ import { finitePoints } from "@/tournament/core";
 import { defineScoringKind, type ScoringKind } from "@/tournament/registry";
 
 /**
- * Built-in scoring kinds — how a pool turns one encounter outcome into
- * standings points. `passThrough` keeps the encounter's own sums (game
- * points); `table` maps the decision through a win/draw/loss table,
- * optionally keyed by the deciding leg (match points, Norway's 3/1.5/1/0).
+ * The differential oracle for scoring. These hand-written implementations are
+ * NO LONGER registered — `./scoring-rules` provides the live, data-defined
+ * scorings. They are kept as the frozen reference that
+ * `scoring-rules/definitions.test.ts` pins the expression versions against.
+ * Change a scoring rule's behavior in `scoring-rules/definitions.ts`, not here.
  */
 
 export const passThroughScoring: ScoringKind = defineScoringKind({
@@ -134,9 +135,3 @@ export const phasedScoring: ScoringKind = defineScoringKind<PhasedRule>({
     ),
   }),
 });
-
-export const builtinScorings: readonly ScoringKind[] = [
-  passThroughScoring,
-  tableScoring,
-  phasedScoring,
-];

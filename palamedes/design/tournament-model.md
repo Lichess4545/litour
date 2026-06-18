@@ -21,14 +21,23 @@ src/tournament/   THE SYSTEM — no chess vocabulary
   evaluate.ts     the generic recursive evaluator (asks instances for slots/outcomes/work)
   engine.ts       the input fold, validation, nextActions, public reads
   standings.ts    lines, scoring application, metrics, ranking
+  expr/           the scoring expression language: ast, schema, total evaluator,
+                  evalMetric / evalScoring — the primitive every scoring rule and
+                  tiebreak now decomposes into (data, not code)
   concrete.ts     definition → concrete structure ("how it works"), the display's input
   builder.ts      fluent test driver
 
 src/chess/        THE STANDARD LIBRARY — built outside the system, using it
   encounters.ts   game | series | match
   pairings.ts     roundRobin | swiss (demo) | knockout | manual
-  scorings.ts     passThrough (game points) | table (match points, leg-keyed)
-  metrics.ts      buchholz, Sonneborn-Berger, extended SB family, board points, …
+  tiebreaks/      the live tiebreaks AS DATA — buchholz, Sonneborn-Berger, extended
+                  SB family, board points, head-to-head, median, cumulative, … —
+                  expressions + the exprMetric adapter + builtinMetrics
+  scoring-rules/  the live scorings AS DATA — passThrough | table (leg-keyed) |
+                  phased — expressions + the exprScoring adapter
+  metrics.ts      differential ORACLE: the legacy hand-written metrics, kept
+                  unregistered only to pin the data versions in tests
+  scorings.ts     differential ORACLE for scoring (likewise unregistered)
   ties.ts         draw | drawOdds | manual
   seeds.ts        registration | fixed | rank | placements
   registry.ts     chessRegistry = buildRegistry(all of the above)
@@ -110,8 +119,14 @@ parse, never a cast.
   *unregistered* system is even allowed in a def (rounds then required) —
   pairings are inputs, the engine doesn't need the proposer.
 - **`ScoringKind`** — outcome → standings points for one line, with the
-  competitor's chronological scored history (streak rules need it).
-- **`MetricKind`** — label + value over precomputed standings lines.
+  competitor's chronological scored history (streak rules need it). The builtin
+  scorings are now **data** — a scoring expression the engine evaluates
+  (`src/chess/scoring-rules/`), not a hand-written `points()`.
+- **`MetricKind`** — label + value over precomputed standings lines. The builtin
+  tiebreaks are now **data** too — each a scoring expression
+  (`src/chess/tiebreaks/`) the engine evaluates, so *"there is no smaller
+  primitive underneath Buchholz"* no longer holds: the primitive is the
+  expression language, and new tiebreaks are data, not new instances.
 - **`TieKind`** — children resolved, sums equal: now what? May request work
   (`manual` awaits the arbiter) and declares whether it guarantees a winner.
 - **`SeedKind`** — entry list → competitors, resolving sources through
@@ -124,6 +139,35 @@ parse, never a cast.
 *from* them, and binds the recursion helpers. `extendRegistry(base, extra)`
 adds kinds. `parseEventDef(data, registry)` brands its output; the engine
 only accepts a `ParsedEventDef`, so unvalidated literals can't reach it.
+
+## The scoring expression language (`src/tournament/expr/`)
+
+Scoring rules and tiebreaks are not code — they are **data**, expressions in a
+small typed language the engine evaluates. `ast.ts` defines `Expr`, a closed
+union of ops: arithmetic, comparison/equality, `if`/`match`/`let`, the
+collection verbs `map`/`filter`/`sortBy`/`take`/`drop`/`concat`/`scan` and the
+reducers `sum`/`count`/`min`/`max`/`avg`; substrate accessors `opponents`,
+`opponent`, `rounds`, `score`, `lineNum`, `boardPoint`, `colorIs`, `kindIs`,
+`tiedWith`, `member`; the scoring-context leaves `linePoints`/`round`/
+`legIndex`/`outcome`; the ratings seam `attribute`; and `metric` for reuse.
+`schema.ts` parses untrusted expressions (a recursive `z.lazy`
+discriminatedUnion — the boundary). `evaluate.ts` is a **total, cast-free**
+evaluator returning a tagged value or a typed `ExprError` (never throwing on
+parsed input), step-bounded because expressions may be arbiter-authored.
+`evalMetric` runs an expression over a standings row; `evalScoring` over one
+scored line + its round.
+
+The chess vocabulary lives in `src/chess/tiebreaks/` and
+`src/chess/scoring-rules/` — each tiebreak/scoring a named expression
+registered through a thin `exprMetric` / `exprScoring` adapter, reused via
+`{ op: "metric", name }`. Every one is pinned to its legacy hand-written
+implementation (now the unregistered *oracle* in `metrics.ts` / `scorings.ts`)
+by a fast-check **differential test**, so data and code agree formula for
+formula — across byes, unplayed games, ghost opponents, leg-keyed tables, and
+every round of a phased schedule. Ranking itself (the lexicographic sort over a
+pool's ordered tiebreak refs, plus knockout progression) still lives in
+`standings.ts`; making the ordering data — real sequential FIDE
+re-partitioning — is the next step.
 
 ### Adding a kind (the whole job)
 

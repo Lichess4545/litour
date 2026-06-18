@@ -337,6 +337,119 @@ function progressionKeys(
   return keys;
 }
 
+type Ranking = {
+  readonly order: readonly CompetitorId[];
+  readonly ranks: ReadonlyMap<CompetitorId, number>;
+};
+
+const blocksToRanking = (
+  blocks: readonly (readonly CompetitorId[])[],
+): Ranking => {
+  const ranks = new Map<CompetitorId, number>();
+  let position = 0;
+  for (const block of blocks) {
+    const rank = position + 1;
+    for (const competitor of block) ranks.set(competitor, rank);
+    position += block.length;
+  }
+  return { order: blocks.flat(), ranks };
+};
+
+/**
+ * Data-driven ranking: refine the field one criterion at a time — standings
+ * points first, then each tiebreak in declared order — splitting every
+ * still-tied block into equal-value sub-blocks. Each tiebreak is evaluated with
+ * the *current* block as its tied group, so head-to-head (direct encounter)
+ * sees exactly the competitors a prior tiebreak left tied, not merely everyone
+ * on equal points. The pool's ordered tiebreak refs ARE the ranking program.
+ */
+function refineRanking(
+  registry: ModelRegistry,
+  pool: PoolDef,
+  drafts: ReadonlyMap<CompetitorId, RowDraft>,
+  entrants: readonly CompetitorId[],
+): Ranking {
+  const criterionValue = (
+    criterion: number,
+    competitor: CompetitorId,
+    tied: ReadonlySet<CompetitorId>,
+  ): number => {
+    const draft = drafts.get(competitor);
+    if (draft === undefined) return Number.NEGATIVE_INFINITY;
+    if (criterion === 0) return draft.standingsPoints;
+    const ref = pool.tiebreaks[criterion - 1];
+    if (ref === undefined) return 0;
+    const metric = registry.metrics.get(ref.metric);
+    if (metric === undefined) {
+      throw new Error(
+        `unknown tiebreak metric "${ref.metric}" — the def was not parsed against this registry`,
+      );
+    }
+    return metric.value(ref, draft, drafts, tied);
+  };
+
+  let blocks: readonly (readonly CompetitorId[])[] = [[...entrants]];
+  for (let criterion = 0; criterion <= pool.tiebreaks.length; criterion += 1) {
+    const refined: CompetitorId[][] = [];
+    for (const block of blocks) {
+      if (block.length <= 1) {
+        refined.push([...block]);
+        continue;
+      }
+      const tied = new Set(block);
+      const valued = block
+        .map((competitor) => ({
+          competitor,
+          value: criterionValue(criterion, competitor, tied),
+        }))
+        .sort((a, b) => b.value - a.value);
+      let group: CompetitorId[] = [];
+      let groupValue: number | undefined;
+      for (const item of valued) {
+        if (group.length > 0 && item.value !== groupValue) {
+          refined.push(group);
+          group = [];
+        }
+        group.push(item.competitor);
+        groupValue = item.value;
+      }
+      if (group.length > 0) refined.push(group);
+    }
+    blocks = refined;
+  }
+  return blocksToRanking(blocks);
+}
+
+/** Eliminative pairings rank by survival depth + podium, not by tiebreaks. */
+function rankByProgression(
+  registry: ModelRegistry,
+  indexes: EngineIndexes,
+  drafts: ReadonlyMap<CompetitorId, RowDraft>,
+  rounds: PoolRoundPlans,
+  pool: PoolDef,
+  poolPath: NodePath,
+  totalRounds: number,
+  entrants: readonly CompetitorId[],
+): Ranking {
+  const keys = progressionKeys(
+    registry,
+    indexes,
+    drafts,
+    rounds,
+    pool,
+    poolPath,
+    totalRounds,
+  );
+  const sortKeys = new Map<CompetitorId, readonly number[]>();
+  for (const [competitor, key] of keys) sortKeys.set(competitor, [key]);
+  const order = [...entrants].sort((a, b) => {
+    const va = sortKeys.get(a)?.[0] ?? Number.NEGATIVE_INFINITY;
+    const vb = sortKeys.get(b)?.[0] ?? Number.NEGATIVE_INFINITY;
+    return va !== vb ? vb - va : entrants.indexOf(a) - entrants.indexOf(b);
+  });
+  return { order, ranks: competitionRanks(sortKeys, order) };
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point
 
@@ -379,41 +492,20 @@ export function poolStandings(
     metrics.set(draft.competitor, values);
   }
 
-  const sortKeys = new Map<CompetitorId, readonly number[]>();
   const progression =
     registry.pairings.get(pool.pairing.system)?.progression === true;
-  if (progression) {
-    const keys = progressionKeys(
-      registry,
-      indexes,
-      drafts,
-      rounds,
-      pool,
-      poolPath,
-      totalRounds,
-    );
-    for (const [competitor, key] of keys) sortKeys.set(competitor, [key]);
-  } else {
-    for (const draft of drafts.values()) {
-      sortKeys.set(draft.competitor, [
-        draft.standingsPoints,
-        ...(metrics.get(draft.competitor)?.values() ?? []),
-      ]);
-    }
-  }
-
-  const order = [...entrants].sort((a, b) => {
-    const ka = sortKeys.get(a) ?? [];
-    const kb = sortKeys.get(b) ?? [];
-    for (let i = 0; i < Math.max(ka.length, kb.length); i += 1) {
-      const va = ka[i] ?? Number.NEGATIVE_INFINITY;
-      const vb = kb[i] ?? Number.NEGATIVE_INFINITY;
-      if (va !== vb) return vb - va;
-    }
-    return entrants.indexOf(a) - entrants.indexOf(b);
-  });
-
-  const ranks = competitionRanks(sortKeys, order);
+  const { order, ranks } = progression
+    ? rankByProgression(
+        registry,
+        indexes,
+        drafts,
+        rounds,
+        pool,
+        poolPath,
+        totalRounds,
+        entrants,
+      )
+    : refineRanking(registry, pool, drafts, entrants);
 
   return order.map((competitor) => {
     const draft = drafts.get(competitor);

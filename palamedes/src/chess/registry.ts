@@ -6,10 +6,10 @@ import {
   safeParseEventDef as safeParseWith,
 } from "@/tournament/registry";
 import { builtinEncounters } from "./encounters";
-import { builtinMetrics } from "./metrics";
 import { builtinPairings } from "./pairings";
-import { builtinScorings } from "./scorings";
+import { builtinScorings } from "./scoring-rules";
 import { builtinSeeds } from "./seeds";
+import { builtinMetrics } from "./tiebreaks";
 import { builtinTies } from "./ties";
 
 /**
