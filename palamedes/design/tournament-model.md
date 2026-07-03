@@ -359,10 +359,35 @@ only drillable thing at its level renders pre-expanded and cannot collapse
 — the root always, an only child, an encounter leaf's run — so a
 single-competition event opens at its rounds structurally.
 
-## Out of scope (unchanged)
+## Persistence: the definition changelog
 
-No persistence/API wiring; no real bbpPairings adapter (the PairingContext
-is TRF-sufficient; the adapter is host-side and async); no registration-time
-entry inputs or withdrawals; no rating calculation. Result corrections
-re-derive everything; reconciling already-created lichess games is the
-host's job.
+Definitions persist as an event-sourced changelog on the existing Prisma +
+Postgres stack. A **Definition** stream (stream id == `EventDef.id`) is a
+sequence of typed **changes** (`DefChange`: definition-created/renamed,
+competitor-added/updated/removed, competition-added/renamed/removed,
+run-set, entries-set) stored as one `DefinitionChange` row each. Entries are
+"changes", never "events" — `EventDef` already means the tournament itself.
+
+The pure domain lives in `src/tournament/changes/` (no Prisma): a total
+`foldDefinition(streamId, changes)` with typed FoldErrors, registry-
+parameterized change schemas (payload subtrees validated by
+`ModelRegistry.defSchemas`), and the canonical decomposition
+`definitionToChanges(def)` (created + competitor-adds), whose round-trip
+over the whole format catalog is pinned by tests. The single write door is
+`src/server/tournament/change-store.ts`: every append is batch-atomic and
+gated by fold + `safeParseEventDef`, so every batch boundary reads back as a
+valid definition; concurrency is optimistic via the
+`@@unique([streamId, version])` constraint (no transactions), and `submit`
+is the command-level retry loop. Decisions and their trade-offs live in
+`design/adr/` (0001-0005; 0006-0007 propose the results stream and
+snapshots). The seeded lichess4545 leagues (`team4545`, `lonewolf`) are the
+fidelity contract (`prisma/seed.ts`, ADR 0005).
+
+## Out of scope
+
+No API wiring for the change store yet (tRPC exposure wraps the DAL later);
+no real bbpPairings adapter (the PairingContext is TRF-sufficient; the
+adapter is host-side and async); no registration-time entry inputs or
+withdrawals; no rating calculation; no persistence of runtime results (the
+`Input` log — ADR 0006, proposed). Result corrections re-derive everything;
+reconciling already-created lichess games is the host's job.
