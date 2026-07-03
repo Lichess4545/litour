@@ -110,10 +110,29 @@ describeWithDb("engine differential — original vs rehydrated", () => {
 
     expect(rehydrated.standings()).toEqual(original.standings());
     for (const run of [original, rehydrated]) {
-      expectStandings(run).competitor("Knights").points(3).rank(1);
-      expectStandings(run).competitor("Pawnstars").points(3).rank(2);
-      expectStandings(run).competitor("Rooks").points(1).rank(3);
-      expectStandings(run).competitor("Dragons").points(1).rank(4);
+      expectStandings(run)
+        .competitor("Knights")
+        .points(3)
+        .metric("gamesWon", 3)
+        .rank(1);
+      expectStandings(run)
+        .competitor("Pawnstars")
+        .points(3)
+        .metric("gamesWon", 2)
+        .rank(2);
+      expectStandings(run).competitor("Knights").metric("boardPoints-1", 1.5);
+      expectStandings(run)
+        .competitor("Rooks")
+        .points(1)
+        .metric("gamesWon", 3)
+        .metric("boardPoints-1", 1)
+        .rank(3);
+      expectStandings(run)
+        .competitor("Dragons")
+        .points(1)
+        .metric("gamesWon", 3)
+        .metric("boardPoints-1", 0)
+        .rank(4);
     }
   });
 

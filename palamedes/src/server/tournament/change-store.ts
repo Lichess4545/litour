@@ -3,14 +3,14 @@
 // design/adr/0004-change-store-dal-boundary.md
 
 import { z } from "zod";
-import { chessRegistry, safeParseEventDef } from "@/chess/registry";
+import { defChangeSchema } from "@/chess/changes";
+import { safeParseEventDef } from "@/chess/registry";
 import {
   type DefinitionChange,
   Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";
 import { type FoldError, foldDefinition } from "@/tournament/changes/fold";
-import { buildDefChangeSchema } from "@/tournament/changes/schema";
 import type { DefChange } from "@/tournament/changes/types";
 import type { ParsedEventDef } from "@/tournament/registry";
 
@@ -52,13 +52,17 @@ export type AppendError =
   | {
       readonly kind: "invalidDefinition";
       readonly issues: readonly z.core.$ZodIssue[];
+    }
+  | {
+      readonly kind: "malformedChange";
+      readonly index: number;
+      readonly issues: readonly z.core.$ZodIssue[];
     };
 
 export type AppendResult =
   | AppendOk
   | { readonly ok: false; readonly error: AppendError };
 
-const changeSchema = buildDefChangeSchema(chessRegistry);
 // NOTE: z.json() validates JSON purity at runtime; v !== null excludes bare null
 // to satisfy Prisma.InputJsonValue — no type assertion needed.
 const jsonPayload: z.ZodType<Prisma.InputJsonValue> =
@@ -68,7 +72,7 @@ const jsonPayload: z.ZodType<Prisma.InputJsonValue> =
 const MAX_P2034_RETRIES = 3;
 
 const toStored = (row: DefinitionChange): StoredChange => {
-  const parsed = changeSchema.safeParse(row.payload);
+  const parsed = defChangeSchema.safeParse(row.payload);
   if (!parsed.success) {
     throw new Error(
       `corrupt DefinitionChange payload (stream=${row.streamId} seq=${row.seq} version=${row.version}): ${parsed.error.message}`,
@@ -97,6 +101,19 @@ export async function appendChanges(
 ): Promise<AppendResult> {
   if (batch.length === 0) {
     return { ok: false, error: { kind: "emptyBatch" } };
+  }
+  for (let i = 0; i < batch.length; i += 1) {
+    const validation = defChangeSchema.safeParse(batch[i]);
+    if (!validation.success) {
+      return {
+        ok: false,
+        error: {
+          kind: "malformedChange",
+          index: i,
+          issues: validation.error.issues,
+        },
+      };
+    }
   }
   for (let attempt = 0; ; attempt += 1) {
     const rows = await db.definitionChange.findMany({

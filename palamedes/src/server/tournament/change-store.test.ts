@@ -256,6 +256,62 @@ describeWithDb("change store — append/read", () => {
     expect(page[0]?.seq).toBe(firstSeq);
   });
 
+  it("a batch element failing the change schema → malformedChange at index 0, zero rows written", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+
+    const result = await appendChanges(db, id, base.version, [
+      {
+        type: "competitor-added",
+        competitor: { id: competitorId("dave"), name: "Dave" },
+        index: -1,
+      },
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("malformedChange");
+      if (result.error.kind === "malformedChange") {
+        expect(result.error.index).toBe(0);
+        expect(result.error.issues.length).toBeGreaterThan(0);
+      }
+    }
+    const count = await db.definitionChange.count({ where: { streamId: id } });
+    expect(count).toBe(base.version);
+  });
+
+  it("malformedChange.index reflects position in batch: second element malformed reports index 1", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+
+    const validFirst: DefChange = {
+      type: "competitor-added",
+      competitor: { id: competitorId("eve"), name: "Eve" },
+    };
+    const malformedSecond: DefChange = {
+      type: "competitor-added",
+      competitor: { id: competitorId("frank"), name: "Frank" },
+      index: -1,
+    };
+    const result = await appendChanges(db, id, base.version, [
+      validFirst,
+      malformedSecond,
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("malformedChange");
+      if (result.error.kind === "malformedChange") {
+        expect(result.error.index).toBe(1);
+        expect(result.error.issues.length).toBeGreaterThan(0);
+      }
+    }
+    const count = await db.definitionChange.count({ where: { streamId: id } });
+    expect(count).toBe(base.version);
+  });
+
   it("a corrupt stored payload throws with stream and seq context", async () => {
     const id = freshId();
     await db.definitionChange.create({

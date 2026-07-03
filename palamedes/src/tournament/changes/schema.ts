@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ModelRegistry } from "../registry";
-import type { DefChange } from "./types";
+import type { DefChange, DefChangeType } from "./types";
 
 const id = z.string().min(1);
 const insertIndex = z.number().int().min(0).optional();
@@ -65,7 +65,7 @@ export function buildDefChangeSchema(
       entries: entries.nullable(),
     }),
   } satisfies {
-    [K in DefChange["type"]]: z.ZodType<Extract<DefChange, { type: K }>>;
+    [K in DefChangeType]: z.ZodType<Extract<DefChange, { type: K }>>;
   };
   return z.discriminatedUnion("type", [
     arms["definition-created"],

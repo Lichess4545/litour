@@ -152,7 +152,6 @@ describeWithDb("submit — the optimistic command loop", () => {
   it("exhausts retries: surfaces retriesExhausted with correct attempts count", async () => {
     const id = freshId();
     const def = buildDef(id);
-    // Create the stream at version 1.
     await submit(db, id, () => definitionToChanges(def));
 
     // Wrap the delegate so the FIRST findMany call intercepts the read, inserts an

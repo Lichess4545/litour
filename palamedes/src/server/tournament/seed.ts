@@ -5,9 +5,12 @@ import {
   LONEWOLF_STREAM_ID,
   TEAM4545_STREAM_ID,
 } from "@/chess/leagues";
-import type { PrismaClient } from "@/generated/prisma/client";
 import { definitionToChanges } from "@/tournament/changes/decompose";
-import { appendChanges, readDefinition } from "./change-store";
+import {
+  appendChanges,
+  type ChangeStoreClient,
+  readDefinition,
+} from "./change-store";
 
 export const SEED_DEVIATIONS: readonly string[] = [
   "lonewolf: acceleration seeded as plain swiss (FAQ says Baku; rules page silent) — ADR 0005",
@@ -23,7 +26,7 @@ export type SeedOutcome = {
 // NOTE: never overwrites — a divergent existing stream is reported and left unchanged.
 // Pass idPrefix to isolate seeds under distinct stream ids (used by tests on a shared database).
 export async function seedLeagues(
-  db: PrismaClient,
+  db: ChangeStoreClient,
   opts?: { readonly idPrefix?: string },
 ): Promise<readonly SeedOutcome[]> {
   const prefix = opts?.idPrefix ?? "";
