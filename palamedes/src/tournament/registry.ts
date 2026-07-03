@@ -9,6 +9,7 @@ import {
   type CompetitorId,
   competitorIdSchema,
   type Decision,
+  type EntriesDef,
   type EventDef,
   finitePoints,
   idSchema,
@@ -685,6 +686,20 @@ export type ModelRegistry = {
   readonly encounterSchema: z.ZodType<AnyEncounterDef>;
   readonly ops: EncounterOps;
   readonly eventSchema: z.ZodType<EventDef>;
+  readonly defSchemas: DefSchemas;
+};
+
+/**
+ * Schemas for the four definition sub-trees; `run` and `competition` close
+ * over this registry's bound encounter kinds. Event-level cross-cutting
+ * checks (unique ids, intake cycles, roster sizes) are on `eventSchema`,
+ * not here. See design/adr/0004-change-store-dal-boundary.md.
+ */
+export type DefSchemas = {
+  readonly competition: z.ZodType<CompetitionDef>;
+  readonly run: z.ZodType<RunDef>;
+  readonly entries: z.ZodType<EntriesDef>;
+  readonly competitor: z.ZodType<CompetitorDef>;
 };
 
 function byKey<T>(
@@ -790,7 +805,8 @@ export function buildRegistry(spec: RegistrySpec): ModelRegistry {
     encounterSchema,
     ops,
   };
-  return { ...core, eventSchema: buildEventSchema(core) };
+  const { event, ...defSchemas } = buildEventSchema(core);
+  return { ...core, eventSchema: event, defSchemas };
 }
 
 function requireTie(
@@ -854,9 +870,23 @@ export const isPool = (run: RunDef): run is PoolDef => run.kind === "pool";
 export const isContainer = (run: RunDef): run is CompetitionsDef =>
   run.kind === "competitions";
 
-type RegistryCore = Omit<ModelRegistry, "eventSchema">;
+type RegistryCore = Omit<ModelRegistry, "eventSchema" | "defSchemas">;
 
-function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
+function buildEventSchema(
+  registry: RegistryCore,
+): DefSchemas & { readonly event: z.ZodType<EventDef> } {
+  const entriesSchema: z.ZodType<EntriesDef> = z.union([
+    z.array(z.looseObject({ kind: z.string() })).min(1),
+    z.object({ open: z.literal(true) }),
+  ]);
+
+  const competitorSchema: z.ZodType<CompetitorDef> = z.object({
+    id: competitorIdSchema,
+    name: z.string().min(1),
+    rating: z.number().int().positive().optional(),
+    roster: z.array(playerIdSchema).min(1).optional(),
+  });
+
   const poolSchema = z.object({
     kind: z.literal("pool"),
     pairing: z.looseObject({ system: z.string() }),
@@ -895,12 +925,7 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
     z.object({
       id: idSchema,
       name: z.string().min(1).optional(),
-      entries: z
-        .union([
-          z.array(z.looseObject({ kind: z.string() })).min(1),
-          z.object({ open: z.literal(true) }),
-        ])
-        .optional(),
+      entries: entriesSchema.optional(),
       run: runSchema,
     }),
   );
@@ -915,14 +940,7 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
       id: idSchema,
       name: z.string().min(1),
       // May be empty: open events declare no competitors until registration.
-      competitors: z.array(
-        z.object({
-          id: competitorIdSchema,
-          name: z.string().min(1),
-          rating: z.number().int().positive().optional(),
-          roster: z.array(playerIdSchema).min(1).optional(),
-        }),
-      ),
+      competitors: z.array(competitorSchema),
       competition: competitionSchema,
     })
     .superRefine((event, ctx) => {
@@ -930,7 +948,13 @@ function buildEventSchema(registry: RegistryCore): z.ZodType<EventDef> {
         ctx.addIssue({ code: "custom", message: f.message, path: [...f.path] });
       }
     });
-  return schema;
+  return {
+    event: schema,
+    competition: competitionSchema,
+    run: runSchema,
+    entries: entriesSchema,
+    competitor: competitorSchema,
+  };
 }
 
 type Found = {
