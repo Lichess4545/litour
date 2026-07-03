@@ -16,6 +16,15 @@ import type { ParsedEventDef } from "@/tournament/registry";
 
 export type NewChange = DefChange;
 
+// Narrow structural type: only the four delegate methods the DAL actually calls.
+// The real PrismaClient satisfies this structurally; test wrappers can too.
+export type ChangeStoreClient = {
+  readonly definitionChange: Pick<
+    PrismaClient["definitionChange"],
+    "findMany" | "findFirst" | "createMany" | "count"
+  >;
+};
+
 export type StoredChange = {
   readonly seq: number;
   readonly streamId: string;
@@ -81,7 +90,7 @@ const isKnownRequestError = (
   e instanceof Prisma.PrismaClientKnownRequestError && e.code === code;
 
 export async function appendChanges(
-  db: PrismaClient,
+  db: ChangeStoreClient,
   streamId: string,
   expectedVersion: number,
   batch: readonly NewChange[],
@@ -181,7 +190,7 @@ export type ReadChangesResult =
   | { readonly ok: false; readonly error: { readonly kind: "notFound" } };
 
 export async function readChanges(
-  db: PrismaClient,
+  db: ChangeStoreClient,
   streamId: string,
   opts?: { readonly toVersion?: number },
 ): Promise<ReadChangesResult> {
@@ -219,7 +228,7 @@ export type ReadDefinitionResult =
   | { readonly ok: false; readonly error: ReadDefinitionError };
 
 export async function readDefinition(
-  db: PrismaClient,
+  db: ChangeStoreClient,
   streamId: string,
   opts?: { readonly toVersion?: number },
 ): Promise<ReadDefinitionResult> {
@@ -256,10 +265,71 @@ export async function readDefinition(
   return { ok: true, def: gated.data, version: last.version };
 }
 
+export type SubmitState = {
+  readonly def: ParsedEventDef | null;
+  readonly version: number;
+};
+
+export type Decision<R> = readonly NewChange[] | { readonly reject: R };
+
+export type SubmitResult<R> =
+  | AppendOk
+  | {
+      readonly ok: false;
+      readonly error:
+        | AppendError
+        | { readonly kind: "rejected"; readonly reason: R }
+        | { readonly kind: "retriesExhausted"; readonly attempts: number };
+    };
+
+// NOTE: decide must be deterministic over its input — the loop re-invokes it on versionConflict;
+// non-deterministic decide silently breaks replay equality (ADR 0003). Empty [] = no-op success.
+export async function submit<R>(
+  db: ChangeStoreClient,
+  streamId: string,
+  decide: (state: SubmitState) => Decision<R>,
+  opts?: { readonly retries?: number },
+): Promise<SubmitResult<R>> {
+  const retries = opts?.retries ?? 3;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const current = await readDefinition(db, streamId);
+    let state: SubmitState;
+    if (current.ok) {
+      state = { def: current.def, version: current.version };
+    } else if (current.error.kind === "notFound") {
+      state = { def: null, version: 0 };
+    } else {
+      throw new Error(
+        `stream ${streamId} unreadable at head (${current.error.kind} at version ${current.error.version})`,
+      );
+    }
+
+    const decision = decide(state);
+    if ("reject" in decision) {
+      return {
+        ok: false,
+        error: { kind: "rejected", reason: decision.reject },
+      };
+    }
+    if (decision.length === 0) {
+      return { ok: true, version: state.version, seqs: [] };
+    }
+
+    const result = await appendChanges(db, streamId, state.version, decision);
+    if (result.ok) return result;
+    if (result.error.kind === "versionConflict") continue;
+    return result;
+  }
+  return {
+    ok: false,
+    error: { kind: "retriesExhausted", attempts: retries + 1 },
+  };
+}
+
 // NOTE: seq is commit-order-skewed — insertions commit out of seq order;
 // afterSeq pagination can miss late-committing rows. ADR 0003; ADR 0007 will address it.
 export async function readAllChanges(
-  db: PrismaClient,
+  db: ChangeStoreClient,
   opts?: { readonly afterSeq?: number; readonly limit?: number },
 ): Promise<readonly StoredChange[]> {
   const rows = await db.definitionChange.findMany({
