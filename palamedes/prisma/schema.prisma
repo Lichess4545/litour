@@ -87,3 +87,16 @@ model Post {
   @@index([authorId])
   @@map("post")
 }
+
+model DefinitionChange {
+  seq        Int      @id @default(autoincrement())
+  streamId   String
+  version    Int
+  type       String
+  payload    Json
+  recordedAt DateTime @default(now())
+
+  // NOTE: OCC conflict guard — a duplicate (streamId, version) raises P2002 and aborts the entire createMany; see design/adr/0003-optimistic-concurrency-via-unique-constraint.md
+  @@unique([streamId, version])
+  @@map("definition_change")
+}

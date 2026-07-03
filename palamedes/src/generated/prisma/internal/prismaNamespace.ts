@@ -388,7 +388,8 @@ export const ModelName = {
   Session: 'Session',
   Account: 'Account',
   Verification: 'Verification',
-  Post: 'Post'
+  Post: 'Post',
+  DefinitionChange: 'DefinitionChange'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -404,7 +405,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "session" | "account" | "verification" | "post"
+    modelProps: "user" | "session" | "account" | "verification" | "post" | "definitionChange"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -778,6 +779,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    DefinitionChange: {
+      payload: Prisma.$DefinitionChangePayload<ExtArgs>
+      fields: Prisma.DefinitionChangeFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.DefinitionChangeFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.DefinitionChangeFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        findFirst: {
+          args: Prisma.DefinitionChangeFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.DefinitionChangeFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        findMany: {
+          args: Prisma.DefinitionChangeFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>[]
+        }
+        create: {
+          args: Prisma.DefinitionChangeCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        createMany: {
+          args: Prisma.DefinitionChangeCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.DefinitionChangeCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>[]
+        }
+        delete: {
+          args: Prisma.DefinitionChangeDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        update: {
+          args: Prisma.DefinitionChangeUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        deleteMany: {
+          args: Prisma.DefinitionChangeDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.DefinitionChangeUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.DefinitionChangeUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>[]
+        }
+        upsert: {
+          args: Prisma.DefinitionChangeUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionChangePayload>
+        }
+        aggregate: {
+          args: Prisma.DefinitionChangeAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDefinitionChange>
+        }
+        groupBy: {
+          args: Prisma.DefinitionChangeGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DefinitionChangeGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.DefinitionChangeCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DefinitionChangeCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -886,12 +961,31 @@ export const PostScalarFieldEnum = {
 export type PostScalarFieldEnum = (typeof PostScalarFieldEnum)[keyof typeof PostScalarFieldEnum]
 
 
+export const DefinitionChangeScalarFieldEnum = {
+  seq: 'seq',
+  streamId: 'streamId',
+  version: 'version',
+  type: 'type',
+  payload: 'payload',
+  recordedAt: 'recordedAt'
+} as const
+
+export type DefinitionChangeScalarFieldEnum = (typeof DefinitionChangeScalarFieldEnum)[keyof typeof DefinitionChangeScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -908,6 +1002,15 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
 
@@ -962,6 +1065,34 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
+ * Reference to a field of type 'Float'
+ */
+export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+/**
+ * Reference to a field of type 'Float[]'
+ */
+export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
     
 
 /**
@@ -1079,6 +1210,7 @@ export type GlobalOmitConfig = {
   account?: Prisma.AccountOmit
   verification?: Prisma.VerificationOmit
   post?: Prisma.PostOmit
+  definitionChange?: Prisma.DefinitionChangeOmit
 }
 
 /* Types for Logging */

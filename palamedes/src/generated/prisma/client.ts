@@ -66,3 +66,8 @@ export type Verification = Prisma.VerificationModel
  * 
  */
 export type Post = Prisma.PostModel
+/**
+ * Model DefinitionChange
+ * 
+ */
+export type DefinitionChange = Prisma.DefinitionChangeModel
