@@ -25,6 +25,9 @@ Agents edit `prisma/schema.prisma` only, then ask the user to run:
 | Seed | `bun run db:seed` (runs `prisma/seed.ts`) |
 | Browse data | `bun run db:studio` |
 
+`prisma migrate dev` does NOT auto-regenerate the Prisma client in this Prisma 7
+configuration — run `bun run db:generate` after every `bun run db:migrate`.
+
 - Postgres comes from `devenv up`: PostgreSQL 18 on `127.0.0.1:5432`,
   database/user/password all `palamedes` (`devenv.nix`).
 - `prisma migrate dev` needs a shadow database; the devenv postgres grants the
@@ -42,3 +45,35 @@ Agents edit `prisma/schema.prisma` only, then ask the user to run:
   pattern exemplars — repoint them when it goes).
 - The seed creates `demo@example.com` / `demo-password-123` through the real
   Better Auth sign-up flow, so the password hash works for login.
+
+## The tournament definition changelog
+
+Domain model `DefinitionChange` (`@@map("definition_change")`) is an
+event-sourced changelog of tournament DEFINITIONS: one row per **change**
+(never "event" — `EventDef` is the tournament itself), streams keyed by
+`streamId == EventDef.id`, versions 1-based and dense per stream,
+`payload Json` holding the whole zod-validated `DefChange`, `type`
+duplicating the discriminant, `seq` a passive global order (gaps + commit
+skew — not a poller cursor). Decisions: `design/adr/0001-0005`.
+
+- ALL reads and writes go through `src/server/tournament/change-store.ts`
+  (`appendChanges`/`readChanges`/`readDefinition`/`readAllChanges`/`submit`)
+  — never query the table directly outside tests. Appends are batch-atomic
+  and gated (fold + `safeParseEventDef`), concurrency is optimistic via the
+  `@@unique([streamId, version])` constraint (P2002 ⇒ typed
+  versionConflict; no transactions).
+- The PURE change domain (types/schemas/fold/decompose) is
+  `src/tournament/changes/` — no Prisma imports there, ever.
+- Stay inside the portable-Prisma subset for this table (ADR 0001): no
+  enums, no `@db.*`, no scalar lists, no `skipDuplicates`, no
+  `isolationLevel`, no raw SQL, `Int` seq, payloads as opaque whole values.
+- `recordedAt` is `TIMESTAMP(3)` (naive datetime) — the portable subset
+  forbids `@db.Timestamptz`; the DAL sets `recordedAt: new Date()` explicitly
+  on every `createMany` row (the adapter serializes UTC); the column
+  `@default(now())` fires only if a row is written outside the DAL (e.g. a
+  direct SQL insert in a test), where the database's local timezone applies —
+  avoid writing rows outside the DAL; see ADR 0001.
+- `bun run db:seed` also seeds the two lichess4545 league streams
+  (`team4545`, `lonewolf`) idempotently via
+  `src/server/tournament/seed.ts`; divergent streams are reported, never
+  clobbered (ADR 0005).

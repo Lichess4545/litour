@@ -52,3 +52,29 @@ The meta-model's tests live in `src/tournament/*.test.ts` and `src/chess/*.test.
 - **Pure layout**: `buildGraph` (the viewer's layout) is a pure
   `(ConcreteEvent, expanded) → FlowGraph`, tested without a DOM in
   `src/components/tournament/def-graph.test.ts`.
+
+## Change-store suites
+
+`src/server/tournament/*.test.ts` are db-backed (`describeWithDb` +
+`// @vitest-environment node`). Conventions:
+
+- Every test mints FRESH stream ids with `crypto.randomUUID()` (usually
+  prefixed, e.g. `cs-<uuid>`) — streams persist on the shared dev database,
+  so reused ids collide across runs.
+- Track created stream ids and delete them in `afterAll` via
+  `db.definitionChange.deleteMany({ where: { streamId: { in: ids } } })`.
+- Postgres must be UP (`devenv up`) for these suites to RUN rather than
+  skip; a change that touches the store must not be judged green on skipped
+  suites.
+- The pure change domain (`src/tournament/changes/*.test.ts`) needs no
+  database; its round-trip suite runs `definitionToChanges → foldDefinition
+  → safeParseEventDef` over the whole format catalog.
+- Concurrency tests drive REAL races (`Promise.all` of conflicting
+  appends / parallel `submit`s) against postgres — exactly-one-winner and
+  dense-version assertions, no mocks.
+
+### The ChangeStoreClient seam
+
+`ChangeStoreClient` is a structural narrow type (`{ definitionChange: Pick<PrismaClient["definitionChange"], "findMany" | "findFirst" | "createMany" | "count"> }`). Every DAL function takes it as its first argument instead of `PrismaClient` directly. The real `db` singleton satisfies it; a plain object literal does too, which is how `submit.test.ts` pins the `retriesExhausted` path without real concurrency:
+
+Construct a facade that wraps `db.definitionChange` but intercepts the FIRST `findMany` call to write a competing change directly to the stream before returning the (now stale) original rows. `submit` then tries to append at the wrong expected version, gets a typed `versionConflict`, exhausts retries, and surfaces `retriesExhausted` — all deterministic, no `Promise.all` timing required. The facade must wrap each return value in a `Prisma.PrismaPromise<T>` shape (plain `Promise` doesn't satisfy it — Prisma's type checks `Symbol.toStringTag: "PrismaPromise"`); build the facade object explicitly rather than using `Object.assign` on a real `PrismaPromise` (its `Symbol.toStringTag` is non-writable).

@@ -56,3 +56,9 @@ that would also run on sqlite unchanged:
 - The store runs on the existing database; no new services, no new deps.
 - Payload queries (find by content) are out — reads fold changes instead.
 - A future sqlite mode is a migrations-dir exercise, not a schema rewrite.
+- `recordedAt` is `TIMESTAMP(3)` (naive datetime) — the portable subset
+  forbids `@db.Timestamptz`. Mitigation: the DAL sets `recordedAt: new Date()`
+  explicitly on every `createMany` row; the `@prisma/adapter-pg` adapter
+  serializes `Date` as UTC. The column `@default(now())` fires only if a row
+  is written outside the DAL (e.g. a direct SQL insert in a test), where the
+  database's local timezone applies — avoid this.
