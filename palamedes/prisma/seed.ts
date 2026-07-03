@@ -4,6 +4,7 @@
  */
 import { auth } from "../src/server/auth";
 import { db } from "../src/server/db";
+import { SEED_DEVIATIONS, seedLeagues } from "../src/server/tournament/seed";
 
 const DEMO_EMAIL = "demo@example.com";
 const DEMO_PASSWORD = "demo-password-123";
@@ -53,7 +54,23 @@ async function main() {
   console.log("Created 3 demo posts");
 }
 
+async function seedTournaments(): Promise<void> {
+  const outcomes = await seedLeagues(db);
+  for (const outcome of outcomes) {
+    console.log(`League stream ${outcome.streamId}: ${outcome.status}`);
+    if (outcome.status === "divergent") {
+      console.warn(
+        `  divergent content left untouched — inspect stream ${outcome.streamId} before reseeding`,
+      );
+    }
+  }
+  for (const deviation of SEED_DEVIATIONS) {
+    console.log(`Seed deviation: ${deviation}`);
+  }
+}
+
 main()
+  .then(seedTournaments)
   .catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
