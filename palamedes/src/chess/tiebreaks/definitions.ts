@@ -114,6 +114,10 @@ const scan = (
   acc: string,
   body: Expr,
 ): Expr => ({ op: "scan", over, init, item, acc, body });
+const letE = (
+  bindings: readonly { readonly name: string; readonly value: Expr }[],
+  body: Expr,
+): Expr => ({ op: "let", bindings, body });
 
 /** Every played round (resolvable opponent or not) — line-local metrics fold over these. */
 const PLAYED: Expr = filter(rounds(self), "r", kindIs(v("r"), "played"));
@@ -258,21 +262,83 @@ export const medianBuchholz = (cut = 1): Expr => {
 };
 
 /**
- * Cumulative (progressive) score: the sum of the running total after each
- * round — rewards scoring early. Absent rounds contribute 0.
+ * Cumulative (progressive) score of `who`: the sum of the running total
+ * after each round — rewards scoring early. Absent rounds contribute 0.
  */
-export const CUMULATIVE: Expr = sum(
-  scan(
-    map(
-      rounds(self),
-      "r",
-      ifE(kindIs(v("r"), "absent"), lit(0), lineNum(v("r"), "standingsPoints")),
+const cumulativeOf = (who: Expr): Expr =>
+  sum(
+    scan(
+      map(
+        rounds(who),
+        "cr",
+        ifE(
+          kindIs(v("cr"), "absent"),
+          lit(0),
+          lineNum(v("cr"), "standingsPoints"),
+        ),
+      ),
+      lit(0),
+      "s",
+      "a",
+      arith("+", v("a"), v("s")),
     ),
-    lit(0),
-    "s",
-    "a",
-    arith("+", v("a"), v("s")),
-  ),
+  );
+
+export const CUMULATIVE: Expr = cumulativeOf(self);
+
+/**
+ * Cumulative Opposition: the sum over opponents — per played line, so a
+ * twice-met opponent counts twice — of THEIR cumulative score. Live
+ * lichess4545 lonewolf semantics — see design/adr/0005-lichess4545-seed-canon.md.
+ */
+export const CUMULATIVE_OPPOSITION: Expr = sum(
+  map(opponents(self), "o", cumulativeOf(opponentOf(v("o")))),
+);
+
+/**
+ * USCF-style Modified Median: opponents' scores summed after discarding the
+ * lowest (plus score), the highest (minus score), or both (even score) —
+ * two per side in events of nine or more rounds. Plus/minus is the own
+ * standings score against half the round count; byes add a round but no
+ * opponent score. Live lichess4545 lonewolf semantics (assumes 1 point per
+ * round) — see design/adr/0005-lichess4545-seed-canon.md.
+ */
+export const MODIFIED_MEDIAN: Expr = letE(
+  [
+    {
+      name: "scores",
+      value: sortAsc(
+        map(opponents(self), "o", score(opponentOf(v("o")), "standings")),
+        "x",
+        v("x"),
+      ),
+    },
+    { name: "n", value: count(v("scores")) },
+    {
+      name: "d",
+      value: ifE(cmp(">=", count(rounds(self)), lit(9)), lit(2), lit(1)),
+    },
+    { name: "own", value: score(self, "standings") },
+    { name: "half", value: arith("/", count(rounds(self)), lit(2)) },
+  ],
+  (() => {
+    const clamp0 = (e: Expr): Expr => ifE(cmp("<", e, lit(0)), lit(0), e);
+    const dropLowest = sum(drop(v("scores"), v("d")));
+    const dropHighest = sum(
+      take(v("scores"), clamp0(arith("-", v("n"), v("d")))),
+    );
+    const dropBoth = sum(
+      take(
+        drop(v("scores"), v("d")),
+        clamp0(arith("-", v("n"), arith("*", lit(2), v("d")))),
+      ),
+    );
+    return ifE(
+      cmp(">", v("own"), v("half")),
+      dropLowest,
+      ifE(cmp("<", v("own"), v("half")), dropHighest, dropBoth),
+    );
+  })(),
 );
 
 /** Games played with the black pieces (an individual-swiss tiebreak). */
@@ -290,5 +356,7 @@ export const tiebreakExprs: ReadonlyMap<string, Expr> = new Map([
   ["headToHead", HEAD_TO_HEAD],
   ["medianBuchholz", medianBuchholz()],
   ["cumulative", CUMULATIVE],
+  ["cumulativeOpposition", CUMULATIVE_OPPOSITION],
+  ["modifiedMedian", MODIFIED_MEDIAN],
   ["gamesWithBlack", GAMES_WITH_BLACK],
 ]);

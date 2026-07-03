@@ -4,12 +4,14 @@ import {
   boardPoints,
   buchholz,
   CUMULATIVE,
+  CUMULATIVE_OPPOSITION,
   ENCOUNTER_POINTS,
   extendedSB,
   GAMES_WITH_BLACK,
   GAMES_WON,
   HEAD_TO_HEAD,
   MATCH_WINS,
+  MODIFIED_MEDIAN,
   medianBuchholz,
   SONNEBORN_BERGER,
 } from "./definitions";
@@ -100,6 +102,18 @@ export const builtinMetrics: readonly MetricKind[] = [
     schema: z.object({ metric: z.literal("cumulative") }),
     label: () => "cumulative",
     expr: () => CUMULATIVE,
+  }),
+  exprMetric({
+    metric: "cumulativeOpposition",
+    schema: z.object({ metric: z.literal("cumulativeOpposition") }),
+    label: () => "cumulativeOpposition",
+    expr: () => CUMULATIVE_OPPOSITION,
+  }),
+  exprMetric({
+    metric: "modifiedMedian",
+    schema: z.object({ metric: z.literal("modifiedMedian") }),
+    label: () => "modifiedMedian",
+    expr: () => MODIFIED_MEDIAN,
   }),
   exprMetric({
     metric: "gamesWithBlack",
