@@ -1,6 +1,9 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 {
   dotenv.enable = true;
+
+  env.BETTER_AUTH_SECRET = config.secretspec.secrets.BETTER_AUTH_SECRET or "";
+  env.LICHESS_API_TOKEN = config.secretspec.secrets.LICHESS_API_TOKEN or "";
 
   languages.javascript = {
     enable = true;

@@ -6,12 +6,18 @@ Better Auth + TanStack + Zustand, with Postgres run by devenv.
 ## Quickstart
 
 ```sh
+secretspec set BETTER_AUTH_SECRET # one-time; secretspec's CLI runs standalone, no devenv shell needed — see design/persistence-runbook.md § Secrets
 direnv allow                      # loads the devenv environment (bun, node, postgres tooling)
 devenv up                         # starts backend services (postgres) — keep it running
 bun run db:migrate -- --name init # first migration (already created if you cloned with prisma/migrations/)
 bun run db:seed                   # demo user + posts (demo@example.com / demo-password-123)
 bun run dev                       # the Next.js app on http://localhost:3000
 ```
+
+`direnv allow` itself resolves secrets before it does anything else — on a
+fresh clone, running it before `secretspec set BETTER_AUTH_SECRET` fails
+with "Missing required secrets: BETTER_AUTH_SECRET" (see
+design/persistence-runbook.md § Secrets for why).
 
 `devenv up` runs services only. The app is deliberately not a devenv process —
 run it yourself with `bun run dev`.
@@ -150,5 +156,12 @@ bun run test:coverage # vitest run --coverage (v8 → text + HTML + JSON in cove
 
 Typed and validated in `src/env.ts` (t3-env + zod); a bad or missing variable
 fails the build via the `import "./src/env"` in `next.config.ts`. Copy
-`.env.example` to `.env` to get started. Set `SKIP_ENV_VALIDATION=1` to bypass
+`.env.example` to `.env` for the non-secret variables (`DATABASE_URL`,
+`BETTER_AUTH_URL`, OAuth client ids). Set `SKIP_ENV_VALIDATION=1` to bypass
 validation (e.g. for Docker image builds without secrets).
+
+`BETTER_AUTH_SECRET` and the optional `LICHESS_API_TOKEN` are **not** `.env`
+variables — they're provisioned through secretspec and injected by devenv.
+See `design/persistence-runbook.md` § "Secrets (secretspec)" for the
+one-time setup, and note that `devenv shell`/`devenv up` will refuse to
+start until `BETTER_AUTH_SECRET` is provisioned.

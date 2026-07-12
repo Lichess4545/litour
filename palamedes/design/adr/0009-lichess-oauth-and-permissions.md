@@ -113,10 +113,11 @@ flip it without re-deriving the option.
 - **Secrets**: `LICHESS_CLIENT_ID` is **not a secret** — it appears in
   plaintext in every authorize-URL redirect a browser makes. It lives in
   `src/env.ts` with a default, the same tier as `BETTER_AUTH_URL`. Real
-  secrets — `BETTER_AUTH_SECRET`, prod `DATABASE_URL`, and an optional
-  `LICHESS_API_TOKEN` for server-side jobs (e.g. a `tournament:write` bot
-  account) — flow through secretspec (Task 9), not through checked-in
-  `.env` values.
+  secrets — `BETTER_AUTH_SECRET` and an optional `LICHESS_API_TOKEN` for
+  server-side jobs (e.g. a `tournament:write` bot account) — flow through
+  secretspec (Task 9), not through checked-in `.env` values. Prod
+  `DATABASE_URL` secret management is deferred — Task 9 deliberately
+  excludes it (see `design/persistence-runbook.md` § "Secrets").
 
 ## Consequences
 

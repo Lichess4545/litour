@@ -14,6 +14,7 @@ export const env = createEnv({
     GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    LICHESS_API_TOKEN: z.string().min(1).optional(),
   },
   client: {
     // NEXT_PUBLIC_* variables go here.
@@ -27,6 +28,7 @@ export const env = createEnv({
     GITHUB_CLIENT_SECRET: process.env["GITHUB_CLIENT_SECRET"],
     GOOGLE_CLIENT_ID: process.env["GOOGLE_CLIENT_ID"],
     GOOGLE_CLIENT_SECRET: process.env["GOOGLE_CLIENT_SECRET"],
+    LICHESS_API_TOKEN: process.env["LICHESS_API_TOKEN"],
   },
   emptyStringAsUndefined: true,
   skipValidation: process.env["SKIP_ENV_VALIDATION"] !== undefined,
