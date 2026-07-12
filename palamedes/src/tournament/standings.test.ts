@@ -1,9 +1,19 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { norwayChess, olympiad } from "@/chess/formats";
 import { chessRegistry, parseEventDef } from "@/chess/registry";
-import type { ParsedEventDef } from "@/tournament/registry";
-import { expectStandings, runEvent as runEventWith } from "./builder";
+import {
+  defineMetricKind,
+  extendRegistry,
+  type ParsedEventDef,
+  parseEventDef as parseEventDefFor,
+} from "@/tournament/registry";
+import {
+  type EventRun,
+  expectStandings,
+  runEvent as runEventWith,
+} from "./builder";
 import { compRootPath, pairPath } from "./core";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
@@ -100,34 +110,37 @@ describe("forfeit-shaped results under match points", () => {
   });
 });
 
+const rrWithTiebreaksData = (
+  tiebreaks: readonly Record<string, unknown>[],
+) => ({
+  id: "rr-tb",
+  name: "Round robin with tiebreaks",
+  competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => ({
+    id: name.toLowerCase(),
+    name,
+  })),
+  competition: {
+    id: "rr",
+    entries: [1, 2, 3, 4].map((seed) => ({
+      kind: "registration",
+      seed,
+    })),
+    run: {
+      kind: "pool",
+      pairing: { system: "roundRobin", cycles: 1 },
+      encounter: {
+        kind: "game",
+        clock: { initial: 300, increment: 2 },
+      },
+      score: { kind: "passThrough" },
+      tiebreaks,
+    },
+  },
+});
+
 const rrWithTiebreaks = (
   tiebreaks: readonly Record<string, unknown>[],
-): ParsedEventDef =>
-  parseEventDef({
-    id: "rr-tb",
-    name: "Round robin with tiebreaks",
-    competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => ({
-      id: name.toLowerCase(),
-      name,
-    })),
-    competition: {
-      id: "rr",
-      entries: [1, 2, 3, 4].map((seed) => ({
-        kind: "registration",
-        seed,
-      })),
-      run: {
-        kind: "pool",
-        pairing: { system: "roundRobin", cycles: 1 },
-        encounter: {
-          kind: "game",
-          clock: { initial: 300, increment: 2 },
-        },
-        score: { kind: "passThrough" },
-        tiebreaks,
-      },
-    },
-  });
+): ParsedEventDef => parseEventDef(rrWithTiebreaksData(tiebreaks));
 
 describe("head-to-head", () => {
   it("decides a two-way tie when the tied pair has met", () => {
@@ -163,6 +176,140 @@ describe("head-to-head", () => {
     // All four tied on 1/2; e.g. Ada and Boe have not played each other.
     for (const name of ["Ada", "Boe", "Cal", "Dee"]) {
       expectStandings(run).competitor(name).metric("headToHead", 0).rank(1);
+    }
+  });
+});
+
+describe("an erroring tiebreak metric cannot split a tied block", () => {
+  const erroringMetric = defineMetricKind({
+    metric: "erroring",
+    schema: z.object({ metric: z.literal("erroring") }),
+    label: () => "erroring",
+    value: () => {
+      throw new Error("value() must not run once valueResult is set");
+    },
+    valueResult: () => ({ ok: false, error: { reason: "boom" } }),
+  });
+  // A synthetic, competitor-keyed criterion that always splits a block,
+  // independent of any game result — isolates "does erroring get skipped"
+  // from "does this particular builtin happen to split these competitors".
+  const splitterOrder = new Map([
+    ["ada", 3],
+    ["cal", 2],
+    ["boe", 1],
+  ]);
+  const splitterMetric = defineMetricKind({
+    metric: "splitter",
+    schema: z.object({ metric: z.literal("splitter") }),
+    label: () => "splitter",
+    value: (_ref, row) => splitterOrder.get(row.competitor) ?? 0,
+  });
+  const registryWithErroring = extendRegistry(chessRegistry, {
+    id: "chess-test/erroring-metric",
+    metrics: [erroringMetric, splitterMetric],
+  });
+  const runEventWithErroring = (
+    tiebreaks: readonly Record<string, unknown>[],
+  ) =>
+    runEventWith(
+      parseEventDefFor(rrWithTiebreaksData(tiebreaks), registryWithErroring),
+      registryWithErroring,
+    );
+
+  it("passes an errored criterion through unsplit, leaving the final order to the next one", () => {
+    // Same scenario as "head-to-head decides a two-way tie" above, but with
+    // an always-erroring criterion placed ahead of headToHead in the list.
+    const run = runEventWithErroring([
+      { metric: "erroring" },
+      { metric: "headToHead" },
+    ])
+      .pairRound() // R1: Ada-Dee, Boe-Cal
+      .game("Ada", "Dee", "1/2-1/2")
+      .game("Boe", "Cal", "1-0")
+      .pairRound() // R2: Dee-Cal, Ada-Boe
+      .game("Dee", "Cal", "0-1")
+      .game("Ada", "Boe", "1-0")
+      .pairRound() // R3: Boe-Dee, Cal-Ada
+      .game("Boe", "Dee", "1-0")
+      .game("Cal", "Ada", "1/2-1/2");
+
+    // Same order as headToHead alone: Ada beats Boe on their direct game.
+    expectStandings(run).competitor("Ada").points(2).rank(1);
+    expectStandings(run).competitor("Boe").points(2).rank(2);
+  });
+
+  // Three-way tied block: Ada, Boe, and Cal each draw the other two and beat
+  // Dee, so all three finish on 2 points against Dee's 0.
+  const threeWayTieScenario = (tiebreaks: readonly Record<string, unknown>[]) =>
+    runEventWithErroring(tiebreaks)
+      .pairRound() // R1: Ada-Dee, Boe-Cal
+      .game("Ada", "Dee", "1-0")
+      .game("Boe", "Cal", "1/2-1/2")
+      .pairRound() // R2: Dee-Cal, Ada-Boe
+      .game("Dee", "Cal", "0-1")
+      .game("Ada", "Boe", "1/2-1/2")
+      .pairRound() // R3: Boe-Dee, Cal-Ada
+      .game("Boe", "Dee", "1-0")
+      .game("Cal", "Ada", "1/2-1/2");
+
+  it("a three-way tie survives an erroring criterion to reach the same order the splitter alone would produce", () => {
+    const withErroring = threeWayTieScenario([
+      { metric: "erroring" },
+      { metric: "splitter" },
+    ]);
+    const splitterAlone = threeWayTieScenario([{ metric: "splitter" }]);
+
+    const orderOf = (run: EventRun) =>
+      run
+        .standings()
+        .slice()
+        .sort((a, b) => a.rank - b.rank)
+        .map((row) => row.competitor);
+    expect(orderOf(withErroring)).toEqual(orderOf(splitterAlone));
+    expectStandings(withErroring).competitor("ada").rank(1);
+    expectStandings(withErroring).competitor("cal").rank(2);
+    expectStandings(withErroring).competitor("boe").rank(3);
+    expectStandings(withErroring).competitor("dee").rank(4);
+
+    // The erroring criterion (index 1) reported the whole tied block as
+    // unsplit; the splitter-alone run never hit an error.
+    expect(withErroring.unsplitCriteria()).toEqual([
+      { criterion: 1, block: ["ada", "boe", "cal"], reason: "boom" },
+    ]);
+    expect(splitterAlone.unsplitCriteria()).toEqual([]);
+  });
+
+  it("keeps a tied block's original order when the erroring criterion is LAST — no downstream sort can hide a reordering bug", () => {
+    // headToHead is first and genuinely fails to split this block (all three
+    // drew their one game against each other), so the block is still tied
+    // and unsorted when the erroring criterion (last) receives it.
+    const run = threeWayTieScenario([
+      { metric: "headToHead" },
+      { metric: "erroring" },
+    ]);
+
+    // Original entrant order (Ada, Boe, Cal) preserved — not re-sorted by
+    // anything downstream, since nothing follows the erroring criterion.
+    expectStandings(run).competitor("ada").rank(1);
+    expectStandings(run).competitor("boe").rank(1);
+    expectStandings(run).competitor("cal").rank(1);
+    expect(
+      run
+        .standings()
+        .filter((row) => row.rank === 1)
+        .map((row) => row.competitor),
+    ).toEqual(["ada", "boe", "cal"]);
+
+    expect(run.unsplitCriteria()).toEqual([
+      { criterion: 2, block: ["ada", "boe", "cal"], reason: "boom" },
+    ]);
+  });
+
+  it("records the errored cell honestly, distinguishable from a genuine 0", () => {
+    const run = threeWayTieScenario([{ metric: "erroring" }]);
+    for (const name of ["ada", "boe", "cal", "dee"]) {
+      const row = run.standings().find((r) => r.competitor === name);
+      expect(row?.metrics.get("erroring")).toEqual({ error: "boom" });
     }
   });
 });

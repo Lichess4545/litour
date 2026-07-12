@@ -10,11 +10,13 @@ import {
   type Side,
 } from "./core";
 import { type EngineIndexes, type EvalNode, evalNode } from "./evaluate";
-import type {
-  MetricRow,
-  ModelRegistry,
-  RoundLine,
-  ScoredLine,
+import type { MetricEvalResult } from "./expr/metric";
+import {
+  type MetricRow,
+  type ModelRegistry,
+  metricOutcome,
+  type RoundLine,
+  type ScoredLine,
 } from "./registry";
 
 /**
@@ -25,11 +27,29 @@ import type {
  * precomputed onto the line, kind-agnostically).
  */
 
+/** A tiebreak display cell: its numeric value, or the reason it couldn't be computed. */
+export type MetricCell = number | { readonly error: string };
+
 export type StandingsRow = MetricRow & {
   /** Tiebreak values keyed by each metric's label, in declared order. */
-  readonly metrics: ReadonlyMap<string, number>;
+  readonly metrics: ReadonlyMap<string, MetricCell>;
   /** Competition ranking (ties share a rank). */
   readonly rank: number;
+};
+
+/** One criterion that could not split a tied block, for a given ranking pass. */
+export type UnsplitCriterion = {
+  /** 0 = standings points, N = `pool.tiebreaks[N - 1]`. */
+  readonly criterion: number;
+  readonly block: readonly CompetitorId[];
+  readonly reason: string;
+};
+
+/** `poolStandings`' full result: the display rows plus any ranking diagnostics. */
+export type PoolStandings = {
+  readonly rows: readonly StandingsRow[];
+  /** Empty when every criterion split every block it was asked to; non-empty means some tie survived an error, not a genuine equal value. */
+  readonly unsplitCriteria: readonly UnsplitCriterion[];
 };
 
 export type PoolRoundPlans = ReadonlyMap<number, readonly PairingPlan[]>;
@@ -337,14 +357,18 @@ function progressionKeys(
   return keys;
 }
 
-type Ranking = {
+type OrderedRanks = {
   readonly order: readonly CompetitorId[];
   readonly ranks: ReadonlyMap<CompetitorId, number>;
 };
 
+type Ranking = OrderedRanks & {
+  readonly unsplitCriteria: readonly UnsplitCriterion[];
+};
+
 const blocksToRanking = (
   blocks: readonly (readonly CompetitorId[])[],
-): Ranking => {
+): OrderedRanks => {
   const ranks = new Map<CompetitorId, number>();
   let position = 0;
   for (const block of blocks) {
@@ -362,6 +386,8 @@ const blocksToRanking = (
  * the *current* block as its tied group, so head-to-head (direct encounter)
  * sees exactly the competitors a prior tiebreak left tied, not merely everyone
  * on equal points. The pool's ordered tiebreak refs ARE the ranking program.
+ * A criterion that errors for any member of a block leaves that block unsplit
+ * — deterministic, never a throw — and passes it to the next criterion.
  */
 function refineRanking(
   registry: ModelRegistry,
@@ -369,25 +395,28 @@ function refineRanking(
   drafts: ReadonlyMap<CompetitorId, RowDraft>,
   entrants: readonly CompetitorId[],
 ): Ranking {
-  const criterionValue = (
+  const criterionOutcome = (
     criterion: number,
     competitor: CompetitorId,
     tied: ReadonlySet<CompetitorId>,
-  ): number => {
+  ): MetricEvalResult => {
     const draft = drafts.get(competitor);
-    if (draft === undefined) return Number.NEGATIVE_INFINITY;
-    if (criterion === 0) return draft.standingsPoints;
+    if (draft === undefined) {
+      return { ok: true, value: Number.NEGATIVE_INFINITY };
+    }
+    if (criterion === 0) return { ok: true, value: draft.standingsPoints };
     const ref = pool.tiebreaks[criterion - 1];
-    if (ref === undefined) return 0;
+    if (ref === undefined) return { ok: true, value: 0 };
     const metric = registry.metrics.get(ref.metric);
     if (metric === undefined) {
       throw new Error(
         `unknown tiebreak metric "${ref.metric}" — the def was not parsed against this registry`,
       );
     }
-    return metric.value(ref, draft, drafts, tied);
+    return metricOutcome(metric, ref, draft, drafts, tied);
   };
 
+  const unsplitCriteria: UnsplitCriterion[] = [];
   let blocks: readonly (readonly CompetitorId[])[] = [[...entrants]];
   for (let criterion = 0; criterion <= pool.tiebreaks.length; criterion += 1) {
     const refined: CompetitorId[][] = [];
@@ -397,10 +426,29 @@ function refineRanking(
         continue;
       }
       const tied = new Set(block);
+      const values = new Map<CompetitorId, number>();
+      let firstError: string | undefined;
+      for (const competitor of block) {
+        const outcome = criterionOutcome(criterion, competitor, tied);
+        if (!outcome.ok) {
+          firstError = outcome.error.reason;
+          break;
+        }
+        values.set(competitor, outcome.value);
+      }
+      if (firstError !== undefined) {
+        unsplitCriteria.push({
+          criterion,
+          block: [...block],
+          reason: firstError,
+        });
+        refined.push([...block]);
+        continue;
+      }
       const valued = block
         .map((competitor) => ({
           competitor,
-          value: criterionValue(criterion, competitor, tied),
+          value: values.get(competitor) ?? Number.NEGATIVE_INFINITY,
         }))
         .sort((a, b) => b.value - a.value);
       let group: CompetitorId[] = [];
@@ -417,7 +465,7 @@ function refineRanking(
     }
     blocks = refined;
   }
-  return blocksToRanking(blocks);
+  return { ...blocksToRanking(blocks), unsplitCriteria };
 }
 
 /** Eliminative pairings rank by survival depth + podium, not by tiebreaks. */
@@ -447,7 +495,12 @@ function rankByProgression(
     const vb = sortKeys.get(b)?.[0] ?? Number.NEGATIVE_INFINITY;
     return va !== vb ? vb - va : entrants.indexOf(a) - entrants.indexOf(b);
   });
-  return { order, ranks: competitionRanks(sortKeys, order) };
+  // Progression ranks by survival depth, not tiebreak criteria — nothing to skip.
+  return {
+    order,
+    ranks: competitionRanks(sortKeys, order),
+    unsplitCriteria: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +509,8 @@ function rankByProgression(
 /**
  * Live standings for one pool. `rounds` may be partial (mid-event tables are
  * fine); `totalRounds` is the full schedule — progression ranking needs it
- * to recognize the final round.
+ * to recognize the final round. `unsplitCriteria` lets a caller assert no
+ * criterion silently failed instead of genuinely tying.
  */
 export function poolStandings(
   registry: ModelRegistry,
@@ -466,7 +520,7 @@ export function poolStandings(
   entrants: readonly CompetitorId[],
   rounds: PoolRoundPlans,
   totalRounds: number,
-): readonly StandingsRow[] {
+): PoolStandings {
   const drafts = buildRowDrafts(
     registry,
     indexes,
@@ -476,10 +530,10 @@ export function poolStandings(
     rounds,
   );
 
-  const metrics = new Map<CompetitorId, Map<string, number>>();
+  const metrics = new Map<CompetitorId, Map<string, MetricCell>>();
   const metricRows: ReadonlyMap<CompetitorId, MetricRow> = drafts;
   for (const draft of drafts.values()) {
-    const values = new Map<string, number>();
+    const values = new Map<string, MetricCell>();
     for (const ref of pool.tiebreaks) {
       const metric = registry.metrics.get(ref.metric);
       if (metric === undefined) {
@@ -487,14 +541,20 @@ export function poolStandings(
           `unknown tiebreak metric "${ref.metric}" — the def was not parsed against this registry`,
         );
       }
-      values.set(metric.label(ref), metric.value(ref, draft, metricRows));
+      const outcome = metricOutcome(metric, ref, draft, metricRows);
+      // Built before refineRanking runs, so an erroring criterion can't yet
+      // be skipped — record the honest error cell instead of a fabricated 0.
+      values.set(
+        metric.label(ref),
+        outcome.ok ? outcome.value : { error: outcome.error.reason },
+      );
     }
     metrics.set(draft.competitor, values);
   }
 
   const progression =
     registry.pairings.get(pool.pairing.system)?.progression === true;
-  const { order, ranks } = progression
+  const { order, ranks, unsplitCriteria } = progression
     ? rankByProgression(
         registry,
         indexes,
@@ -507,15 +567,16 @@ export function poolStandings(
       )
     : refineRanking(registry, pool, drafts, entrants);
 
-  return order.map((competitor) => {
+  const rows = order.map((competitor) => {
     const draft = drafts.get(competitor);
     return {
       competitor,
       standingsPoints: draft?.standingsPoints ?? 0,
       encounterPoints: draft?.encounterPoints ?? 0,
       lines: draft?.lines ?? [],
-      metrics: metrics.get(competitor) ?? new Map<string, number>(),
+      metrics: metrics.get(competitor) ?? new Map<string, MetricCell>(),
       rank: ranks.get(competitor) ?? order.length,
     };
   });
+  return { rows, unsplitCriteria };
 }

@@ -21,7 +21,7 @@ import {
   standingsOf,
 } from "./engine";
 import { isPool, type ModelRegistry, type ParsedEventDef } from "./registry";
-import type { StandingsRow } from "./standings";
+import type { StandingsRow, UnsplitCriterion } from "./standings";
 
 /**
  * Fluent test driver mirroring the ergonomics of the old Python
@@ -302,7 +302,13 @@ export class EventRun {
   // Reads
 
   standings(poolPath?: NodePath): readonly StandingsRow[] {
-    return standingsOf(this.state(), poolPath ?? this.solePoolPath());
+    return standingsOf(this.state(), poolPath ?? this.solePoolPath()).rows;
+  }
+
+  /** Ranking criteria that could not split a tied block (empty when the ranking is healthy). */
+  unsplitCriteria(poolPath?: NodePath): readonly UnsplitCriterion[] {
+    return standingsOf(this.state(), poolPath ?? this.solePoolPath())
+      .unsplitCriteria;
   }
 
   outcome(path: NodePath): Outcome {
@@ -386,6 +392,11 @@ class RowExpect {
     if (actual === undefined) {
       throw new Error(
         `${this.name}: no metric ${label}; have [${[...this.row.metrics.keys()].join(", ")}]`,
+      );
+    }
+    if (typeof actual !== "number") {
+      throw new Error(
+        `${this.name}: metric ${label} failed to compute instead of yielding ${expected}: ${actual.error}`,
       );
     }
     return this.check(label, actual, expected);

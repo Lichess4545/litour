@@ -37,8 +37,8 @@ import {
 import {
   evalPair,
   type PoolRoundPlans,
+  type PoolStandings,
   poolStandings,
-  type StandingsRow,
 } from "./standings";
 
 /**
@@ -337,7 +337,7 @@ export function rankingOf(
       entrants,
       rounds,
       total,
-    ).map((row) => row.competitor);
+    ).rows.map((row) => row.competitor);
   }
 
   const sides = rootSides(entrants);
@@ -959,7 +959,7 @@ function buildPairingContext(
     const plans = pairingsAt(state, ref.path, r);
     if (plans !== undefined) playedRounds.set(r, plans);
   }
-  const rows = poolStandings(
+  const { rows } = poolStandings(
     state.registry,
     state,
     pool,
@@ -1081,11 +1081,14 @@ export function outcomeAt(state: EventState, path: NodePath) {
   return resolved.node.outcome;
 }
 
-/** Live standings of a pool leaf. Throws when the path is not a ready pool (reads are strict; the input fold is not). */
+/**
+ * Live standings of a pool leaf, plus ranking diagnostics. Throws when the
+ * path is not a ready pool (reads are strict; the input fold is not).
+ */
 export function standingsOf(
   state: EventState,
   poolPath: NodePath,
-): readonly StandingsRow[] {
+): PoolStandings {
   const ref = compAt(state, poolPath);
   if (typeof ref === "string") throw new Error(ref);
   if (!isPool(ref.run)) throw new Error(`${poolPath} is not a pool`);

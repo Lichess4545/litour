@@ -30,6 +30,7 @@ import {
   type TieRef,
 } from "./core";
 import type { Expr } from "./expr/ast";
+import type { MetricEvalResult } from "./expr/metric";
 
 /**
  * The typeclass layer. A tournament model is `core.ts` (the laws) plus a
@@ -347,6 +348,13 @@ export type MetricKind = {
   ): number;
   /** This metric's computation as data, for the viewer to render as a formula. */
   expr?(ref: MetricRef): Expr;
+  /** Non-throwing `value`, for callers that must not crash on organizer-authored metrics. */
+  readonly valueResult?: (
+    ref: MetricRef,
+    row: MetricRow,
+    all: ReadonlyMap<CompetitorId, MetricRow>,
+    tied?: ReadonlySet<CompetitorId>,
+  ) => MetricEvalResult;
 };
 
 export type TieKind = {
@@ -594,11 +602,18 @@ export type MetricKindSpec<M> = {
     tied?: ReadonlySet<CompetitorId>,
   ): number;
   expr?(ref: M): Expr;
+  readonly valueResult?: (
+    ref: M,
+    row: MetricRow,
+    all: ReadonlyMap<CompetitorId, MetricRow>,
+    tied?: ReadonlySet<CompetitorId>,
+  ) => MetricEvalResult;
 };
 
 export function defineMetricKind<M>(spec: MetricKindSpec<M>): MetricKind {
   const decode = memoDecode(spec.schema);
   const exprOf = spec.expr;
+  const valueResultOf = spec.valueResult;
   return {
     metric: spec.metric,
     schema: spec.schema,
@@ -607,7 +622,36 @@ export function defineMetricKind<M>(spec: MetricKindSpec<M>): MetricKind {
     ...(exprOf === undefined
       ? {}
       : { expr: (ref: MetricRef) => exprOf(decode(ref)) }),
+    ...(valueResultOf === undefined
+      ? {}
+      : {
+          valueResult: (
+            ref: MetricRef,
+            row: MetricRow,
+            all: ReadonlyMap<CompetitorId, MetricRow>,
+            tied?: ReadonlySet<CompetitorId>,
+          ) => valueResultOf(decode(ref), row, all, tied),
+        }),
   };
+}
+
+/**
+ * Prefer a kind's own non-throwing `valueResult` when it defines one; else
+ * defer to the throwing `value` and let any error propagate. Tolerance is
+ * opt-in via `valueResult`: organizer-authored kinds define it; the
+ * valueResult-less builtins keep their documented throw-loudly contract (see
+ * the header of `expr/metric.ts`).
+ */
+export function metricOutcome(
+  kind: MetricKind,
+  ref: MetricRef,
+  row: MetricRow,
+  all: ReadonlyMap<CompetitorId, MetricRow>,
+  tied?: ReadonlySet<CompetitorId>,
+): MetricEvalResult {
+  if (kind.valueResult !== undefined)
+    return kind.valueResult(ref, row, all, tied);
+  return { ok: true, value: kind.value(ref, row, all, tied) };
 }
 
 export type TieKindSpec<T> = {

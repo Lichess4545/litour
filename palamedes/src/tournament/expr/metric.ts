@@ -5,10 +5,11 @@ import { evaluate } from "./evaluate";
 
 /**
  * Run a metric expression over one standings row, yielding its tiebreak value.
- * Builtin tiebreaks are differential-tested against the legacy implementations,
- * so an evaluation error here is a bug in a builtin — not bad user input — and
- * it throws loudly rather than silently scoring 0. (Organizer-authored metrics,
- * when they arrive, will surface errors through a non-throwing path instead.)
+ * `evalMetricResult` is the Result-returning core, for callers (organizer-authored
+ * metrics, ranking) that must not crash on a bad expression. `evalMetric` unwraps
+ * it by throwing: builtin tiebreaks are differential-tested against the legacy
+ * implementations, so an evaluation error there is a bug in a builtin — not bad
+ * user input — and it throws loudly rather than silently scoring 0.
  */
 
 export type MetricEnv = {
@@ -18,7 +19,15 @@ export type MetricEnv = {
   readonly attribute?: (comp: CompetitorId, key: string) => number | undefined;
 };
 
-export function evalMetric(expr: Expr, row: MetricRow, env: MetricEnv): number {
+export type MetricEvalResult =
+  | { readonly ok: true; readonly value: number }
+  | { readonly ok: false; readonly error: { readonly reason: string } };
+
+export function evalMetricResult(
+  expr: Expr,
+  row: MetricRow,
+  env: MetricEnv,
+): MetricEvalResult {
   const result = evaluate(expr, {
     self: row.competitor,
     all: env.all,
@@ -27,14 +36,26 @@ export function evalMetric(expr: Expr, row: MetricRow, env: MetricEnv): number {
     attribute: env.attribute ?? (() => undefined),
   });
   if (!result.ok) {
-    throw new Error(
-      `metric expression failed: ${JSON.stringify(result.error)}`,
-    );
+    return {
+      ok: false,
+      error: {
+        reason: `metric expression failed: ${JSON.stringify(result.error)}`,
+      },
+    };
   }
   if (result.value.t !== "num") {
-    throw new Error(
-      `metric expression must yield a number, got "${result.value.t}"`,
-    );
+    return {
+      ok: false,
+      error: {
+        reason: `metric expression must yield a number, got "${result.value.t}"`,
+      },
+    };
   }
-  return result.value.v;
+  return { ok: true, value: result.value.v };
+}
+
+export function evalMetric(expr: Expr, row: MetricRow, env: MetricEnv): number {
+  const result = evalMetricResult(expr, row, env);
+  if (!result.ok) throw new Error(result.error.reason);
+  return result.value;
 }
