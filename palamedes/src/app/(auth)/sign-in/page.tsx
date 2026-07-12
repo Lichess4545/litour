@@ -1,7 +1,8 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,24 @@ function FieldErrors({
   return <p className="text-destructive text-sm">{messages.join(", ")}</p>;
 }
 
+function LichessCallbackError() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const handledErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error === null || handledErrorRef.current === error) {
+      return;
+    }
+    handledErrorRef.current = error;
+    toast.error(searchParams.get("error_description") ?? error);
+    router.replace("/sign-in");
+  }, [router, searchParams]);
+
+  return null;
+}
+
 export default function SignInPage() {
   const router = useRouter();
 
@@ -85,8 +104,22 @@ export default function SignInPage() {
     router.refresh();
   };
 
+  const signInWithLichess = async () => {
+    const { error } = await authClient.signIn.oauth2({
+      providerId: "lichess",
+      callbackURL: "/",
+      errorCallbackURL: "/sign-in",
+    });
+    if (error !== null) {
+      toast.error(error.message ?? "Sign-in failed");
+    }
+  };
+
   return (
     <main className="flex min-h-screen items-center justify-center px-6">
+      <Suspense fallback={null}>
+        <LichessCallbackError />
+      </Suspense>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
@@ -147,25 +180,30 @@ export default function SignInPage() {
               </Button>
             </div>
           </form>
-          {oauthProviders.length > 0 ? (
-            <div className="flex flex-col gap-2 border-t pt-4">
-              {oauthProviders.map((provider) => (
-                <Button
-                  key={provider.id}
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    void authClient.signIn.social({
-                      provider: provider.id,
-                      callbackURL: "/posts",
-                    })
-                  }
-                >
-                  {provider.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
+          <div className="flex flex-col gap-2 border-t pt-4">
+            {oauthProviders.map((provider) => (
+              <Button
+                key={provider.id}
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  void authClient.signIn.social({
+                    provider: provider.id,
+                    callbackURL: "/posts",
+                  })
+                }
+              >
+                {provider.label}
+              </Button>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void signInWithLichess()}
+            >
+              Continue with Lichess
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </main>

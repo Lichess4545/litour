@@ -44,7 +44,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/env.ts", "src/chess/encounters.ts"],
+      "includes": ["src/env.ts", "src/env.test.ts", "src/chess/encounters.ts"],
       "linter": {
         "rules": {
           "complexity": {

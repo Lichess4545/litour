@@ -65,7 +65,15 @@ scope→permission mapping, verified independently.
   (`<lichessId>@lichess.invalid`-shaped) rather than requesting
   `email:read` just to satisfy Better Auth's user-creation shape. **This
   is D4 — a Dr.-Dub-owned default the implementer adopts as-is unless
-  overridden.** Sign-out revoking the lichess token (`DELETE
+  overridden.** `mapProfileToUser` returns `{}` on a malformed profile
+  rather than throwing, so Better Auth's own missing-email check can
+  redirect gracefully instead of a 500; this is safe only because a
+  `{}` return also makes Better Auth fall back to the raw, unvalidated
+  lichess `userInfo` (id/name/email), and lichess's response under
+  `scopes: []` never contains an email for that fallback to reach.
+  Requesting `email:read` removes that guard — re-examine
+  `mapProfileToUser`'s fallback (`oauth-config.ts`) before adding it.
+  Sign-out revoking the lichess token (`DELETE
   /api/token`) is a recorded follow-up, not built now: Better Auth's own
   sign-out only clears the local session; the api-demo's revoke-on-logout
   is the model to eventually wire in.

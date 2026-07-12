@@ -1,6 +1,12 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+export const lichessApiUrlSchema = (fallback: string) =>
+  z
+    .url()
+    .default(fallback)
+    .transform((url) => url.replace(/\/+$/, ""));
+
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
@@ -15,6 +21,8 @@ export const env = createEnv({
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
     LICHESS_API_TOKEN: z.string().min(1).optional(),
+    LICHESS_CLIENT_ID: z.string().min(1).default("palamedes-dev"),
+    LICHESS_API_URL: lichessApiUrlSchema("https://lichess.org"),
   },
   client: {
     // NEXT_PUBLIC_* variables go here.
@@ -29,6 +37,8 @@ export const env = createEnv({
     GOOGLE_CLIENT_ID: process.env["GOOGLE_CLIENT_ID"],
     GOOGLE_CLIENT_SECRET: process.env["GOOGLE_CLIENT_SECRET"],
     LICHESS_API_TOKEN: process.env["LICHESS_API_TOKEN"],
+    LICHESS_CLIENT_ID: process.env["LICHESS_CLIENT_ID"],
+    LICHESS_API_URL: process.env["LICHESS_API_URL"],
   },
   emptyStringAsUndefined: true,
   skipValidation: process.env["SKIP_ENV_VALIDATION"] !== undefined,

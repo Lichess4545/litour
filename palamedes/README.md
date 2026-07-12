@@ -104,6 +104,27 @@ they are erased at build time.
 Nothing else changes — the sign-in page renders a button per configured
 provider and works with email+password before any provider exists.
 
+### Lichess is different — don't follow the recipe above for it
+
+Lichess is wired separately, via Better Auth's `genericOAuth` plugin
+(`src/server/lichess/oauth-config.ts`), not the three steps above. It needs
+**no client secret and no app registration**: `LICHESS_CLIENT_ID` is any
+unique string you choose, not an issued credential. In production, set it
+to the site's own domain. Because there is no secret, lichess is a **PKCE
+public client** — do not add a `clientSecret` to fix what looks like a gap;
+there is none to add.
+
+Two more facts that follow from lichess's OAuth spec, not from this
+scaffold's choices:
+
+- Lichess grants no email address without the separate `email:read` scope,
+  which this flow doesn't request. Account linking uses a placeholder
+  email (`<lichessId>@users.lichess.invalid`) instead — decision D4 in
+  [`design/adr/0009-lichess-oauth-and-permissions.md`](design/adr/0009-lichess-oauth-and-permissions.md).
+- Lichess access tokens last about a year and lichess issues no refresh
+  token. There is no silent renewal to build; an expired token means
+  re-login.
+
 ## Database workflow
 
 ```sh
