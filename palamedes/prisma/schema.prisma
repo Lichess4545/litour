@@ -94,9 +94,33 @@ model DefinitionChange {
   version    Int
   type       String
   payload    Json
+  // NOTE: @default is backfill for pre-hardening rows only — the DAL always stamps both explicitly; see design/adr/0010-registry-identity-and-schema-evolution.md
+  schemaRev  Int      @default(1)
+  registryId String   @default("chess/1")
+  actorId    String?
   recordedAt DateTime @default(now())
 
   // NOTE: OCC conflict guard — a duplicate (streamId, version) raises P2002 and aborts the entire createMany; see design/adr/0003-optimistic-concurrency-via-unique-constraint.md
   @@unique([streamId, version])
   @@map("definition_change")
+}
+
+model DefinitionStream {
+  streamId  String   @id
+  ownerId   String?
+  // NOTE: @default is backfill for rows written before the DAL stamped this
+  // explicitly — the write path (seed.ts's upsert) always passes createdAt itself.
+  createdAt DateTime @default(now())
+
+  @@map("definition_stream")
+}
+
+model LichessToken {
+  tokenHash  String    @id
+  userId     String
+  scopes     String
+  expiresAt  DateTime?
+  verifiedAt DateTime
+
+  @@map("lichess_token")
 }

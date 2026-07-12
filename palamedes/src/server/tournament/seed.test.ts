@@ -20,6 +20,9 @@ describeWithDb("seedLeagues", () => {
     await db.definitionChange.deleteMany({
       where: { streamId: { in: [teamId, loneId] } },
     });
+    await db.definitionStream.deleteMany({
+      where: { streamId: { in: [teamId, loneId] } },
+    });
   });
 
   it("first run creates both league streams with valid definitions", async () => {
@@ -34,11 +37,26 @@ describeWithDb("seedLeagues", () => {
     const lone = await readDefinition(db, loneId);
     expect(lone.ok).toBe(true);
     if (lone.ok) expect(lone.def).toEqual(buildLoneWolfLeague(loneId));
+
+    const streams = await db.definitionStream.findMany({
+      where: { streamId: { in: [teamId, loneId] } },
+    });
+    expect(streams).toHaveLength(2);
+    expect(streams.every((s) => s.ownerId === null)).toBe(true);
   });
 
-  it("second run is idempotent: both unchanged", async () => {
+  it("second run is idempotent: both unchanged, definitionStream rows untouched", async () => {
+    const before = await db.definitionStream.findMany({
+      where: { streamId: { in: [teamId, loneId] } },
+      orderBy: { streamId: "asc" },
+    });
     const outcomes = await seedLeagues(db, { idPrefix: prefix });
     expect(outcomes.map((o) => o.status)).toEqual(["unchanged", "unchanged"]);
+    const after = await db.definitionStream.findMany({
+      where: { streamId: { in: [teamId, loneId] } },
+      orderBy: { streamId: "asc" },
+    });
+    expect(after).toEqual(before);
   });
 
   it("divergent content is reported and NOT clobbered", async () => {

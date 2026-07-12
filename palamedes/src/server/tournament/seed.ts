@@ -5,6 +5,7 @@ import {
   LONEWOLF_STREAM_ID,
   TEAM4545_STREAM_ID,
 } from "@/chess/leagues";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { definitionToChanges } from "@/tournament/changes/decompose";
 import {
   appendChanges,
@@ -17,6 +18,10 @@ export const SEED_DEVIATIONS: readonly string[] = [
   "team4545: team bye uses palamedes bye semantics (1 MP + 4 GP); the live site's JavaFo pairing-history wart is not modeled — ADR 0005",
 ];
 
+export type SeedClient = ChangeStoreClient & {
+  readonly definitionStream: Pick<PrismaClient["definitionStream"], "upsert">;
+};
+
 export type SeedOutcome = {
   readonly streamId: string;
   readonly league: "team4545" | "lonewolf";
@@ -26,7 +31,7 @@ export type SeedOutcome = {
 // NOTE: never overwrites — a divergent existing stream is reported and left unchanged.
 // Pass idPrefix to isolate seeds under distinct stream ids (used by tests on a shared database).
 export async function seedLeagues(
-  db: ChangeStoreClient,
+  db: SeedClient,
   opts?: { readonly idPrefix?: string },
 ): Promise<readonly SeedOutcome[]> {
   const prefix = opts?.idPrefix ?? "";
@@ -44,33 +49,37 @@ export async function seedLeagues(
   const outcomes: SeedOutcome[] = [];
   for (const { league, def } of targets) {
     const existing = await readDefinition(db, def.id);
+    let status: SeedOutcome["status"];
     if (existing.ok) {
-      outcomes.push({
-        streamId: def.id,
-        league,
-        status: isDeepStrictEqual(existing.def, def)
-          ? "unchanged"
-          : "divergent",
-      });
-      continue;
-    }
-    if (existing.error.kind !== "notFound") {
-      throw new Error(
-        `seed: stream ${def.id} unreadable (${existing.error.kind}) — refusing to touch it`,
+      status = isDeepStrictEqual(existing.def, def) ? "unchanged" : "divergent";
+    } else {
+      if (existing.error.kind !== "notFound") {
+        throw new Error(
+          `seed: stream ${def.id} unreadable (${existing.error.kind}) — refusing to touch it`,
+        );
+      }
+      const appended = await appendChanges(
+        db,
+        def.id,
+        0,
+        definitionToChanges(def),
       );
+      if (!appended.ok) {
+        throw new Error(
+          `seed: append failed for ${def.id}: ${JSON.stringify(appended.error)}`,
+        );
+      }
+      status = "created";
     }
-    const appended = await appendChanges(
-      db,
-      def.id,
-      0,
-      definitionToChanges(def),
-    );
-    if (!appended.ok) {
-      throw new Error(
-        `seed: append failed for ${def.id}: ${JSON.stringify(appended.error)}`,
-      );
-    }
-    outcomes.push({ streamId: def.id, league, status: "created" });
+    // NOTE: runs unconditionally on every outcome (created/unchanged/divergent) to
+    // backfill an ownership row for streams that already existed before this upsert
+    // was added — don't narrow this to the "created" branch only.
+    await db.definitionStream.upsert({
+      where: { streamId: def.id },
+      create: { streamId: def.id, ownerId: null, createdAt: new Date() },
+      update: {},
+    });
+    outcomes.push({ streamId: def.id, league, status });
   }
   return outcomes;
 }

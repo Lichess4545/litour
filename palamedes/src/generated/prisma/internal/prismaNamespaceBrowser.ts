@@ -56,7 +56,9 @@ export const ModelName = {
   Account: 'Account',
   Verification: 'Verification',
   Post: 'Post',
-  DefinitionChange: 'DefinitionChange'
+  DefinitionChange: 'DefinitionChange',
+  DefinitionStream: 'DefinitionStream',
+  LichessToken: 'LichessToken'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -150,10 +152,33 @@ export const DefinitionChangeScalarFieldEnum = {
   version: 'version',
   type: 'type',
   payload: 'payload',
+  schemaRev: 'schemaRev',
+  registryId: 'registryId',
+  actorId: 'actorId',
   recordedAt: 'recordedAt'
 } as const
 
 export type DefinitionChangeScalarFieldEnum = (typeof DefinitionChangeScalarFieldEnum)[keyof typeof DefinitionChangeScalarFieldEnum]
+
+
+export const DefinitionStreamScalarFieldEnum = {
+  streamId: 'streamId',
+  ownerId: 'ownerId',
+  createdAt: 'createdAt'
+} as const
+
+export type DefinitionStreamScalarFieldEnum = (typeof DefinitionStreamScalarFieldEnum)[keyof typeof DefinitionStreamScalarFieldEnum]
+
+
+export const LichessTokenScalarFieldEnum = {
+  tokenHash: 'tokenHash',
+  userId: 'userId',
+  scopes: 'scopes',
+  expiresAt: 'expiresAt',
+  verifiedAt: 'verifiedAt'
+} as const
+
+export type LichessTokenScalarFieldEnum = (typeof LichessTokenScalarFieldEnum)[keyof typeof LichessTokenScalarFieldEnum]
 
 
 export const SortOrder = {

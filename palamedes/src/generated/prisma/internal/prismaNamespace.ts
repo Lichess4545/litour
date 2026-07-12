@@ -389,7 +389,9 @@ export const ModelName = {
   Account: 'Account',
   Verification: 'Verification',
   Post: 'Post',
-  DefinitionChange: 'DefinitionChange'
+  DefinitionChange: 'DefinitionChange',
+  DefinitionStream: 'DefinitionStream',
+  LichessToken: 'LichessToken'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -405,7 +407,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "session" | "account" | "verification" | "post" | "definitionChange"
+    modelProps: "user" | "session" | "account" | "verification" | "post" | "definitionChange" | "definitionStream" | "lichessToken"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -853,6 +855,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    DefinitionStream: {
+      payload: Prisma.$DefinitionStreamPayload<ExtArgs>
+      fields: Prisma.DefinitionStreamFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.DefinitionStreamFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.DefinitionStreamFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        findFirst: {
+          args: Prisma.DefinitionStreamFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.DefinitionStreamFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        findMany: {
+          args: Prisma.DefinitionStreamFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>[]
+        }
+        create: {
+          args: Prisma.DefinitionStreamCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        createMany: {
+          args: Prisma.DefinitionStreamCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.DefinitionStreamCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>[]
+        }
+        delete: {
+          args: Prisma.DefinitionStreamDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        update: {
+          args: Prisma.DefinitionStreamUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        deleteMany: {
+          args: Prisma.DefinitionStreamDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.DefinitionStreamUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.DefinitionStreamUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>[]
+        }
+        upsert: {
+          args: Prisma.DefinitionStreamUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DefinitionStreamPayload>
+        }
+        aggregate: {
+          args: Prisma.DefinitionStreamAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDefinitionStream>
+        }
+        groupBy: {
+          args: Prisma.DefinitionStreamGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DefinitionStreamGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.DefinitionStreamCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DefinitionStreamCountAggregateOutputType> | number
+        }
+      }
+    }
+    LichessToken: {
+      payload: Prisma.$LichessTokenPayload<ExtArgs>
+      fields: Prisma.LichessTokenFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.LichessTokenFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.LichessTokenFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        findFirst: {
+          args: Prisma.LichessTokenFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.LichessTokenFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        findMany: {
+          args: Prisma.LichessTokenFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>[]
+        }
+        create: {
+          args: Prisma.LichessTokenCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        createMany: {
+          args: Prisma.LichessTokenCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.LichessTokenCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>[]
+        }
+        delete: {
+          args: Prisma.LichessTokenDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        update: {
+          args: Prisma.LichessTokenUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        deleteMany: {
+          args: Prisma.LichessTokenDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.LichessTokenUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.LichessTokenUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>[]
+        }
+        upsert: {
+          args: Prisma.LichessTokenUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$LichessTokenPayload>
+        }
+        aggregate: {
+          args: Prisma.LichessTokenAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateLichessToken>
+        }
+        groupBy: {
+          args: Prisma.LichessTokenGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.LichessTokenGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.LichessTokenCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.LichessTokenCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -967,10 +1117,33 @@ export const DefinitionChangeScalarFieldEnum = {
   version: 'version',
   type: 'type',
   payload: 'payload',
+  schemaRev: 'schemaRev',
+  registryId: 'registryId',
+  actorId: 'actorId',
   recordedAt: 'recordedAt'
 } as const
 
 export type DefinitionChangeScalarFieldEnum = (typeof DefinitionChangeScalarFieldEnum)[keyof typeof DefinitionChangeScalarFieldEnum]
+
+
+export const DefinitionStreamScalarFieldEnum = {
+  streamId: 'streamId',
+  ownerId: 'ownerId',
+  createdAt: 'createdAt'
+} as const
+
+export type DefinitionStreamScalarFieldEnum = (typeof DefinitionStreamScalarFieldEnum)[keyof typeof DefinitionStreamScalarFieldEnum]
+
+
+export const LichessTokenScalarFieldEnum = {
+  tokenHash: 'tokenHash',
+  userId: 'userId',
+  scopes: 'scopes',
+  expiresAt: 'expiresAt',
+  verifiedAt: 'verifiedAt'
+} as const
+
+export type LichessTokenScalarFieldEnum = (typeof LichessTokenScalarFieldEnum)[keyof typeof LichessTokenScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -1211,6 +1384,8 @@ export type GlobalOmitConfig = {
   verification?: Prisma.VerificationOmit
   post?: Prisma.PostOmit
   definitionChange?: Prisma.DefinitionChangeOmit
+  definitionStream?: Prisma.DefinitionStreamOmit
+  lichessToken?: Prisma.LichessTokenOmit
 }
 
 /* Types for Logging */

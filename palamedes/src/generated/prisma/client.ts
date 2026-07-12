@@ -71,3 +71,13 @@ export type Post = Prisma.PostModel
  * 
  */
 export type DefinitionChange = Prisma.DefinitionChangeModel
+/**
+ * Model DefinitionStream
+ * 
+ */
+export type DefinitionStream = Prisma.DefinitionStreamModel
+/**
+ * Model LichessToken
+ * 
+ */
+export type LichessToken = Prisma.LichessTokenModel

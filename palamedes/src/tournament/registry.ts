@@ -667,6 +667,7 @@ export function defineSeedKind<S>(spec: SeedKindSpec<S>): SeedKind {
 // The registry: instances assembled, recursive schemas built, ops bound
 
 export type RegistrySpec = {
+  readonly id: string;
   readonly encounters: readonly EncounterKind[];
   readonly pairings: readonly PairingKind[];
   readonly scorings: readonly ScoringKind[];
@@ -676,6 +677,7 @@ export type RegistrySpec = {
 };
 
 export type ModelRegistry = {
+  readonly id: string;
   readonly spec: RegistrySpec;
   readonly encounters: ReadonlyMap<string, BoundEncounterKind>;
   readonly pairings: ReadonlyMap<string, PairingKind>;
@@ -715,12 +717,18 @@ function byKey<T>(
   return map;
 }
 
-/** Extend a registry with additional instances. */
+/**
+ * Extend a registry with additional instances. `id` is required: an
+ * extension is a different vocabulary from its base, so callers must
+ * decide the new identity explicitly rather than silently inheriting
+ * `base.id`. See design/adr/0010-registry-identity-and-schema-evolution.md.
+ */
 export function extendRegistry(
   base: ModelRegistry,
-  extra: Partial<RegistrySpec>,
+  extra: Omit<Partial<RegistrySpec>, "id"> & { readonly id: string },
 ): ModelRegistry {
   return buildRegistry({
+    id: extra.id,
     encounters: [...base.spec.encounters, ...(extra.encounters ?? [])],
     pairings: [...base.spec.pairings, ...(extra.pairings ?? [])],
     scorings: [...base.spec.scorings, ...(extra.scorings ?? [])],
@@ -795,6 +803,7 @@ export function buildRegistry(spec: RegistrySpec): ModelRegistry {
   };
 
   const core = {
+    id: spec.id,
     spec,
     encounters: bound,
     pairings: byKey(spec.pairings, (p) => p.system, "pairing system"),

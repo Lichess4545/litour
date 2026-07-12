@@ -119,6 +119,7 @@ const arenaScoring = defineScoringKind<ArenaRule>({
 });
 
 const registry = extendRegistry(chessRegistry, {
+  id: "chess-test/extensions",
   encounters: [handicapKind],
   scorings: [arenaScoring],
 });

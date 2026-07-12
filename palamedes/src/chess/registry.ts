@@ -18,6 +18,7 @@ import { builtinTies } from "./ties";
  * tournament system itself contains none of this vocabulary.
  */
 export const chessRegistry: ModelRegistry = buildRegistry({
+  id: "chess/1",
   encounters: builtinEncounters,
   pairings: builtinPairings,
   scorings: builtinScorings,

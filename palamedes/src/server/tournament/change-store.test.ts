@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, expect, it } from "vitest";
-import { parseEventDef } from "@/chess/registry";
+import { chessRegistry, parseEventDef } from "@/chess/registry";
 import { db } from "@/server/db";
 import { describeWithDb } from "@/test/db";
 import { definitionToChanges } from "@/tournament/changes/decompose";
@@ -10,6 +10,7 @@ import type { ParsedEventDef } from "@/tournament/registry";
 import {
   type AppendError,
   appendChanges,
+  CURRENT_SCHEMA_REV,
   readAllChanges,
   readChanges,
   readDefinition,
@@ -310,6 +311,34 @@ describeWithDb("change store — append/read", () => {
     }
     const count = await db.definitionChange.count({ where: { streamId: id } });
     expect(count).toBe(base.version);
+  });
+
+  it("appendChanges stamps schemaRev, registryId, and actorId on every row", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const batch = definitionToChanges(def);
+    const result = await appendChanges(db, id, 0, batch, {
+      actorId: "lichess:thibault",
+    });
+    expect(result.ok).toBe(true);
+    const rows = await db.definitionChange.findMany({
+      where: { streamId: id },
+    });
+    for (const row of rows) {
+      expect(row.schemaRev).toBe(CURRENT_SCHEMA_REV);
+      expect(row.registryId).toBe(chessRegistry.id);
+      expect(row.actorId).toBe("lichess:thibault");
+    }
+  });
+
+  it("appendChanges without opts stamps null actorId", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    await appendChanges(db, id, 0, definitionToChanges(def));
+    const row = await db.definitionChange.findFirstOrThrow({
+      where: { streamId: id },
+    });
+    expect(row.actorId).toBeNull();
   });
 
   it("a corrupt stored payload throws with stream and seq context", async () => {

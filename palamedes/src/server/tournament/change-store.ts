@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { defChangeSchema } from "@/chess/changes";
-import { safeParseEventDef } from "@/chess/registry";
+import { chessRegistry, safeParseEventDef } from "@/chess/registry";
 import {
   type DefinitionChange,
   Prisma,
@@ -15,6 +15,8 @@ import type { DefChange } from "@/tournament/changes/types";
 import type { ParsedEventDef } from "@/tournament/registry";
 
 export type NewChange = DefChange;
+
+export const CURRENT_SCHEMA_REV = 1;
 
 // Narrow structural type: only the four delegate methods the DAL actually calls.
 // The real PrismaClient satisfies this structurally; test wrappers can too.
@@ -98,6 +100,7 @@ export async function appendChanges(
   streamId: string,
   expectedVersion: number,
   batch: readonly NewChange[],
+  opts?: { readonly actorId?: string },
 ): Promise<AppendResult> {
   if (batch.length === 0) {
     return { ok: false, error: { kind: "emptyBatch" } };
@@ -161,6 +164,12 @@ export async function appendChanges(
           version: expectedVersion + 1 + i,
           type: change.type,
           payload: jsonPayload.parse(change),
+          // NOTE: schemaRev/registryId always stamp the currently-loaded registry and
+          // schema revision, never a value from the caller — see
+          // design/adr/0010-registry-identity-and-schema-evolution.md
+          schemaRev: CURRENT_SCHEMA_REV,
+          registryId: chessRegistry.id,
+          actorId: opts?.actorId ?? null,
           // NOTE: Explicit over DB @default(now()) — SQLite's CURRENT_TIMESTAMP is
           // second-granular (ADR 0001); timestamp ordering is unreliable regardless (ADR 0003).
           recordedAt: new Date(),
@@ -305,7 +314,7 @@ export async function submit<R>(
   db: ChangeStoreClient,
   streamId: string,
   decide: (state: SubmitState) => Decision<R>,
-  opts?: { readonly retries?: number },
+  opts?: { readonly retries?: number; readonly actorId?: string },
 ): Promise<SubmitResult<R>> {
   const retries = opts?.retries ?? 3;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -332,7 +341,13 @@ export async function submit<R>(
       return { ok: true, version: state.version, seqs: [] };
     }
 
-    const result = await appendChanges(db, streamId, state.version, decision);
+    const result = await appendChanges(
+      db,
+      streamId,
+      state.version,
+      decision,
+      opts,
+    );
     if (result.ok) return result;
     if (result.error.kind === "versionConflict") continue;
     return result;

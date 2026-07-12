@@ -29,11 +29,13 @@ export type AggregateDefinitionChange = {
 export type DefinitionChangeAvgAggregateOutputType = {
   seq: number | null
   version: number | null
+  schemaRev: number | null
 }
 
 export type DefinitionChangeSumAggregateOutputType = {
   seq: number | null
   version: number | null
+  schemaRev: number | null
 }
 
 export type DefinitionChangeMinAggregateOutputType = {
@@ -41,6 +43,9 @@ export type DefinitionChangeMinAggregateOutputType = {
   streamId: string | null
   version: number | null
   type: string | null
+  schemaRev: number | null
+  registryId: string | null
+  actorId: string | null
   recordedAt: Date | null
 }
 
@@ -49,6 +54,9 @@ export type DefinitionChangeMaxAggregateOutputType = {
   streamId: string | null
   version: number | null
   type: string | null
+  schemaRev: number | null
+  registryId: string | null
+  actorId: string | null
   recordedAt: Date | null
 }
 
@@ -58,6 +66,9 @@ export type DefinitionChangeCountAggregateOutputType = {
   version: number
   type: number
   payload: number
+  schemaRev: number
+  registryId: number
+  actorId: number
   recordedAt: number
   _all: number
 }
@@ -66,11 +77,13 @@ export type DefinitionChangeCountAggregateOutputType = {
 export type DefinitionChangeAvgAggregateInputType = {
   seq?: true
   version?: true
+  schemaRev?: true
 }
 
 export type DefinitionChangeSumAggregateInputType = {
   seq?: true
   version?: true
+  schemaRev?: true
 }
 
 export type DefinitionChangeMinAggregateInputType = {
@@ -78,6 +91,9 @@ export type DefinitionChangeMinAggregateInputType = {
   streamId?: true
   version?: true
   type?: true
+  schemaRev?: true
+  registryId?: true
+  actorId?: true
   recordedAt?: true
 }
 
@@ -86,6 +102,9 @@ export type DefinitionChangeMaxAggregateInputType = {
   streamId?: true
   version?: true
   type?: true
+  schemaRev?: true
+  registryId?: true
+  actorId?: true
   recordedAt?: true
 }
 
@@ -95,6 +114,9 @@ export type DefinitionChangeCountAggregateInputType = {
   version?: true
   type?: true
   payload?: true
+  schemaRev?: true
+  registryId?: true
+  actorId?: true
   recordedAt?: true
   _all?: true
 }
@@ -191,6 +213,9 @@ export type DefinitionChangeGroupByOutputType = {
   version: number
   type: string
   payload: runtime.JsonValue
+  schemaRev: number
+  registryId: string
+  actorId: string | null
   recordedAt: Date
   _count: DefinitionChangeCountAggregateOutputType | null
   _avg: DefinitionChangeAvgAggregateOutputType | null
@@ -223,6 +248,9 @@ export type DefinitionChangeWhereInput = {
   version?: Prisma.IntFilter<"DefinitionChange"> | number
   type?: Prisma.StringFilter<"DefinitionChange"> | string
   payload?: Prisma.JsonFilter<"DefinitionChange">
+  schemaRev?: Prisma.IntFilter<"DefinitionChange"> | number
+  registryId?: Prisma.StringFilter<"DefinitionChange"> | string
+  actorId?: Prisma.StringNullableFilter<"DefinitionChange"> | string | null
   recordedAt?: Prisma.DateTimeFilter<"DefinitionChange"> | Date | string
 }
 
@@ -232,6 +260,9 @@ export type DefinitionChangeOrderByWithRelationInput = {
   version?: Prisma.SortOrder
   type?: Prisma.SortOrder
   payload?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
+  registryId?: Prisma.SortOrder
+  actorId?: Prisma.SortOrderInput | Prisma.SortOrder
   recordedAt?: Prisma.SortOrder
 }
 
@@ -245,6 +276,9 @@ export type DefinitionChangeWhereUniqueInput = Prisma.AtLeast<{
   version?: Prisma.IntFilter<"DefinitionChange"> | number
   type?: Prisma.StringFilter<"DefinitionChange"> | string
   payload?: Prisma.JsonFilter<"DefinitionChange">
+  schemaRev?: Prisma.IntFilter<"DefinitionChange"> | number
+  registryId?: Prisma.StringFilter<"DefinitionChange"> | string
+  actorId?: Prisma.StringNullableFilter<"DefinitionChange"> | string | null
   recordedAt?: Prisma.DateTimeFilter<"DefinitionChange"> | Date | string
 }, "seq" | "streamId_version">
 
@@ -254,6 +288,9 @@ export type DefinitionChangeOrderByWithAggregationInput = {
   version?: Prisma.SortOrder
   type?: Prisma.SortOrder
   payload?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
+  registryId?: Prisma.SortOrder
+  actorId?: Prisma.SortOrderInput | Prisma.SortOrder
   recordedAt?: Prisma.SortOrder
   _count?: Prisma.DefinitionChangeCountOrderByAggregateInput
   _avg?: Prisma.DefinitionChangeAvgOrderByAggregateInput
@@ -271,6 +308,9 @@ export type DefinitionChangeScalarWhereWithAggregatesInput = {
   version?: Prisma.IntWithAggregatesFilter<"DefinitionChange"> | number
   type?: Prisma.StringWithAggregatesFilter<"DefinitionChange"> | string
   payload?: Prisma.JsonWithAggregatesFilter<"DefinitionChange">
+  schemaRev?: Prisma.IntWithAggregatesFilter<"DefinitionChange"> | number
+  registryId?: Prisma.StringWithAggregatesFilter<"DefinitionChange"> | string
+  actorId?: Prisma.StringNullableWithAggregatesFilter<"DefinitionChange"> | string | null
   recordedAt?: Prisma.DateTimeWithAggregatesFilter<"DefinitionChange"> | Date | string
 }
 
@@ -279,6 +319,9 @@ export type DefinitionChangeCreateInput = {
   version: number
   type: string
   payload: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: number
+  registryId?: string
+  actorId?: string | null
   recordedAt?: Date | string
 }
 
@@ -288,6 +331,9 @@ export type DefinitionChangeUncheckedCreateInput = {
   version: number
   type: string
   payload: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: number
+  registryId?: string
+  actorId?: string | null
   recordedAt?: Date | string
 }
 
@@ -296,6 +342,9 @@ export type DefinitionChangeUpdateInput = {
   version?: Prisma.IntFieldUpdateOperationsInput | number
   type?: Prisma.StringFieldUpdateOperationsInput | string
   payload?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: Prisma.IntFieldUpdateOperationsInput | number
+  registryId?: Prisma.StringFieldUpdateOperationsInput | string
+  actorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -305,6 +354,9 @@ export type DefinitionChangeUncheckedUpdateInput = {
   version?: Prisma.IntFieldUpdateOperationsInput | number
   type?: Prisma.StringFieldUpdateOperationsInput | string
   payload?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: Prisma.IntFieldUpdateOperationsInput | number
+  registryId?: Prisma.StringFieldUpdateOperationsInput | string
+  actorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -314,6 +366,9 @@ export type DefinitionChangeCreateManyInput = {
   version: number
   type: string
   payload: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: number
+  registryId?: string
+  actorId?: string | null
   recordedAt?: Date | string
 }
 
@@ -322,6 +377,9 @@ export type DefinitionChangeUpdateManyMutationInput = {
   version?: Prisma.IntFieldUpdateOperationsInput | number
   type?: Prisma.StringFieldUpdateOperationsInput | string
   payload?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: Prisma.IntFieldUpdateOperationsInput | number
+  registryId?: Prisma.StringFieldUpdateOperationsInput | string
+  actorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -331,6 +389,9 @@ export type DefinitionChangeUncheckedUpdateManyInput = {
   version?: Prisma.IntFieldUpdateOperationsInput | number
   type?: Prisma.StringFieldUpdateOperationsInput | string
   payload?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  schemaRev?: Prisma.IntFieldUpdateOperationsInput | number
+  registryId?: Prisma.StringFieldUpdateOperationsInput | string
+  actorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -345,12 +406,16 @@ export type DefinitionChangeCountOrderByAggregateInput = {
   version?: Prisma.SortOrder
   type?: Prisma.SortOrder
   payload?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
+  registryId?: Prisma.SortOrder
+  actorId?: Prisma.SortOrder
   recordedAt?: Prisma.SortOrder
 }
 
 export type DefinitionChangeAvgOrderByAggregateInput = {
   seq?: Prisma.SortOrder
   version?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
 }
 
 export type DefinitionChangeMaxOrderByAggregateInput = {
@@ -358,6 +423,9 @@ export type DefinitionChangeMaxOrderByAggregateInput = {
   streamId?: Prisma.SortOrder
   version?: Prisma.SortOrder
   type?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
+  registryId?: Prisma.SortOrder
+  actorId?: Prisma.SortOrder
   recordedAt?: Prisma.SortOrder
 }
 
@@ -366,12 +434,16 @@ export type DefinitionChangeMinOrderByAggregateInput = {
   streamId?: Prisma.SortOrder
   version?: Prisma.SortOrder
   type?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
+  registryId?: Prisma.SortOrder
+  actorId?: Prisma.SortOrder
   recordedAt?: Prisma.SortOrder
 }
 
 export type DefinitionChangeSumOrderByAggregateInput = {
   seq?: Prisma.SortOrder
   version?: Prisma.SortOrder
+  schemaRev?: Prisma.SortOrder
 }
 
 export type IntFieldUpdateOperationsInput = {
@@ -390,6 +462,9 @@ export type DefinitionChangeSelect<ExtArgs extends runtime.Types.Extensions.Inte
   version?: boolean
   type?: boolean
   payload?: boolean
+  schemaRev?: boolean
+  registryId?: boolean
+  actorId?: boolean
   recordedAt?: boolean
 }, ExtArgs["result"]["definitionChange"]>
 
@@ -399,6 +474,9 @@ export type DefinitionChangeSelectCreateManyAndReturn<ExtArgs extends runtime.Ty
   version?: boolean
   type?: boolean
   payload?: boolean
+  schemaRev?: boolean
+  registryId?: boolean
+  actorId?: boolean
   recordedAt?: boolean
 }, ExtArgs["result"]["definitionChange"]>
 
@@ -408,6 +486,9 @@ export type DefinitionChangeSelectUpdateManyAndReturn<ExtArgs extends runtime.Ty
   version?: boolean
   type?: boolean
   payload?: boolean
+  schemaRev?: boolean
+  registryId?: boolean
+  actorId?: boolean
   recordedAt?: boolean
 }, ExtArgs["result"]["definitionChange"]>
 
@@ -417,10 +498,13 @@ export type DefinitionChangeSelectScalar = {
   version?: boolean
   type?: boolean
   payload?: boolean
+  schemaRev?: boolean
+  registryId?: boolean
+  actorId?: boolean
   recordedAt?: boolean
 }
 
-export type DefinitionChangeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"seq" | "streamId" | "version" | "type" | "payload" | "recordedAt", ExtArgs["result"]["definitionChange"]>
+export type DefinitionChangeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"seq" | "streamId" | "version" | "type" | "payload" | "schemaRev" | "registryId" | "actorId" | "recordedAt", ExtArgs["result"]["definitionChange"]>
 
 export type $DefinitionChangePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "DefinitionChange"
@@ -431,6 +515,9 @@ export type $DefinitionChangePayload<ExtArgs extends runtime.Types.Extensions.In
     version: number
     type: string
     payload: runtime.JsonValue
+    schemaRev: number
+    registryId: string
+    actorId: string | null
     recordedAt: Date
   }, ExtArgs["result"]["definitionChange"]>
   composites: {}
@@ -860,6 +947,9 @@ export interface DefinitionChangeFieldRefs {
   readonly version: Prisma.FieldRef<"DefinitionChange", 'Int'>
   readonly type: Prisma.FieldRef<"DefinitionChange", 'String'>
   readonly payload: Prisma.FieldRef<"DefinitionChange", 'Json'>
+  readonly schemaRev: Prisma.FieldRef<"DefinitionChange", 'Int'>
+  readonly registryId: Prisma.FieldRef<"DefinitionChange", 'String'>
+  readonly actorId: Prisma.FieldRef<"DefinitionChange", 'String'>
   readonly recordedAt: Prisma.FieldRef<"DefinitionChange", 'DateTime'>
 }
     
