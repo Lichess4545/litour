@@ -36,6 +36,7 @@ export type LineKind = "played" | "bye" | "absent";
 
 export type ArithOp = "+" | "-" | "*" | "/";
 export type CmpOp = "<" | "<=" | "==" | ">=" | ">";
+export type CalcOp = "floor" | "ceil" | "abs" | "round";
 export type SortDir = "asc" | "desc";
 
 /** A played line's result from the competitor's own perspective. */
@@ -71,6 +72,9 @@ export type Expr =
   // Full round history (incl. byes/absences) + line-kind test, for bye-aware metrics.
   | { readonly op: "rounds"; readonly of: Expr }
   | { readonly op: "kindIs"; readonly line: Expr; readonly kind: LineKind }
+  // True only for a played line with the flag set; byes and absences are
+  // never `unplayed`, even though both are colloquially "not played".
+  | { readonly op: "unplayed"; readonly line: Expr }
   | { readonly op: "boardPoint"; readonly line: Expr; readonly board: number }
   | { readonly op: "colorIs"; readonly line: Expr; readonly color: Color }
   | { readonly op: "concat"; readonly left: Expr; readonly right: Expr }
@@ -125,6 +129,7 @@ export type Expr =
       readonly a: Expr;
       readonly b: Expr;
     }
+  | { readonly op: "calc"; readonly f: CalcOp; readonly a: Expr }
   | {
       readonly op: "cmp";
       readonly f: CmpOp;

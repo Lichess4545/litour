@@ -49,6 +49,24 @@ describe("safeParseExpr — must-reject corpus", () => {
     expect(result.error.issues[0]?.path).toEqual(["field"]);
   });
 
+  test("unknown calc function", () => {
+    const result = safeParseExpr({
+      op: "calc",
+      f: "sqrt",
+      a: { op: "lit", value: 1 },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.path).toEqual(["f"]);
+  });
+
+  test("unplayed missing its required line", () => {
+    const result = safeParseExpr({ op: "unplayed" });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.path).toEqual(["line"]);
+  });
+
   test("non-object", () => {
     const result = safeParseExpr("just a string");
     expect(result.success).toBe(false);
@@ -117,5 +135,15 @@ describe("parseExpr / safeParseExpr — valid input", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data).toEqual(valid);
+  });
+
+  test("round-trips a calc expression", () => {
+    const expr: Expr = { op: "calc", f: "floor", a: { op: "lit", value: 1 } };
+    expect(parseExpr(expr)).toEqual(expr);
+  });
+
+  test("round-trips an unplayed expression", () => {
+    const expr: Expr = { op: "unplayed", line: { op: "self" } };
+    expect(parseExpr(expr)).toEqual(expr);
   });
 });

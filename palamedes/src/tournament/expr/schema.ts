@@ -53,6 +53,7 @@ export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
       line: exprSchema,
       kind: z.enum(["played", "bye", "absent"]),
     }),
+    z.object({ op: z.literal("unplayed"), line: exprSchema }),
     z.object({
       op: z.literal("boardPoint"),
       line: exprSchema,
@@ -116,6 +117,11 @@ export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
       f: z.enum(["+", "-", "*", "/"]),
       a: exprSchema,
       b: exprSchema,
+    }),
+    z.object({
+      op: z.literal("calc"),
+      f: z.enum(["floor", "ceil", "abs", "round"]),
+      a: exprSchema,
     }),
     z.object({
       op: z.literal("cmp"),

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, test } from "vitest";
 import { buchholz } from "@/chess/tiebreaks/definitions";
+import type { Expr } from "./ast";
 import { type ComputationNode, describeExpr } from "./describe";
 
 describe("describeExpr", () => {
@@ -23,5 +24,19 @@ describe("describeExpr", () => {
     expect(labels).toContain("score (standings)");
     expect(labels).toContain("combined with");
     expect(labels).toContain("sort asc");
+  });
+
+  test("renders calc with the floor label", () => {
+    const expr: Expr = { op: "calc", f: "floor", a: { op: "lit", value: 1 } };
+    const tree = describeExpr(expr);
+    expect(tree.op).toBe("calc");
+    expect(tree.label).toBe("round down");
+  });
+
+  test("renders unplayed with its label", () => {
+    const expr: Expr = { op: "unplayed", line: { op: "self" } };
+    const tree = describeExpr(expr);
+    expect(tree.op).toBe("unplayed");
+    expect(tree.label).toBe("decided without play");
   });
 });

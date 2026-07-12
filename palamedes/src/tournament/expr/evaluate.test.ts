@@ -6,7 +6,7 @@ import {
   type Outcome,
   type Side,
 } from "../core";
-import type { MetricRow, PlayedLine } from "../registry";
+import type { MetricRow, PlayedLine, RoundLine } from "../registry";
 import type { Env, Expr } from "./ast";
 import { evaluate, evaluateTraced } from "./evaluate";
 
@@ -77,6 +77,29 @@ const standardRows: readonly MetricRow[] = [
   row(b, 3, []),
   row(c, 2, []),
   row(d, 1, []),
+];
+
+// A round history covering every line kind, for the `unplayed` predicate:
+// a forfeited-but-played round, a normally-played round, a bye, an absence.
+const forfeitedLine: PlayedLine = {
+  ...line(b, 0, winFor(0), 1),
+  unplayed: true,
+};
+const byeLine: RoundLine = {
+  kind: "bye",
+  round: 2,
+  standingsPoints: 1,
+  encounterPoints: 1,
+};
+const absentLine: RoundLine = { kind: "absent", round: 3 };
+const mixedKindRows: readonly MetricRow[] = [
+  {
+    competitor: a,
+    standingsPoints: 2,
+    encounterPoints: 2,
+    lines: [forfeitedLine, line(b, 0, winFor(0), 1), byeLine, absentLine],
+  },
+  row(b, 3, []),
 ];
 
 // --- expression fixtures ----------------------------------------------------
@@ -239,6 +262,74 @@ describe("evaluate — primitives", () => {
     expect(evaluate(expr, makeEnv(standardRows, a))).toEqual({
       ok: true,
       value: { t: "num", v: 10 },
+    });
+  });
+});
+
+describe("evaluate — calc", () => {
+  test.each([
+    ["floor", 2.5, 2],
+    ["ceil", 2.5, 3],
+    ["abs", -1.25, 1.25],
+    ["round", 2.5, 3],
+    // Distinguishes ceil from round: ceil(2.3) = 3, round(2.3) = 2.
+    ["round", 2.3, 2],
+  ] as const)("%s(%d) = %d", (f, operand, expected) => {
+    const expr: Expr = { op: "calc", f, a: { op: "lit", value: operand } };
+    expect(evaluate(expr, makeEnv(standardRows, a))).toEqual({
+      ok: true,
+      value: { t: "num", v: expected },
+    });
+  });
+
+  test("a non-numeric operand reports the standard type mismatch", () => {
+    const expr: Expr = {
+      op: "calc",
+      f: "floor",
+      a: { op: "lit", value: true },
+    };
+    const r = evaluate(expr, makeEnv(standardRows, a));
+    if (r.ok) throw new Error("expected a type error");
+    expect(r.error).toEqual({
+      kind: "type",
+      expected: "num",
+      got: "bool",
+      at: "calc.a",
+    });
+  });
+});
+
+describe("evaluate — unplayed", () => {
+  test("true only for a played line with the unplayed flag set", () => {
+    const expr: Expr = {
+      op: "map",
+      over: { op: "rounds", of: self },
+      as: "r",
+      body: { op: "unplayed", line: { op: "var", name: "r" } },
+    };
+    expect(evaluate(expr, makeEnv(mixedKindRows, a))).toEqual({
+      ok: true,
+      value: {
+        t: "list",
+        v: [
+          { t: "bool", v: true },
+          { t: "bool", v: false },
+          { t: "bool", v: false },
+          { t: "bool", v: false },
+        ],
+      },
+    });
+  });
+
+  test("a non-line operand reports the standard type mismatch", () => {
+    const expr: Expr = { op: "unplayed", line: { op: "lit", value: 5 } };
+    const r = evaluate(expr, makeEnv(mixedKindRows, a));
+    if (r.ok) throw new Error("expected a type error");
+    expect(r.error).toEqual({
+      kind: "type",
+      expected: "line",
+      got: "num",
+      at: "unplayed.line",
     });
   });
 });

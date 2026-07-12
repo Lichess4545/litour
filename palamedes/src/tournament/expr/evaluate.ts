@@ -2,6 +2,7 @@ import type { CompetitorId, Outcome, Side } from "../core";
 import type { PlayedLine, RoundLine } from "../registry";
 import type {
   ArithOp,
+  CalcOp,
   CmpOp,
   DecisionTag,
   Env,
@@ -231,6 +232,19 @@ const applyArith = (f: ArithOp, a: number, b: number): number => {
   }
 };
 
+const applyCalc = (f: CalcOp, a: number): number => {
+  switch (f) {
+    case "floor":
+      return Math.floor(a);
+    case "ceil":
+      return Math.ceil(a);
+    case "abs":
+      return Math.abs(a);
+    case "round":
+      return Math.round(a);
+  }
+};
+
 const applyCmp = (f: CmpOp, a: number, b: number): boolean => {
   switch (f) {
     case "<":
@@ -361,6 +375,11 @@ function evalOp(
     case "kindIs": {
       const l = evLine(expr.line, env, scope, budget, "kindIs.line");
       return l.ok ? ok(bool(l.v.kind === expr.kind)) : l;
+    }
+
+    case "unplayed": {
+      const l = evLine(expr.line, env, scope, budget, "unplayed.line");
+      return l.ok ? ok(bool(l.v.kind === "played" && l.v.unplayed)) : l;
     }
 
     case "boardPoint": {
@@ -581,6 +600,11 @@ function evalOp(
       if (!b.ok) return b;
       if (expr.f === "/" && b.v === 0) return fail({ kind: "divByZero" });
       return ok(num(applyArith(expr.f, a.v, b.v)));
+    }
+
+    case "calc": {
+      const a = evNum(expr.a, env, scope, budget, "calc.a");
+      return a.ok ? ok(num(applyCalc(expr.f, a.v))) : a;
     }
 
     case "cmp": {

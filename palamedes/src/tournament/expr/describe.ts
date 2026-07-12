@@ -1,4 +1,4 @@
-import type { Expr } from "./ast";
+import type { CalcOp, Expr } from "./ast";
 
 /**
  * A scoring expression rendered as a labeled tree for the viewer — the
@@ -17,6 +17,13 @@ const ARITH: Record<"+" | "-" | "*" | "/", string> = {
   "-": "subtract",
   "*": "multiply",
   "/": "divide",
+};
+
+const CALC: Record<CalcOp, string> = {
+  floor: "round down",
+  ceil: "round up",
+  abs: "absolute value of",
+  round: "round to nearest",
 };
 
 const node = (
@@ -55,6 +62,8 @@ export function describeExpr(expr: Expr): ComputationNode {
       return node("member", "is one of", [d(expr.of), d(expr.container)]);
     case "kindIs":
       return node("kindIs", `round is a ${expr.kind}`, [d(expr.line)]);
+    case "unplayed":
+      return node("unplayed", "decided without play", [d(expr.line)]);
     case "colorIs":
       return node("colorIs", `played as ${expr.color}`, [d(expr.line)]);
     case "boardPoint":
@@ -85,6 +94,8 @@ export function describeExpr(expr: Expr): ComputationNode {
       return node("scan", "running totals of", [d(expr.over), d(expr.body)]);
     case "arith":
       return node("arith", ARITH[expr.f], [d(expr.a), d(expr.b)]);
+    case "calc":
+      return node("calc", CALC[expr.f], [d(expr.a)]);
     case "cmp":
       return node("cmp", `compare ${expr.f}`, [d(expr.a), d(expr.b)]);
     case "eq":

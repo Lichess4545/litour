@@ -144,10 +144,11 @@ only accepts a `ParsedEventDef`, so unvalidated literals can't reach it.
 
 Scoring rules and tiebreaks are not code — they are **data**, expressions in a
 small typed language the engine evaluates. `ast.ts` defines `Expr`, a closed
-union of ops: arithmetic, comparison/equality, `if`/`match`/`let`, the
-collection verbs `map`/`filter`/`sortBy`/`take`/`drop`/`concat`/`scan` and the
-reducers `sum`/`count`/`min`/`max`/`avg`; substrate accessors `opponents`,
-`opponent`, `rounds`, `score`, `lineNum`, `boardPoint`, `colorIs`, `kindIs`,
+union of ops: arithmetic, unary `calc` (floor/ceil/abs/round),
+comparison/equality, `if`/`match`/`let`, the collection verbs
+`map`/`filter`/`sortBy`/`take`/`drop`/`concat`/`scan` and the reducers
+`sum`/`count`/`min`/`max`/`avg`; substrate accessors `opponents`, `opponent`,
+`rounds`, `score`, `lineNum`, `boardPoint`, `colorIs`, `kindIs`, `unplayed`,
 `tiedWith`, `member`; the scoring-context leaves `linePoints`/`round`/
 `legIndex`/`outcome`; the ratings seam `attribute`; and `metric` for reuse.
 `schema.ts` parses untrusted expressions (a recursive `z.lazy`
