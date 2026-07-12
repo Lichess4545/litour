@@ -116,6 +116,8 @@ model DefinitionStream {
 }
 
 model LichessToken {
+  // NOTE: sha256 hex of the raw token, never the token itself — see
+  // src/server/lichess/introspection.ts.
   tokenHash  String    @id
   userId     String
   scopes     String
