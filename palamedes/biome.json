@@ -44,11 +44,33 @@
   },
   "overrides": [
     {
-      "includes": ["src/env.ts", "src/env.test.ts", "src/chess/encounters.ts"],
+      "includes": [
+        "src/env.ts",
+        "src/env.test.ts",
+        "src/chess/encounters.ts",
+        "src/server/http/app.test.ts"
+      ],
       "linter": {
         "rules": {
           "complexity": {
             "useLiteralKeys": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/server/http/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "zod": "Import z from \"@hono/zod-openapi\" instead — it runs extendZodWithOpenApi(z) as a side effect, and importing plain \"zod\" here typechecks but throws \"openapi is not a function\" at runtime unless that side effect ran first."
+                }
+              }
+            }
           }
         }
       }

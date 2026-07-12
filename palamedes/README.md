@@ -94,6 +94,30 @@ exclusively through the tRPC client (`useTRPC()` in client components,
 `src/trpc/server.tsx` in RSCs). Type-only imports (e.g. `AppRouter`) are fine —
 they are erased at build time.
 
+## API
+
+Alongside tRPC (the Next.js app's own client), palamedes exposes an HTTP API
+at `/api/v1` — an `OpenAPIHono` app mounted through a Next.js catch-all route
+(`src/app/api/v1/[[...route]]/route.ts`) via `hono/vercel`. This is a
+separate, additive surface: tRPC is untouched and keeps serving the app's UI.
+
+- Interactive docs: `/docs`, viewable during `bun run dev`.
+- Raw OpenAPI 3.1 document: `/api/v1/openapi.json`, generated from the same
+  zod route definitions the API validates against.
+- `bun run openapi:spec` prints that document to stdout with no server and
+  no database — it sets `SKIP_ENV_VALIDATION` because emitting a spec needs
+  neither.
+
+`/docs` renders the spec with `@scalar/api-reference` — the same package
+lichess.org/api uses for its own docs, chosen deliberately to echo that
+stack (see
+[`design/adr/0008-definition-api-hono-openapi.md`](design/adr/0008-definition-api-hono-openapi.md)).
+
+The document declares a `LichessToken` bearer security scheme, but nothing
+enforces it yet — no endpoint requires auth today (the only route so far is
+`/api/v1/health`). Read endpoints will be anonymous by design; the write
+endpoints and their bearer gate land in a later task.
+
 ## Adding an OAuth provider (e.g. GitHub)
 
 1. Fill `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` in `.env` (they're already

@@ -63,8 +63,13 @@ suite (see "Suite status").
   - Scope→grant mapping + ownership predicates —
     `src/server/lichess/permissions.ts`: ADR 0009's D1 table as code
     (`grantsFor`), plus `canWriteStream`/`canCreateStream`.
-  - Not yet built: the HTTP API itself. The grants `permissions.ts` defines
-    have no enforcement point until the write endpoints land (next).
+  - The API chassis now exists (Task 13): an `OpenAPIHono` app at
+    `/api/v1` (`src/server/http/app.ts`), a real `/api/v1/health` route,
+    the generated OpenAPI 3.1 document (`/api/v1/openapi.json`), and a
+    Scalar docs page at `/docs`. Not yet built: any read or write
+    endpoint. Nothing is authenticated — the document declares a
+    `LichessToken` bearer scheme, but no route enforces it, so the grants
+    `permissions.ts` defines still have no enforcement point.
 
 ## Designed, not built
 
@@ -85,7 +90,8 @@ ADRs in [`design/adr/`](adr/):
 | [0011](adr/0011-expression-wire-door.md) | Inline expressions are the wire door for data-defined tiebreaks and scorings | Accepted (2026-07-12) |
 
 Nothing in the codebase implements 0006 or 0007 yet. 0009's auth stack is
-now built (see "Auth stack" above); 0008's API skeleton is still ahead (see
+now built (see "Auth stack" above); 0008's API chassis is built (Task 13 —
+see "Auth stack" above), its read and write endpoints are still ahead (see
 "In flight" below); 0010 and 0011 are built — see "Hardened" and
 "Expression language" above.
 
@@ -99,8 +105,9 @@ now built (see "Auth stack" above); 0008's API skeleton is still ahead (see
   non-throwing expr evaluation (`d808f1ee`), the expression wire door (ADR
   0011, `d9b90340`), the `calc`/`unplayed` ops (`ae48a7fc`), secretspec
   provisioning, lichess OAuth login, bearer-token introspection, and now
-  this task's scope→grant mapping + ownership predicates are in, pending
-  the historian commit — Task 13 (API skeleton) is next.
+  this task's scope→grant mapping + ownership predicates are in, plus Task
+  13's API chassis (hono + zod-openapi under `/api/v1`, the health route,
+  the OpenAPI 3.1 document, `/docs`) — both pending the historian commit.
 
 ## In flight — the 2026-07-12 mandate
 
@@ -108,10 +115,10 @@ On `palamedes-api`: fully data-driven definitions, a generality review
 (done — [reviews/2026-07-12-generality-review.md](reviews/2026-07-12-generality-review.md)),
 a READ+WRITE OpenAPI API with lichess OAuth, and an OpenAPI docs site.
 
-The auth stack (login, introspection, permissions) is done — see "Auth
-stack" above. Remaining: the API skeleton itself, with its read/write
-endpoints and docs site — see
-`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 13-17).
+The auth stack (login, introspection, permissions) is done, and so is the
+API skeleton itself (Task 13) — see "Auth stack" above. Remaining: the
+read and write endpoints and their bearer gate — see
+`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 14-17).
 
 Hard gate before the write endpoints ship: unauthenticated bearer attempts
 must be rate-limited first. lichess allows only one in-flight introspection
@@ -122,9 +129,10 @@ fail-closed (ADR 0009), take the whole API down.
 
 ## Suite status
 
-Pending this task's commit (will be repinned to that hash once the
-historian commits): typecheck clean, lint clean, 401 tests passing, 0
-skipped.
+Typecheck clean, lint clean, full suite green, 0 skipped. The count of
+tests isn't pinned here — it grows every task and a hand-maintained number
+is stale before the next commit lands. Run `bun run test` for the current
+count.
 
 ## How to run
 

@@ -43,6 +43,16 @@ scaffold. The contract lives in `design/tournament-model.md`.
 - Schema changes: edit `prisma/schema.prisma` only; never write into
   `prisma/migrations/` — tell the user to run
   `bun run db:migrate -- --name <change>`.
+- Any schema passed to `createRoute` or given `.openapi()` metadata imports `z`
+  from `"@hono/zod-openapi"`, never `"zod"` — `.openapi()` is added to zod's
+  prototype as a side effect of that module loading, so a plain-`zod` import
+  typechecks and then throws `openapi is not a function` at runtime depending
+  on load order. Enforced by a biome `noRestrictedImports` override on
+  `src/server/http/**`; everywhere else (domain schemas, env, tRPC) correctly
+  imports plain `zod`.
+- Routes/sub-routers extend the `export const api` fluent chain in
+  `src/server/http/app.ts`; `.doc31()` and `registerComponent` stay bare
+  statements. See that file for why.
 
 ## Task docs (read on demand — not preloaded)
 
