@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { afterAll, expect, it } from "vitest";
+import { z } from "zod";
+import { defChangeSchema } from "@/chess/changes";
 import { chessRegistry, parseEventDef } from "@/chess/registry";
 import { db } from "@/server/db";
 import { describeWithDb } from "@/test/db";
@@ -14,6 +16,7 @@ import {
   readAllChanges,
   readChanges,
   readDefinition,
+  upcastPayload,
 } from "./change-store";
 
 const streamIds: string[] = [];
@@ -253,8 +256,10 @@ describeWithDb("change store — append/read", () => {
     const firstSeq = base.seqs[0];
     if (firstSeq === undefined) return;
     const page = await readAllChanges(db, { afterSeq: firstSeq - 1, limit: 2 });
-    expect(page.length).toBe(2);
-    expect(page[0]?.seq).toBe(firstSeq);
+    expect(page.ok).toBe(true);
+    if (!page.ok) return;
+    expect(page.changes.length).toBe(2);
+    expect(page.changes[0]?.seq).toBe(firstSeq);
   });
 
   it("a batch element failing the change schema → malformedChange at index 0, zero rows written", async () => {
@@ -341,17 +346,125 @@ describeWithDb("change store — append/read", () => {
     expect(row.actorId).toBeNull();
   });
 
-  it("a corrupt stored payload throws with stream and seq context", async () => {
+  it("readChanges surfaces a corrupt payload as a typed error with stream/version/issues context, not a throw", async () => {
     const id = freshId();
-    await db.definitionChange.create({
-      data: {
-        streamId: id,
-        version: 1,
-        type: "garbage",
-        payload: { type: "garbage" },
-      },
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+    await db.definitionChange.updateMany({
+      where: { streamId: id, version: 1 },
+      data: { payload: { type: "no-such-change-type" } },
     });
-    await expect(readChanges(db, id)).rejects.toThrow(/corrupt/);
-    await expect(readChanges(db, id)).rejects.toThrow(id);
+    const result = await readChanges(db, id);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("corruptPayload");
+    if (result.error.kind === "corruptPayload") {
+      expect(result.error.streamId).toBe(id);
+      expect(result.error.version).toBe(1);
+      expect(result.error.issues.length).toBeGreaterThan(0);
+    }
   });
+
+  it("readChanges rejects a future schemaRev as unknownSchemaRev, reporting the schemaRev", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+    await db.definitionChange.updateMany({
+      where: { streamId: id, version: 1 },
+      data: { schemaRev: 999 },
+    });
+    const result = await readChanges(db, id);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("unknownSchemaRev");
+    if (result.error.kind === "unknownSchemaRev") {
+      expect(result.error.schemaRev).toBe(999);
+    }
+  });
+
+  it("readAllChanges surfaces a corrupt payload as a typed error, not a throw", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+    const firstSeq = base.seqs[0];
+    if (firstSeq === undefined) return;
+    await db.definitionChange.updateMany({
+      where: { streamId: id, version: 1 },
+      data: { payload: { type: "no-such-change-type" } },
+    });
+    const result = await readAllChanges(db, { afterSeq: firstSeq - 1 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("corruptPayload");
+    expect(result.error.seq).toBe(firstSeq);
+  });
+
+  it("appendChanges throws with the error kind and serialized detail when an existing row's payload is corrupted", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await appendChanges(db, id, 0, definitionToChanges(def));
+    if (!base.ok) return;
+    await db.definitionChange.updateMany({
+      where: { streamId: id, version: 1 },
+      data: { payload: { type: "no-such-change-type" } },
+    });
+    let thrown: unknown;
+    try {
+      await appendChanges(db, id, base.version, [addCharlie]);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const message = thrown instanceof Error ? thrown.message : "";
+    expect(message).toContain("corruptPayload");
+    expect(message).toContain("issues");
+  });
+});
+
+const rev0CompetitorAddedSchema = z.object({
+  type: z.literal("competitor-added"),
+  competitor: z.object({ id: z.string(), label: z.string() }),
+});
+
+const renameLabelToName = (payload: unknown): unknown => {
+  const parsed = rev0CompetitorAddedSchema.safeParse(payload);
+  if (!parsed.success) return payload;
+  return {
+    type: parsed.data.type,
+    competitor: {
+      id: parsed.data.competitor.id,
+      name: parsed.data.competitor.label,
+    },
+  };
+};
+
+it("upcastPayload maps a rev-0-shaped payload forward before parsing (pure seam, no db)", () => {
+  const rev0Payload = {
+    type: "competitor-added",
+    competitor: { id: "harriet", label: "Harriet" },
+  };
+  const upcasters: ReadonlyMap<number, (payload: unknown) => unknown> = new Map(
+    [[0, renameLabelToName]],
+  );
+
+  const upcasted = upcastPayload(rev0Payload, 0, upcasters);
+  expect(upcasted.ok).toBe(true);
+  if (!upcasted.ok) return;
+
+  const parsed = defChangeSchema.safeParse(upcasted.payload);
+  expect(parsed.success).toBe(true);
+  if (parsed.success) {
+    expect(parsed.data).toEqual({
+      type: "competitor-added",
+      competitor: { id: "harriet", name: "Harriet" },
+    });
+  }
+});
+
+it("upcastPayload reports the missing rev when no upcaster covers the gap", () => {
+  const upcasted = upcastPayload({ type: "competitor-added" }, 0, new Map());
+  expect(upcasted).toEqual({ ok: false, missingRev: 0 });
 });

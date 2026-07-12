@@ -130,6 +130,20 @@ describeWithDb("submit — the optimistic command loop", () => {
     );
   });
 
+  it("throws with the drift kind and seq when the stream's stored state is unreadable", async () => {
+    const id = freshId();
+    const def = buildDef(id);
+    const base = await submit(db, id, () => definitionToChanges(def));
+    expect(base.ok).toBe(true);
+    await db.definitionChange.updateMany({
+      where: { streamId: id, version: 1 },
+      data: { payload: { type: "no-such-change-type" } },
+    });
+
+    await expect(submit(db, id, () => [])).rejects.toThrow(/corruptPayload/);
+    await expect(submit(db, id, () => [])).rejects.toThrow(/seq=/);
+  });
+
   it("a non-conflict append error passes through unretried", async () => {
     const id = freshId();
     const def = buildDef(id);

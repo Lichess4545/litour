@@ -1,6 +1,7 @@
 # Palamedes — project status
 
-As of **2026-07-12**, at commit `6d46252e` (head of `palamedes-persistence`).
+As of **2026-07-12**, pending Task 4's commit (branch `palamedes-api`, stacked
+on `palamedes-persistence` head `6d46252e`; head at last commit `e8b948fa`).
 Updated once per milestone; each update revises the date, the commit, and the
 sections below.
 
@@ -42,6 +43,12 @@ suite (see "Suite status").
   - lichess4545 seeds — `bun run db:seed` writes the `team4545` and
     `lonewolf` league streams (via `src/server/tournament/seed.ts`).
   - Operations: [`design/persistence-runbook.md`](persistence-runbook.md).
+  - **Hardened** (ADR 0010): every row pins `schemaRev`/`registryId`/`actorId`
+    at write time; `DefinitionStream` (ownership) and `LichessToken`
+    (bearer-token verification cache) tables; reads surface typed
+    `PayloadError` (`corruptPayload`/`unknownSchemaRev`) instead of throwing,
+    with an upcaster seam (`UPCASTERS`/`upcastPayload`, empty today) so old
+    revisions stay readable forever.
 
 ## Designed, not built
 
@@ -56,16 +63,22 @@ ADRs in [`design/adr/`](adr/):
 | [0005](adr/0005-lichess4545-seed-canon.md) | lichess4545 seed canon: the live site over the fork's defaults | Accepted (2026-07-02) |
 | [0006](adr/0006-results-input-stream.md) | Results as a second stream: the engine's Input log | **Proposed** — designed, not built |
 | [0007](adr/0007-snapshots-and-global-order.md) | Snapshots and a portable global-order counter row | **Proposed** — designed, not built |
+| [0008](adr/0008-definition-api-hono-openapi.md) | The definition API: hono + zod-openapi, CQRS over the changelog | Accepted (2026-07-12) |
+| [0009](adr/0009-lichess-oauth-and-permissions.md) | Lichess OAuth, bearer introspection cache, scope→permission mapping | Accepted (2026-07-12) |
+| [0010](adr/0010-registry-identity-and-schema-evolution.md) | Registry identity and payload schema evolution are pinned per row | Accepted (2026-07-12) |
 
-Nothing in the codebase implements 0006 or 0007 yet.
+Nothing in the codebase implements 0006 or 0007 yet. 0008/0009 describe the
+API/OAuth layer still ahead (see "In flight" below); 0010 is built — see
+"Hardened" above.
 
 ## Branch state
 
 - `palamedes-persistence` — 13 unpushed commits, base `4a7c235c` → head
   `6d46252e`. Final whole-branch review verdict: merge-ready. Awaiting
   Dr. Dub's review.
-- `palamedes-api` — created 2026-07-12 at that same head; new work stacks
-  here.
+- `palamedes-api` — stacked on that head; ADR 0008, ADR 0009, and the
+  persistence hardening (ADR 0010, commit `e8b948fa`) are in; this task
+  (Task 4: read-path evolution) is next to land.
 
 ## In flight — the 2026-07-12 mandate
 
@@ -73,9 +86,17 @@ On `palamedes-api`: fully data-driven definitions, a generality review
 (done — [reviews/2026-07-12-generality-review.md](reviews/2026-07-12-generality-review.md)),
 a READ+WRITE OpenAPI API with lichess OAuth, and an OpenAPI docs site.
 
+Remaining after this task: the expression wire door (new tiebreaks as data,
+no code change), the expr substrate (unary ops, the `unplayed` accessor,
+competitor attributes), secretspec provisioning, lichess OAuth browser
+login, token introspection + the permission service, and the API skeleton
+with its read/write endpoints and docs site — see
+`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 5-17).
+
 ## Suite status
 
-At `6d46252e`: typecheck clean, lint clean, 272 tests passing, 0 skipped.
+Pending Task 4's commit (will be repinned to that hash once the historian
+commits): typecheck clean, lint clean, 279 tests passing, 0 skipped.
 
 ## How to run
 

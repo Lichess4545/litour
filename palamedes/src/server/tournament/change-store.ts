@@ -33,6 +33,9 @@ export type StoredChange = {
   readonly version: number;
   readonly recordedAt: Date;
   readonly change: DefChange;
+  readonly schemaRev: number;
+  readonly registryId: string;
+  readonly actorId: string | null;
 };
 
 export type AppendOk = {
@@ -73,19 +76,97 @@ const jsonPayload: z.ZodType<Prisma.InputJsonValue> =
   );
 const MAX_P2034_RETRIES = 3;
 
-const toStored = (row: DefinitionChange): StoredChange => {
-  const parsed = defChangeSchema.safeParse(row.payload);
+// NOTE: unknownSchemaRev's schemaRev reports the rev at which the upcast chain
+// broke (upcastPayload's missingRev), not necessarily the row's own stored
+// schemaRev — a multi-hop gap surfaces the later, missing rev in the chain.
+export type PayloadError =
+  | {
+      readonly kind: "corruptPayload";
+      readonly streamId: string;
+      readonly seq: number;
+      readonly version: number;
+      readonly issues: readonly z.core.$ZodIssue[];
+    }
+  | {
+      readonly kind: "unknownSchemaRev";
+      readonly streamId: string;
+      readonly seq: number;
+      readonly version: number;
+      readonly schemaRev: number;
+    };
+
+// NOTE: one entry per rev bump, each a pure unknown -> unknown mapping rev N's
+// payload shape to rev N+1's; upcastPayload chains them up to CURRENT_SCHEMA_REV.
+// Never touches the DB — old rows are read forward, never rewritten (ADR 0010).
+// Empty today: rev 1 is current, so nothing has ever needed upcasting yet.
+const UPCASTERS: ReadonlyMap<number, (payload: unknown) => unknown> = new Map();
+
+export type UpcastResult =
+  | { readonly ok: true; readonly payload: unknown }
+  | { readonly ok: false; readonly missingRev: number };
+
+export const upcastPayload = (
+  payload: unknown,
+  fromRev: number,
+  upcasters: ReadonlyMap<number, (payload: unknown) => unknown>,
+): UpcastResult => {
+  if (fromRev > CURRENT_SCHEMA_REV) {
+    return { ok: false, missingRev: fromRev };
+  }
+  let current = payload;
+  for (let rev = fromRev; rev < CURRENT_SCHEMA_REV; rev += 1) {
+    const upcaster = upcasters.get(rev);
+    if (upcaster === undefined) {
+      return { ok: false, missingRev: rev };
+    }
+    current = upcaster(current);
+  }
+  return { ok: true, payload: current };
+};
+
+const toStored = (
+  row: DefinitionChange,
+):
+  | { readonly ok: true; readonly change: StoredChange }
+  | { readonly ok: false; readonly error: PayloadError } => {
+  const upcasted = upcastPayload(row.payload, row.schemaRev, UPCASTERS);
+  if (!upcasted.ok) {
+    return {
+      ok: false,
+      error: {
+        kind: "unknownSchemaRev",
+        streamId: row.streamId,
+        seq: row.seq,
+        version: row.version,
+        schemaRev: upcasted.missingRev,
+      },
+    };
+  }
+  const parsed = defChangeSchema.safeParse(upcasted.payload);
   if (!parsed.success) {
-    throw new Error(
-      `corrupt DefinitionChange payload (stream=${row.streamId} seq=${row.seq} version=${row.version}): ${parsed.error.message}`,
-    );
+    return {
+      ok: false,
+      error: {
+        kind: "corruptPayload",
+        streamId: row.streamId,
+        seq: row.seq,
+        version: row.version,
+        issues: parsed.error.issues,
+      },
+    };
   }
   return {
-    seq: row.seq,
-    streamId: row.streamId,
-    version: row.version,
-    recordedAt: row.recordedAt,
-    change: parsed.data,
+    ok: true,
+    change: {
+      seq: row.seq,
+      streamId: row.streamId,
+      version: row.version,
+      recordedAt: row.recordedAt,
+      change: parsed.data,
+      schemaRev: row.schemaRev,
+      registryId: row.registryId,
+      actorId: row.actorId,
+    },
   };
 };
 
@@ -141,7 +222,16 @@ export async function appendChanges(
       };
     }
 
-    const existing = rows.map((row) => toStored(row).change);
+    const existing: DefChange[] = [];
+    for (const row of rows) {
+      const stored = toStored(row);
+      if (!stored.ok) {
+        throw new Error(
+          `unreadable existing DefinitionChange payload (stream=${streamId} seq=${row.seq} version=${row.version}): ${stored.error.kind}: ${JSON.stringify(stored.error)}`,
+        );
+      }
+      existing.push(stored.change.change);
+    }
     const folded = foldDefinition(streamId, [...existing, ...batch]);
     if (!folded.ok) {
       return {
@@ -213,7 +303,10 @@ export async function appendChanges(
 
 export type ReadChangesResult =
   | { readonly ok: true; readonly changes: readonly StoredChange[] }
-  | { readonly ok: false; readonly error: { readonly kind: "notFound" } };
+  | {
+      readonly ok: false;
+      readonly error: { readonly kind: "notFound" } | PayloadError;
+    };
 
 export async function readChanges(
   db: ChangeStoreClient,
@@ -234,7 +327,15 @@ export async function readChanges(
       return { ok: false, error: { kind: "notFound" } };
     }
   }
-  return { ok: true, changes: rows.map(toStored) };
+  const changes: StoredChange[] = [];
+  for (const row of rows) {
+    const stored = toStored(row);
+    if (!stored.ok) {
+      return { ok: false, error: stored.error };
+    }
+    changes.push(stored.change);
+  }
+  return { ok: true, changes };
 }
 
 export type ReadDefinitionError =
@@ -243,7 +344,8 @@ export type ReadDefinitionError =
       readonly kind: "invalidPrefix";
       readonly version: number;
       readonly reason: "fold" | "definition";
-    };
+    }
+  | PayloadError;
 
 export type ReadDefinitionResult =
   | {
@@ -325,8 +427,9 @@ export async function submit<R>(
     } else if (current.error.kind === "notFound") {
       state = { def: null, version: 0 };
     } else {
+      const seqPart = "seq" in current.error ? ` seq=${current.error.seq}` : "";
       throw new Error(
-        `stream ${streamId} unreadable at head (${current.error.kind} at version ${current.error.version})`,
+        `stream ${streamId} unreadable (${current.error.kind} at version ${current.error.version}${seqPart})`,
       );
     }
 
@@ -358,16 +461,28 @@ export async function submit<R>(
   };
 }
 
+export type ReadAllChangesResult =
+  | { readonly ok: true; readonly changes: readonly StoredChange[] }
+  | { readonly ok: false; readonly error: PayloadError };
+
 // NOTE: seq is commit-order-skewed — insertions commit out of seq order;
 // afterSeq pagination can miss late-committing rows. ADR 0003; ADR 0007 will address it.
 export async function readAllChanges(
   db: ChangeStoreClient,
   opts?: { readonly afterSeq?: number; readonly limit?: number },
-): Promise<readonly StoredChange[]> {
+): Promise<ReadAllChangesResult> {
   const rows = await db.definitionChange.findMany({
     where: opts?.afterSeq === undefined ? {} : { seq: { gt: opts.afterSeq } },
     orderBy: { seq: "asc" },
     ...(opts?.limit === undefined ? {} : { take: opts.limit }),
   });
-  return rows.map(toStored);
+  const changes: StoredChange[] = [];
+  for (const row of rows) {
+    const stored = toStored(row);
+    if (!stored.ok) {
+      return { ok: false, error: stored.error };
+    }
+    changes.push(stored.change);
+  }
+  return { ok: true, changes };
 }

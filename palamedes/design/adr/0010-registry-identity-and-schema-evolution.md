@@ -48,12 +48,24 @@ Every `DefinitionChange` row pins three columns at write time (stamped in
 
 ## Consequences
 
-- **"Corrupt" becomes typed and revision-aware.** Today `toStored` throws on
-  any parse failure. Once Task 4's upcaster seam exists, a genuine parse
-  failure after upcasting is a real corruption (or a `registryId` the
-  deploy no longer supports) and should surface as a typed
-  `AppendError`/read-error variant, not a thrown `Error` — this ADR does not
-  build that seam, it reserves the columns it needs.
+- **"Corrupt" is now typed and revision-aware.** `toStored` returns a
+  `PayloadError` (`corruptPayload` | `unknownSchemaRev`) instead of throwing;
+  `readChanges`, `readDefinition`, and `readAllChanges` all propagate it as a
+  typed result. Two sites still throw rather than return it: `submit`, when
+  the stream state it read is unreadable, and `appendChanges`'s pre-write
+  fold, when a row among the stream's existing history is unreadable. Both
+  are command loops with nothing sensible to decide against or fold over
+  without readable prior state, and both surface the identical drift, fixed
+  the same way — add the upcaster.
+- **The upcaster seam: pure, one per rev bump, DB-blind.** `UPCASTERS` maps
+  a `schemaRev` to a function that reshapes that revision's payload into the
+  next one's; `upcastPayload` chains them up to `CURRENT_SCHEMA_REV` before
+  `toStored` hands the result to `defChangeSchema`. Each function is a pure
+  `unknown -> unknown` — no DB access, no side effects — and a gap anywhere
+  in the chain (including a row's `schemaRev` newer than
+  `CURRENT_SCHEMA_REV`) surfaces as `unknownSchemaRev`, never a thrown error.
+  The map is empty today: rev 1 is current, so nothing has needed upcasting
+  yet.
 - **Discipline: never mutate a written row.** `registryId` and `schemaRev`
   are write-once per row, like `recordedAt` (ADR 0001) and `version` (ADR
   0003). Evolution happens by upcasting on read, never by rewriting history —

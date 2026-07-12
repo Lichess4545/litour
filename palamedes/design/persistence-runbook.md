@@ -58,9 +58,46 @@ Programmatic:
   seq has gaps and commit-skew — use for inspection only, not as a reliable
   poller cursor (see ADR 0003, ADR 0007).
 
-A `corrupt DefinitionChange payload` error names the stream and seq: a row
-was written outside the DAL. Fix by deleting the offending row (dev only)
-or escalating.
+A read returning `{ ok: false, error }` with `error.kind` one of
+`corruptPayload` / `unknownSchemaRev` names the stream, `seq`, and `version` —
+see "Diagnose payload drift" below.
+
+## Diagnose payload drift
+
+`readChanges`, `readDefinition`, and `readAllChanges` can all return a
+`PayloadError` instead of succeeding. Two kinds, two different causes:
+
+- **`corruptPayload`** — the row's payload, after upcasting, fails
+  `defChangeSchema`. Either it was hand-edited or written outside the DAL, or
+  it's an old, legitimate shape that needs an upcaster nobody wrote yet.
+- **`unknownSchemaRev`** — the row's `schemaRev` has no path to
+  `CURRENT_SCHEMA_REV`: either it's ahead of what this deploy knows (this
+  deploy is older than the data — check you're not running behind a newer
+  migration) or it's behind, with a gap in `UPCASTERS` (a rev nobody wrote an
+  upcaster for).
+
+Check `error.streamId` / `error.seq` / `error.version` (`corruptPayload` also
+carries `error.issues`; `unknownSchemaRev` carries the offending
+`error.schemaRev`) against `CURRENT_SCHEMA_REV` and the `UPCASTERS` map in
+`change-store.ts`.
+
+Never hand-edit or delete the row to make it read clean — rows are
+write-once (ADR 0010); mutating history breaks replay. Fix forward: add the
+missing rev's function to `UPCASTERS` (pure `unknown -> unknown`, old shape
+in, next rev's shape out) and re-read.
+
+Two call sites surface the identical drift as a throw instead of a typed
+result, because each needs readable prior state to proceed and has nothing
+sensible to fall back to:
+
+- `submit` — the stream state it read before deciding is unreadable; the
+  drifted row can be any historical version, not necessarily the head.
+- `appendChanges` — its pre-write fold read hits an unreadable row among the
+  stream's existing history, before it can fold the new batch on top.
+
+Both throw messages include the `PayloadError` kind and, where present,
+`seq`. Same fix applies to either — add the missing upcaster; the next call
+reads cleanly.
 
 ## Test
 
