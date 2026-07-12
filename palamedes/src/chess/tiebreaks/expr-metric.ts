@@ -53,5 +53,6 @@ export const exprMetric = <R extends { readonly metric: string }>(
           tied === undefined
             ? equalPointsTied(all)
             : (comp) => (tied.has(comp) ? [...tied] : [comp]),
+        attribute: (comp, key) => all.get(comp)?.attributes?.get(key),
       }),
   });

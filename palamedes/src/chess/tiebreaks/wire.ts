@@ -34,6 +34,7 @@ const evalRef = (
       tied === undefined
         ? equalPointsTied(all)
         : (comp) => (tied.has(comp) ? [...tied] : [comp]),
+    attribute: (comp, key) => all.get(comp)?.attributes?.get(key),
   });
 
 export const exprWireMetric: MetricKind = defineMetricKind<ExprMetricRef>({

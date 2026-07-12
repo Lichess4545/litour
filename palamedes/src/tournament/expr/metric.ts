@@ -16,6 +16,10 @@ export type MetricEnv = {
   readonly all: ReadonlyMap<CompetitorId, MetricRow>;
   readonly named: (name: string) => Expr | undefined;
   readonly tiedGroup: (comp: CompetitorId) => readonly CompetitorId[];
+  /** Looks up a row's attribute (e.g. "rating", fed from `CompetitorDef` — see
+   * `MetricRow.attributes` in registry.ts). Absent function, competitor, or
+   * key all resolve the same way: `undefined`, which the `attribute` op turns
+   * into a clean `unknownAttribute` error, never a silent 0. */
   readonly attribute?: (comp: CompetitorId, key: string) => number | undefined;
 };
 

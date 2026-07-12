@@ -161,6 +161,9 @@ export type MetricRow = {
   readonly standingsPoints: number;
   readonly encounterPoints: number;
   readonly lines: readonly RoundLine[];
+  /** Fed by standings.ts from `CompetitorDef`; currently just `"rating"`,
+   * absent when the competitor has none. Read via the `attribute` expr op. */
+  readonly attributes?: ReadonlyMap<string, number>;
 };
 
 // The pairing contract — deliberately carries everything a JavaFo TRF encodes.

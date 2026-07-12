@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, expect, test } from "vitest";
 import { safeParseEventDef } from "@/chess/registry";
-import { competitorId, type MetricRef } from "@/tournament/core";
+import {
+  type CompetitorId,
+  competitorId,
+  type MetricRef,
+} from "@/tournament/core";
+import type { Expr } from "@/tournament/expr/ast";
 import type { MetricRow } from "@/tournament/registry";
 import { exprWireMetric } from "./wire";
 
@@ -104,5 +109,109 @@ describe("exprWireMetric", () => {
       },
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("attribute — competitor ratings feed the expr engine", () => {
+  const self = competitorId("self");
+  const opp1500 = competitorId("opp1500");
+  const opp1700 = competitorId("opp1700");
+  const opp1900 = competitorId("opp1900");
+
+  const opponentLine = (round: number, opponent: string) => ({
+    kind: "played" as const,
+    round,
+    opponent: competitorId(opponent),
+    side: 0 as const,
+    color: "white" as const,
+    outcome: {
+      points: [1, 0] as const,
+      decision: {
+        kind: "win" as const,
+        winner: 0 as const,
+        by: "points" as const,
+      },
+    },
+    standingsPoints: 1,
+    encounterPoints: 1,
+    opponentEncounterPoints: 0,
+    gamesWon: 1,
+    boardPoints: [],
+    unplayed: false,
+  });
+
+  const selfRow: MetricRow = {
+    competitor: self,
+    standingsPoints: 3,
+    encounterPoints: 3,
+    lines: [
+      opponentLine(1, "opp1500"),
+      opponentLine(2, "opp1700"),
+      opponentLine(3, "opp1900"),
+    ],
+  };
+
+  const ratedRow = (id: CompetitorId, rating: number): MetricRow => ({
+    competitor: id,
+    standingsPoints: 0,
+    encounterPoints: 0,
+    lines: [],
+    attributes: new Map([["rating", rating]]),
+  });
+
+  const unratedRow = (id: CompetitorId): MetricRow => ({
+    competitor: id,
+    standingsPoints: 0,
+    encounterPoints: 0,
+    lines: [],
+  });
+
+  const aroExpr: Expr = {
+    op: "avg",
+    over: {
+      op: "map",
+      over: { op: "opponents", of: { op: "self" } },
+      as: "o",
+      body: {
+        op: "attribute",
+        of: { op: "opponent", line: { op: "var", name: "o" } },
+        key: "rating",
+      },
+    },
+  };
+  const aroRef: MetricRef = { metric: "expr", label: "aro", expr: aroExpr };
+
+  test("avg of opponents' rating computes the real average once attributes are fed", () => {
+    const all = new Map([
+      [self, selfRow],
+      [opp1500, ratedRow(opp1500, 1500)],
+      [opp1700, ratedRow(opp1700, 1700)],
+      [opp1900, ratedRow(opp1900, 1900)],
+    ]);
+    expect(exprWireMetric.valueResult?.(aroRef, selfRow, all)).toEqual({
+      ok: true,
+      value: 1700,
+    });
+  });
+
+  test("errors cleanly — never 0 — when opponent rows carry no attributes", () => {
+    const all = new Map([
+      [self, selfRow],
+      [opp1500, unratedRow(opp1500)],
+      [opp1700, unratedRow(opp1700)],
+      [opp1900, unratedRow(opp1900)],
+    ]);
+    const result = exprWireMetric.valueResult?.(aroRef, selfRow, all);
+    expect(result?.ok).toBe(false);
+    // The map over opponents hits opp1500 first (round 1) and short-circuits
+    // there — the exact ExprError evaluate.ts's "attribute" case constructs,
+    // wrapped in the reason string evalMetricResult reports.
+    expect(result?.ok === false ? result.error.reason : undefined).toBe(
+      `metric expression failed: ${JSON.stringify({
+        kind: "unknownAttribute",
+        id: opp1500,
+        key: "rating",
+      })}`,
+    );
   });
 });

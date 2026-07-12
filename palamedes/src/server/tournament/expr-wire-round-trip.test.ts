@@ -36,7 +36,7 @@ const buildDef = (): ParsedEventDef =>
       "expr-wire-rr",
       "Expr wire round robin",
       [
-        { id: "p1", name: "P1" },
+        { id: "p1", name: "P1", rating: 1500 },
         { id: "p2", name: "P2" },
         { id: "p3", name: "P3" },
         { id: "p4", name: "P4" },
@@ -155,6 +155,12 @@ describeWithDb(
       expect(rehydrated.ok).toBe(true);
       if (!rehydrated.ok) return;
       expect(rehydrated.def).toEqual(original);
+      // The deep-equal above already covers `rating`, but assert it by name
+      // too: a competitor attribute round-trips through the changelog, not
+      // just the fields the engine happens to read back out.
+      expect(
+        rehydrated.def.competitors.find((c) => c.name === "P1")?.rating,
+      ).toBe(1500);
 
       const run = driveRoundRobin(rehydrated.def);
       expect(run.unsplitCriteria()).toEqual([]);

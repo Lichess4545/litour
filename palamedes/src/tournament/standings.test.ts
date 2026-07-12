@@ -15,6 +15,7 @@ import {
   runEvent as runEventWith,
 } from "./builder";
 import { compRootPath, pairPath } from "./core";
+import type { Expr } from "./expr/ast";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
   runEventWith(def, chessRegistry);
@@ -112,13 +113,18 @@ describe("forfeit-shaped results under match points", () => {
 
 const rrWithTiebreaksData = (
   tiebreaks: readonly Record<string, unknown>[],
+  ratings?: ReadonlyMap<string, number>,
 ) => ({
   id: "rr-tb",
   name: "Round robin with tiebreaks",
-  competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => ({
-    id: name.toLowerCase(),
-    name,
-  })),
+  competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => {
+    const rating = ratings?.get(name);
+    return {
+      id: name.toLowerCase(),
+      name,
+      ...(rating === undefined ? {} : { rating }),
+    };
+  }),
   competition: {
     id: "rr",
     entries: [1, 2, 3, 4].map((seed) => ({
@@ -140,7 +146,8 @@ const rrWithTiebreaksData = (
 
 const rrWithTiebreaks = (
   tiebreaks: readonly Record<string, unknown>[],
-): ParsedEventDef => parseEventDef(rrWithTiebreaksData(tiebreaks));
+  ratings?: ReadonlyMap<string, number>,
+): ParsedEventDef => parseEventDef(rrWithTiebreaksData(tiebreaks, ratings));
 
 describe("head-to-head", () => {
   it("decides a two-way tie when the tied pair has met", () => {
@@ -443,5 +450,71 @@ describe("phased scoring", () => {
     // B: phase-1 loss (0) + two phase-2 draws (0.5 each) = 1.
     expectStandings(run).competitor("B").points(1);
     expectStandings(run).competitor("D").points(0.5);
+  });
+});
+
+describe("competitor ratings feeding the expr `attribute` op", () => {
+  const aroExpr: Expr = {
+    op: "avg",
+    over: {
+      op: "map",
+      over: { op: "opponents", of: { op: "self" } },
+      as: "o",
+      body: {
+        op: "attribute",
+        of: { op: "opponent", line: { op: "var", name: "o" } },
+        key: "rating",
+      },
+    },
+  };
+
+  it("ARO (avg of opponents' rating) breaks a points tie by opponent strength", () => {
+    const run = runEvent(
+      rrWithTiebreaks(
+        [{ metric: "expr", label: "aro", expr: aroExpr }],
+        new Map([
+          ["Cal", 1400],
+          ["Dee", 1600],
+        ]),
+      ),
+    )
+      .pairRound() // R1: Ada-Dee, Boe-Cal
+      .game("Ada", "Dee", "1-0")
+      .game("Boe", "Cal", "1-0");
+
+    expectStandings(run)
+      .competitor("Ada")
+      .points(1)
+      .metric("aro", 1600)
+      .rank(1);
+    expectStandings(run)
+      .competitor("Boe")
+      .points(1)
+      .metric("aro", 1400)
+      .rank(2);
+
+    // Cal and Dee are tied at 0; each one's sole opponent (Boe, Ada) is
+    // unrated, so ARO can't average a rating and must error — the
+    // clean-error path through the real standings cascade, not a silent 0.
+    const rowFor = (id: string) =>
+      run.standings().find((r) => r.competitor === id);
+    expect(rowFor("cal")?.metrics.get("aro")).toEqual({
+      error: expect.stringContaining("unknownAttribute"),
+    });
+    expect(rowFor("dee")?.metrics.get("aro")).toEqual({
+      error: expect.stringContaining("unknownAttribute"),
+    });
+    expectStandings(run).competitor("Cal").points(0).rank(3);
+    expectStandings(run).competitor("Dee").points(0).rank(3);
+
+    // The one tiebreak (aro, criterion 1) errored on this block instead of
+    // genuinely splitting it.
+    expect(run.unsplitCriteria()).toEqual([
+      {
+        criterion: 1,
+        block: ["cal", "dee"],
+        reason: expect.stringContaining("unknownAttribute"),
+      },
+    ]);
   });
 });

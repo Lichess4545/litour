@@ -1,9 +1,9 @@
 # Palamedes — project status
 
-As of **2026-07-12**, pending Task 4's commit (branch `palamedes-api`, stacked
-on `palamedes-persistence` head `6d46252e`; head at last commit `e8b948fa`).
-Updated once per milestone; each update revises the date, the commit, and the
-sections below.
+As of **2026-07-13**, pending this task's commit (branch `palamedes-api`,
+stacked on `palamedes-persistence` head `6d46252e`; head at last commit
+`ae48a7fc`). Updated once per milestone; each update revises the date, the
+commit, and the sections below.
 
 ## Where the project stands
 
@@ -23,7 +23,11 @@ suite (see "Suite status").
   Contract: [`design/tournament-model.md`](tournament-model.md).
 - **Expression language** — `src/tournament/expr/`: typed AST, schema,
   evaluator, and describer. Scoring, tiebreaks, and ranking are expressions,
-  not code.
+  not code. Complete for this engagement's scope: the `expr` wire door (an
+  inline expression stands in for any tiebreak or scoring rule — no new
+  registered kind, ADR 0011), the `calc` unary ops and `unplayed` accessor,
+  and the `attribute` op fed from persisted `CompetitorDef.rating` (AROC/ARO
+  tiebreaks as data).
 - **Chess vocabulary** — `src/chess/`: kinds, metrics, pairings, and the
   `compose.ts` authoring API. `src/chess/formats.ts` holds 23 real formats
   (World Championship, Candidates, Olympiad, Tata Steel, the Grand Chess Tour
@@ -66,19 +70,23 @@ ADRs in [`design/adr/`](adr/):
 | [0008](adr/0008-definition-api-hono-openapi.md) | The definition API: hono + zod-openapi, CQRS over the changelog | Accepted (2026-07-12) |
 | [0009](adr/0009-lichess-oauth-and-permissions.md) | Lichess OAuth, bearer introspection cache, scope→permission mapping | Accepted (2026-07-12) |
 | [0010](adr/0010-registry-identity-and-schema-evolution.md) | Registry identity and payload schema evolution are pinned per row | Accepted (2026-07-12) |
+| [0011](adr/0011-expression-wire-door.md) | Inline expressions are the wire door for data-defined tiebreaks and scorings | Accepted (2026-07-12) |
 
 Nothing in the codebase implements 0006 or 0007 yet. 0008/0009 describe the
-API/OAuth layer still ahead (see "In flight" below); 0010 is built — see
-"Hardened" above.
+API/OAuth layer still ahead (see "In flight" below); 0010 and 0011 are built
+— see "Hardened" and "Expression language" above.
 
 ## Branch state
 
 - `palamedes-persistence` — 13 unpushed commits, base `4a7c235c` → head
   `6d46252e`. Final whole-branch review verdict: merge-ready. Awaiting
   Dr. Dub's review.
-- `palamedes-api` — stacked on that head; ADR 0008, ADR 0009, and the
-  persistence hardening (ADR 0010, commit `e8b948fa`) are in; this task
-  (Task 4: read-path evolution) is next to land.
+- `palamedes-api` — stacked on that head; ADR 0008, ADR 0009, persistence
+  hardening (ADR 0010, `e8b948fa`), the read-path upcaster seam (`26d5f187`),
+  non-throwing expr evaluation (`d808f1ee`), the expression wire door (ADR
+  0011, `d9b90340`), and the `calc`/`unplayed` ops (`ae48a7fc`) are in; this
+  task (Task 8: competitor-attribute feed) is done, pending the historian
+  commit — Task 9 (secretspec) is next.
 
 ## In flight — the 2026-07-12 mandate
 
@@ -86,17 +94,16 @@ On `palamedes-api`: fully data-driven definitions, a generality review
 (done — [reviews/2026-07-12-generality-review.md](reviews/2026-07-12-generality-review.md)),
 a READ+WRITE OpenAPI API with lichess OAuth, and an OpenAPI docs site.
 
-Remaining after this task: the expression wire door (new tiebreaks as data,
-no code change), the expr substrate (unary ops, the `unplayed` accessor,
-competitor attributes), secretspec provisioning, lichess OAuth browser
-login, token introspection + the permission service, and the API skeleton
-with its read/write endpoints and docs site — see
-`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 5-17).
+Remaining: secretspec provisioning, lichess OAuth browser login, token
+introspection + the permission service, and the API skeleton with its
+read/write endpoints and docs site — see
+`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 9-17).
 
 ## Suite status
 
-Pending Task 4's commit (will be repinned to that hash once the historian
-commits): typecheck clean, lint clean, 279 tests passing, 0 skipped.
+Pending this task's commit (will be repinned to that hash once the
+historian commits): typecheck clean, lint clean, 330 tests passing, 0
+skipped.
 
 ## How to run
 

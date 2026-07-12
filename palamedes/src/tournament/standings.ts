@@ -1,4 +1,5 @@
 import {
+  type CompetitorDef,
   type CompetitorId,
   DECIDED_BY,
   type NodePath,
@@ -138,6 +139,7 @@ type RowDraft = {
   encounterPoints: number;
   readonly lines: RoundLine[];
   readonly scored: ScoredLine[];
+  readonly attributes?: ReadonlyMap<string, number>;
 };
 
 function buildRowDrafts(
@@ -145,6 +147,7 @@ function buildRowDrafts(
   indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
+  competitors: readonly CompetitorDef[],
   entrants: readonly CompetitorId[],
   rounds: PoolRoundPlans,
 ): Map<CompetitorId, RowDraft> {
@@ -157,17 +160,30 @@ function buildRowDrafts(
   const byeRule =
     pool.bye ?? registry.pairings.get(pool.pairing.system)?.defaultBye;
 
+  const ratingOf = new Map<CompetitorId, number>();
+  for (const competitor of competitors) {
+    if (competitor.rating !== undefined) {
+      ratingOf.set(competitor.id, competitor.rating);
+    }
+  }
+
   const drafts = new Map<CompetitorId, RowDraft>(
-    entrants.map((competitor) => [
-      competitor,
-      {
+    entrants.map((competitor) => {
+      const rating = ratingOf.get(competitor);
+      return [
         competitor,
-        standingsPoints: 0,
-        encounterPoints: 0,
-        lines: [],
-        scored: [],
-      },
-    ]),
+        {
+          competitor,
+          standingsPoints: 0,
+          encounterPoints: 0,
+          lines: [],
+          scored: [],
+          ...(rating === undefined
+            ? {}
+            : { attributes: new Map([["rating", rating]]) }),
+        },
+      ];
+    }),
   );
 
   for (const round of [...rounds.keys()].sort((a, b) => a - b)) {
@@ -517,6 +533,7 @@ export function poolStandings(
   indexes: EngineIndexes,
   pool: PoolDef,
   poolPath: NodePath,
+  competitors: readonly CompetitorDef[],
   entrants: readonly CompetitorId[],
   rounds: PoolRoundPlans,
   totalRounds: number,
@@ -526,6 +543,7 @@ export function poolStandings(
     indexes,
     pool,
     poolPath,
+    competitors,
     entrants,
     rounds,
   );
@@ -576,6 +594,9 @@ export function poolStandings(
       lines: draft?.lines ?? [],
       metrics: metrics.get(competitor) ?? new Map<string, MetricCell>(),
       rank: ranks.get(competitor) ?? order.length,
+      ...(draft?.attributes === undefined
+        ? {}
+        : { attributes: draft.attributes }),
     };
   });
   return { rows, unsplitCriteria };

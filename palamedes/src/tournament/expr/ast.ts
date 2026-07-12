@@ -64,7 +64,9 @@ export type Expr =
   | { readonly op: "opponent"; readonly line: Expr }
   | { readonly op: "lineNum"; readonly line: Expr; readonly field: LineField }
   | { readonly op: "score"; readonly of: Expr; readonly key: CompScore }
-  // The ratings seam — unpopulated in phase 1, so this errors cleanly until fed.
+  // The ratings seam: metric-context rows carry `rating` from `CompetitorDef`
+  // (standings.ts); any other key, or a competitor with no rating, errors
+  // cleanly rather than yielding 0.
   | { readonly op: "attribute"; readonly of: Expr; readonly key: string }
   // Competitors currently tied with `of` (head-to-head / direct encounter).
   | { readonly op: "tiedWith"; readonly of: Expr }
@@ -162,7 +164,7 @@ export type Scope = ReadonlyMap<string, Value>;
  * Everything an expression reads that is not lexical. The function-shaped
  * fields are the seams the rest of the system fills: `tiedGroup` is the
  * ranking-in-progress (phase 4 supplies the real re-partitioning; phase 1
- * tests inject equal-points peers), `attribute` is ratings (phase 2),
+ * tests inject equal-points peers), `attribute` is ratings,
  * `named` is the tiebreak-reuse registry.
  */
 export type Env = {
