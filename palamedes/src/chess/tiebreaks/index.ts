@@ -16,6 +16,7 @@ import {
   SONNEBORN_BERGER,
 } from "./definitions";
 import { exprMetric } from "./expr-metric";
+import { exprWireMetric } from "./wire";
 
 /**
  * The live tiebreak registry — every chess tiebreak as a data-defined metric
@@ -121,4 +122,5 @@ export const builtinMetrics: readonly MetricKind[] = [
     label: () => "gamesWithBlack",
     expr: () => GAMES_WITH_BLACK,
   }),
+  exprWireMetric,
 ];

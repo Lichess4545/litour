@@ -9,6 +9,7 @@ import {
   table,
 } from "./definitions";
 import { exprScoring } from "./expr-scoring";
+import { exprWireScoring } from "./wire";
 
 /**
  * The live scoring registry — every scoring rule as a data-defined expression.
@@ -83,4 +84,5 @@ export const builtinScorings: readonly ScoringKind[] = [
       ),
     }),
   }),
+  exprWireScoring,
 ];

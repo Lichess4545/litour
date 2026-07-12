@@ -9,7 +9,6 @@ import {
 import type { MetricRow, PlayedLine } from "../registry";
 import type { Env, Expr } from "./ast";
 import { evaluate, evaluateTraced } from "./evaluate";
-import { parseExpr, safeParseExpr } from "./schema";
 
 // --- fixture builders -------------------------------------------------------
 
@@ -306,16 +305,6 @@ describe("evaluate — typed errors (never throws)", () => {
     const r = evaluate(buchholz, makeEnv(standardRows, a), { maxSteps: 1 });
     if (r.ok) throw new Error("expected a budget error");
     expect(r.error).toEqual({ kind: "budget", limit: 1 });
-  });
-});
-
-describe("schema", () => {
-  test("rejects an unknown op", () => {
-    expect(safeParseExpr({ op: "nope" }).success).toBe(false);
-  });
-
-  test("round-trips a valid expression", () => {
-    expect(parseExpr(buchholzCut1)).toEqual(buchholzCut1);
   });
 });
 

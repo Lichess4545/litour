@@ -17,7 +17,7 @@ import { tiebreakExprs } from "./definitions";
  */
 
 /** The legacy head-to-head rule: tied = equal standings points. Phase 4 replaces this with the live ranking partition. */
-const equalPointsTied =
+export const equalPointsTied =
   (all: ReadonlyMap<CompetitorId, MetricRow>) =>
   (comp: CompetitorId): readonly CompetitorId[] => {
     const me = all.get(comp);
