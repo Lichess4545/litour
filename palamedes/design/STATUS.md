@@ -53,6 +53,18 @@ suite (see "Suite status").
     `PayloadError` (`corruptPayload`/`unknownSchemaRev`) instead of throwing,
     with an upcaster seam (`UPCASTERS`/`upcastPayload`, empty today) so old
     revisions stay readable forever.
+- **Auth stack** (ADR 0009), complete end to end:
+  - "Sign in with lichess" — Better Auth's `genericOAuth` plugin, PKCE
+    public client, no client secret (lichess issues none).
+  - Bearer-token verification — `src/server/lichess/introspection.ts`:
+    `POST /api/token/test`, a hashed `LichessToken` cache, 24h reverify, an
+    in-memory 5-minute negative cache, and fail-closed `unavailable` on any
+    lichess outage (never falls back to anonymous).
+  - Scope→grant mapping + ownership predicates —
+    `src/server/lichess/permissions.ts`: ADR 0009's D1 table as code
+    (`grantsFor`), plus `canWriteStream`/`canCreateStream`.
+  - Not yet built: the HTTP API itself. The grants `permissions.ts` defines
+    have no enforcement point until the write endpoints land (next).
 
 ## Designed, not built
 
@@ -72,9 +84,10 @@ ADRs in [`design/adr/`](adr/):
 | [0010](adr/0010-registry-identity-and-schema-evolution.md) | Registry identity and payload schema evolution are pinned per row | Accepted (2026-07-12) |
 | [0011](adr/0011-expression-wire-door.md) | Inline expressions are the wire door for data-defined tiebreaks and scorings | Accepted (2026-07-12) |
 
-Nothing in the codebase implements 0006 or 0007 yet. 0008/0009 describe the
-API/OAuth layer still ahead (see "In flight" below); 0010 and 0011 are built
-— see "Hardened" and "Expression language" above.
+Nothing in the codebase implements 0006 or 0007 yet. 0009's auth stack is
+now built (see "Auth stack" above); 0008's API skeleton is still ahead (see
+"In flight" below); 0010 and 0011 are built — see "Hardened" and
+"Expression language" above.
 
 ## Branch state
 
@@ -84,9 +97,10 @@ API/OAuth layer still ahead (see "In flight" below); 0010 and 0011 are built
 - `palamedes-api` — stacked on that head; ADR 0008, ADR 0009, persistence
   hardening (ADR 0010, `e8b948fa`), the read-path upcaster seam (`26d5f187`),
   non-throwing expr evaluation (`d808f1ee`), the expression wire door (ADR
-  0011, `d9b90340`), and the `calc`/`unplayed` ops (`ae48a7fc`) are in; this
-  task (Task 8: competitor-attribute feed) is done, pending the historian
-  commit — Task 9 (secretspec) is next.
+  0011, `d9b90340`), the `calc`/`unplayed` ops (`ae48a7fc`), secretspec
+  provisioning, lichess OAuth login, bearer-token introspection, and now
+  this task's scope→grant mapping + ownership predicates are in, pending
+  the historian commit — Task 13 (API skeleton) is next.
 
 ## In flight — the 2026-07-12 mandate
 
@@ -94,15 +108,22 @@ On `palamedes-api`: fully data-driven definitions, a generality review
 (done — [reviews/2026-07-12-generality-review.md](reviews/2026-07-12-generality-review.md)),
 a READ+WRITE OpenAPI API with lichess OAuth, and an OpenAPI docs site.
 
-Remaining: secretspec provisioning, lichess OAuth browser login, token
-introspection + the permission service, and the API skeleton with its
-read/write endpoints and docs site — see
-`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 9-17).
+The auth stack (login, introspection, permissions) is done — see "Auth
+stack" above. Remaining: the API skeleton itself, with its read/write
+endpoints and docs site — see
+`/home/lakin/.claude/plans/2026-07-12-palamedes-data-api.md` (Tasks 13-17).
+
+Hard gate before the write endpoints ship: unauthenticated bearer attempts
+must be rate-limited first. lichess allows only one in-flight introspection
+request globally and 429s beyond it (see
+`src/server/lichess/introspection.ts`); a flood of distinct garbage tokens
+reaching the API would turn every auth into `unavailable` and, correctly
+fail-closed (ADR 0009), take the whole API down.
 
 ## Suite status
 
 Pending this task's commit (will be repinned to that hash once the
-historian commits): typecheck clean, lint clean, 330 tests passing, 0
+historian commits): typecheck clean, lint clean, 401 tests passing, 0
 skipped.
 
 ## How to run
