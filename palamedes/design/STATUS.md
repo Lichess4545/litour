@@ -13,6 +13,12 @@ are data too, and tournament definitions live in an event-sourced changelog
 in Postgres seeded with the live lichess4545 leagues. New API work stacks
 on `palamedes-api`.
 
+**Every choice still unmade lives in
+[`design/open-decisions.md`](open-decisions.md)** — what needs Dr. Dub, the
+hard gate that must ship with the write endpoint, where the paused read-API
+task resumes, what remains of the mandate, and what is deferred on purpose.
+Read it before picking this branch back up.
+
 ## Built
 
 Everything below exists on `palamedes-persistence` and is covered by the
@@ -111,6 +117,11 @@ see "Auth stack" above), its read and write endpoints are still ahead (see
 
 ## In flight — the 2026-07-12 mandate
 
+**Paused by Dr. Dub, 2026-07-12.** The read endpoints (Task 14) are written but
+uncommitted, mid-fix-batch; the write endpoints, the boundary ADR, and the final
+review are unstarted. [`open-decisions.md`](open-decisions.md) § 3 is the
+resume-here.
+
 On `palamedes-api`: fully data-driven definitions, a generality review
 (done — [reviews/2026-07-12-generality-review.md](reviews/2026-07-12-generality-review.md)),
 a READ+WRITE OpenAPI API with lichess OAuth, and an OpenAPI docs site.
@@ -124,8 +135,14 @@ Hard gate before the write endpoints ship: unauthenticated bearer attempts
 must be rate-limited first. lichess allows only one in-flight introspection
 request globally and 429s beyond it (see
 `src/server/lichess/introspection.ts`); a flood of distinct garbage tokens
-reaching the API would turn every auth into `unavailable` and, correctly
-fail-closed (ADR 0009), take the whole API down.
+reaching the API would turn every auth into `unavailable` for every
+bearer-carrying request whose token has no cached row or a stale one — every
+write, and every first-time authentication — while a caller holding a fresh
+cached row, or an anonymous reader (no token invokes no verifier, ADR 0009),
+is unaffected. Correctly fail-closed (ADR 0009): it degrades this way, never
+to anonymous. [ADR 0018](adr/0018-bounded-introspection-admission.md) decides
+the fix — bounded, non-blocking admission plus serve-stale-on-refusal — and it
+ships with Task 15.
 
 ## Suite status
 
@@ -143,6 +160,8 @@ count.
 
 ## Reference docs
 
+- [`design/open-decisions.md`](open-decisions.md) — every open choice: owner,
+  trade-off, current behavior, and the cost of leaving it unmade
 - [`design/tournament-model.md`](tournament-model.md) — the meta-model
   contract (engine, kinds, `compose.ts`, viewer)
 - [`design/persistence-runbook.md`](persistence-runbook.md) — operating the
