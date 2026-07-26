@@ -116,7 +116,27 @@ describe("safeParseExpr — admission bounds (typed rejection, never a thrown Ra
     const deep = buildDepthBomb(1000);
     expect(() => parseExpr(deep)).toThrow(/nests deeper/);
   });
+
+  test("accepts a valid expression nested exactly at the depth ceiling", () => {
+    const result = safeParseExpr(calcChainOfMaxDepth(200));
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects a valid expression nested one level past the depth ceiling", () => {
+    const result = safeParseExpr(calcChainOfMaxDepth(201));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues[0]?.message).toContain("nests deeper");
+  });
 });
+
+function calcChainOfMaxDepth(maxDepth: number): Expr {
+  let expr: Expr = { op: "lit", value: 1 };
+  for (let i = 0; i < maxDepth - 1; i += 1) {
+    expr = { op: "calc", f: "floor", a: expr };
+  }
+  return expr;
+}
 
 describe("parseExpr / safeParseExpr — valid input", () => {
   const valid: Expr = {

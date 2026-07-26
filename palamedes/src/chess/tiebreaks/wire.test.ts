@@ -112,6 +112,74 @@ describe("exprWireMetric", () => {
   });
 });
 
+function calcChainOfMaxDepth(maxDepth: number): Expr {
+  let expr: Expr = { op: "lit", value: 1 };
+  for (let i = 0; i < maxDepth - 1; i += 1) {
+    expr = { op: "calc", f: "floor", a: expr };
+  }
+  return expr;
+}
+
+describe("exprWireMetric.schema — bounded admission at the wire boundary", () => {
+  test("rejects an inline expr nested one level past the depth ceiling", () => {
+    const ref: MetricRef = {
+      metric: "expr",
+      label: "too deep",
+      expr: calcChainOfMaxDepth(201),
+    };
+    let result: ReturnType<typeof exprWireMetric.schema.safeParse> | undefined;
+    expect(() => {
+      result = exprWireMetric.schema.safeParse(ref);
+    }).not.toThrow();
+    expect(result?.success).toBe(false);
+    if (result?.success !== false) return;
+    expect(result.error.issues.map((i) => i.message).join("\n")).toContain(
+      "nests deeper",
+    );
+  });
+
+  test("accepts an inline expr nested exactly at the depth ceiling", () => {
+    const ref: MetricRef = {
+      metric: "expr",
+      label: "deep",
+      expr: calcChainOfMaxDepth(200),
+    };
+    expect(exprWireMetric.schema.safeParse(ref).success).toBe(true);
+  });
+
+  test("rejects an inline expr exceeding the node ceiling", () => {
+    const ref = {
+      metric: "expr",
+      label: "wide",
+      expr: {
+        op: "lit",
+        value: 1,
+        extra: Array.from({ length: 60_000 }, (_, i) => i),
+      },
+    };
+    const result = exprWireMetric.schema.safeParse(ref);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((i) => i.message).join("\n")).toContain(
+      "exceeds",
+    );
+  });
+
+  test("a small valid expr still round-trips through the wire schema unchanged", () => {
+    const pointsSquared: MetricRef = {
+      metric: "expr",
+      label: "points squared",
+      expr: {
+        op: "arith",
+        f: "*",
+        a: { op: "score", of: { op: "self" }, key: "standings" },
+        b: { op: "score", of: { op: "self" }, key: "standings" },
+      },
+    };
+    expect(exprWireMetric.schema.safeParse(pointsSquared).success).toBe(true);
+  });
+});
+
 describe("attribute — competitor ratings feed the expr engine", () => {
   const self = competitorId("self");
   const opp1500 = competitorId("opp1500");

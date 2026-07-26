@@ -2,14 +2,12 @@ import { z } from "zod";
 import type { Expr } from "./ast";
 
 /**
- * The wire schema for `Expr`. Organizer-authored expressions are untrusted
- * input, so nothing reaches the evaluator without passing through here. The
- * recursion is broken with `z.lazy` exactly as the engine breaks its own
+ * The recursion is broken with `z.lazy` exactly as the engine breaks its own
  * recursive `encounterSchema` (see `registry.ts`); a closed `op` set means a
  * `discriminatedUnion`, which yields a precise "unknown op" error rather than
  * a soup of union mismatches.
  */
-export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
+const rawExprSchema: z.ZodType<Expr> = z.lazy(() =>
   z.discriminatedUnion("op", [
     z.object({
       op: z.literal("lit"),
@@ -18,11 +16,11 @@ export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
     z.object({ op: z.literal("self") }),
     z.object({ op: z.literal("var"), name: z.string().min(1).max(200) }),
     z.object({ op: z.literal("metric"), name: z.string().min(1).max(200) }),
-    z.object({ op: z.literal("opponents"), of: exprSchema }),
-    z.object({ op: z.literal("opponent"), line: exprSchema }),
+    z.object({ op: z.literal("opponents"), of: rawExprSchema }),
+    z.object({ op: z.literal("opponent"), line: rawExprSchema }),
     z.object({
       op: z.literal("lineNum"),
-      line: exprSchema,
+      line: rawExprSchema,
       field: z.enum([
         "standingsPoints",
         "encounterPoints",
@@ -33,38 +31,42 @@ export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
     }),
     z.object({
       op: z.literal("score"),
-      of: exprSchema,
+      of: rawExprSchema,
       key: z.enum(["standings", "encounter"]),
     }),
     z.object({
       op: z.literal("attribute"),
-      of: exprSchema,
+      of: rawExprSchema,
       key: z.string().min(1).max(200),
     }),
-    z.object({ op: z.literal("tiedWith"), of: exprSchema }),
+    z.object({ op: z.literal("tiedWith"), of: rawExprSchema }),
     z.object({
       op: z.literal("member"),
-      of: exprSchema,
-      container: exprSchema,
+      of: rawExprSchema,
+      container: rawExprSchema,
     }),
-    z.object({ op: z.literal("rounds"), of: exprSchema }),
+    z.object({ op: z.literal("rounds"), of: rawExprSchema }),
     z.object({
       op: z.literal("kindIs"),
-      line: exprSchema,
+      line: rawExprSchema,
       kind: z.enum(["played", "bye", "absent"]),
     }),
-    z.object({ op: z.literal("unplayed"), line: exprSchema }),
+    z.object({ op: z.literal("unplayed"), line: rawExprSchema }),
     z.object({
       op: z.literal("boardPoint"),
-      line: exprSchema,
+      line: rawExprSchema,
       board: z.number().int().min(1),
     }),
     z.object({
       op: z.literal("colorIs"),
-      line: exprSchema,
+      line: rawExprSchema,
       color: z.enum(["white", "black"]),
     }),
-    z.object({ op: z.literal("concat"), left: exprSchema, right: exprSchema }),
+    z.object({
+      op: z.literal("concat"),
+      left: rawExprSchema,
+      right: rawExprSchema,
+    }),
     z.object({ op: z.literal("linePoints") }),
     z.object({ op: z.literal("round") }),
     z.object({ op: z.literal("legIndex") }),
@@ -73,102 +75,103 @@ export const exprSchema: z.ZodType<Expr> = z.lazy(() =>
       cases: z.array(
         z.object({
           when: z.enum(["win", "loss", "draw", "doubleLoss", "pending"]),
-          result: exprSchema,
+          result: rawExprSchema,
         }),
       ),
-      otherwise: exprSchema,
+      otherwise: rawExprSchema,
     }),
     z.object({
       op: z.literal("map"),
-      over: exprSchema,
+      over: rawExprSchema,
       as: z.string().min(1).max(200),
-      body: exprSchema,
+      body: rawExprSchema,
     }),
     z.object({
       op: z.literal("filter"),
-      over: exprSchema,
+      over: rawExprSchema,
       as: z.string().min(1).max(200),
-      pred: exprSchema,
+      pred: rawExprSchema,
     }),
     z.object({
       op: z.literal("sortBy"),
-      over: exprSchema,
+      over: rawExprSchema,
       as: z.string().min(1).max(200),
-      by: exprSchema,
+      by: rawExprSchema,
       dir: z.enum(["asc", "desc"]),
     }),
-    z.object({ op: z.literal("take"), over: exprSchema, n: exprSchema }),
-    z.object({ op: z.literal("drop"), over: exprSchema, n: exprSchema }),
-    z.object({ op: z.literal("sum"), over: exprSchema }),
-    z.object({ op: z.literal("count"), over: exprSchema }),
-    z.object({ op: z.literal("min"), over: exprSchema }),
-    z.object({ op: z.literal("max"), over: exprSchema }),
-    z.object({ op: z.literal("avg"), over: exprSchema }),
+    z.object({ op: z.literal("take"), over: rawExprSchema, n: rawExprSchema }),
+    z.object({ op: z.literal("drop"), over: rawExprSchema, n: rawExprSchema }),
+    z.object({ op: z.literal("sum"), over: rawExprSchema }),
+    z.object({ op: z.literal("count"), over: rawExprSchema }),
+    z.object({ op: z.literal("min"), over: rawExprSchema }),
+    z.object({ op: z.literal("max"), over: rawExprSchema }),
+    z.object({ op: z.literal("avg"), over: rawExprSchema }),
     z.object({
       op: z.literal("scan"),
-      over: exprSchema,
-      init: exprSchema,
+      over: rawExprSchema,
+      init: rawExprSchema,
       item: z.string().min(1).max(200),
       acc: z.string().min(1).max(200),
-      body: exprSchema,
+      body: rawExprSchema,
     }),
     z.object({
       op: z.literal("arith"),
       f: z.enum(["+", "-", "*", "/"]),
-      a: exprSchema,
-      b: exprSchema,
+      a: rawExprSchema,
+      b: rawExprSchema,
     }),
     z.object({
       op: z.literal("calc"),
       f: z.enum(["floor", "ceil", "abs", "round"]),
-      a: exprSchema,
+      a: rawExprSchema,
     }),
     z.object({
       op: z.literal("cmp"),
       f: z.enum(["<", "<=", "==", ">=", ">"]),
-      a: exprSchema,
-      b: exprSchema,
+      a: rawExprSchema,
+      b: rawExprSchema,
     }),
-    z.object({ op: z.literal("eq"), a: exprSchema, b: exprSchema }),
+    z.object({ op: z.literal("eq"), a: rawExprSchema, b: rawExprSchema }),
     z.object({
       op: z.literal("if"),
-      cond: exprSchema,
-      whenTrue: exprSchema,
-      whenFalse: exprSchema,
+      cond: rawExprSchema,
+      whenTrue: rawExprSchema,
+      whenFalse: rawExprSchema,
     }),
     z.object({
       op: z.literal("match"),
-      line: exprSchema,
+      line: rawExprSchema,
       cases: z.array(
         z.object({
           when: z.enum(["win", "loss", "draw", "doubleLoss", "pending"]),
-          result: exprSchema,
+          result: rawExprSchema,
         }),
       ),
-      otherwise: exprSchema,
+      otherwise: rawExprSchema,
     }),
     z.object({
       op: z.literal("let"),
       bindings: z
         .array(
-          z.object({ name: z.string().min(1).max(200), value: exprSchema }),
+          z.object({
+            name: z.string().min(1).max(200),
+            value: rawExprSchema,
+          }),
         )
         .min(1),
-      body: exprSchema,
+      body: rawExprSchema,
     }),
   ]),
 );
 
-// `exprSchema` recurses natively (via `z.lazy`) over whatever shape the
+// `rawExprSchema` recurses natively (via `z.lazy`) over whatever shape the
 // caller hands it, so a sufficiently deep or wide untrusted payload can
 // overflow the stack before a single zod issue is ever raised — the same
 // hazard `admitDefData` (`tournament/registry.ts`) exists to close for whole
-// event definitions. `exprSchema` used *inside* registry parsing is already
-// behind that guard; these two bounds exist for `parseExpr`/`safeParseExpr`
-// as standalone entry points, which are not. The caps mirror
-// `admitDefData`'s exactly (200 / 50,000): an expression tree is normally far
-// shallower than a full definition, but there's no reason to invent a
-// second, unexplained ceiling for the same class of attack.
+// event definitions. The caps mirror `admitDefData`'s exactly (200 /
+// 50,000): an expression tree is normally far shallower than a full
+// definition, but there's no reason to invent a second, unexplained ceiling
+// for the same class of attack.
 const MAX_EXPR_DEPTH = 200;
 const MAX_EXPR_NODES = 50_000;
 
@@ -221,20 +224,32 @@ function admitExprData(data: unknown): Admitted {
   }
 }
 
-/** A schema that fails with the admission reason — typed issues, no throw. */
-const refuseSchema = (reason: string): z.ZodType<Expr> =>
-  z.custom<Expr>(() => false, { message: reason });
+export const boundedExprSchema: z.ZodType<Expr> = z
+  .unknown()
+  .transform((data, ctx): Expr => {
+    const admitted = admitExprData(data);
+    if (!admitted.ok) {
+      ctx.addIssue({ code: "custom", message: admitted.reason });
+      return z.NEVER;
+    }
+    const parsed = rawExprSchema.safeParse(admitted.value);
+    if (parsed.success) return parsed.data;
+    for (const issue of parsed.error.issues) {
+      ctx.addIssue({
+        code: "custom",
+        message: issue.message,
+        path: issue.path,
+      });
+    }
+    return z.NEVER;
+  });
 
 /** Parse and fully validate a standalone expression; throws listing every issue. */
 export function parseExpr(data: unknown): Expr {
-  const admitted = admitExprData(data);
-  if (!admitted.ok) return refuseSchema(admitted.reason).parse(data);
-  return exprSchema.parse(admitted.value);
+  return boundedExprSchema.parse(data);
 }
 
 /** Like `parseExpr` but returns the issues instead of throwing. */
 export function safeParseExpr(data: unknown) {
-  const admitted = admitExprData(data);
-  if (!admitted.ok) return refuseSchema(admitted.reason).safeParse(data);
-  return exprSchema.safeParse(admitted.value);
+  return boundedExprSchema.safeParse(data);
 }

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ComputationNode } from "@/tournament/expr/describe";
 import { describeExpr } from "@/tournament/expr/describe";
-import { exprSchema } from "@/tournament/expr/schema";
+import { boundedExprSchema } from "@/tournament/expr/schema";
 import { evalScoring, evalScoringResult } from "@/tournament/expr/scoring";
 import {
   defineScoringKind,
@@ -12,7 +12,7 @@ import {
 const exprScoringRef = z.object({
   kind: z.literal("expr"),
   label: z.string().min(1).max(200),
-  expr: exprSchema,
+  expr: boundedExprSchema,
 });
 
 type ExprScoringRef = z.infer<typeof exprScoringRef>;

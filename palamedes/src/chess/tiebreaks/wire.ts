@@ -4,7 +4,7 @@ import {
   evalMetricResult,
   type MetricEvalResult,
 } from "@/tournament/expr/metric";
-import { exprSchema } from "@/tournament/expr/schema";
+import { boundedExprSchema } from "@/tournament/expr/schema";
 import {
   defineMetricKind,
   type MetricKind,
@@ -16,7 +16,7 @@ import { equalPointsTied } from "./expr-metric";
 const exprMetricRef = z.object({
   metric: z.literal("expr"),
   label: z.string().min(1).max(200),
-  expr: exprSchema,
+  expr: boundedExprSchema,
 });
 
 type ExprMetricRef = z.infer<typeof exprMetricRef>;
