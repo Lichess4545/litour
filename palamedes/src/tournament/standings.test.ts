@@ -281,7 +281,15 @@ describe("an erroring tiebreak metric cannot split a tied block", () => {
     // The erroring criterion (index 1) reported the whole tied block as
     // unsplit; the splitter-alone run never hit an error.
     expect(withErroring.unsplitCriteria()).toEqual([
-      { criterion: 1, block: ["ada", "boe", "cal"], reason: "boom" },
+      {
+        criterion: {
+          index: 1,
+          label: "erroring",
+          ref: { metric: "erroring" },
+        },
+        block: ["ada", "boe", "cal"],
+        reason: "boom",
+      },
     ]);
     expect(splitterAlone.unsplitCriteria()).toEqual([]);
   });
@@ -308,7 +316,15 @@ describe("an erroring tiebreak metric cannot split a tied block", () => {
     ).toEqual(["ada", "boe", "cal"]);
 
     expect(run.unsplitCriteria()).toEqual([
-      { criterion: 2, block: ["ada", "boe", "cal"], reason: "boom" },
+      {
+        criterion: {
+          index: 2,
+          label: "erroring",
+          ref: { metric: "erroring" },
+        },
+        block: ["ada", "boe", "cal"],
+        reason: "boom",
+      },
     ]);
   });
 
@@ -511,7 +527,11 @@ describe("competitor ratings feeding the expr `attribute` op", () => {
     // genuinely splitting it.
     expect(run.unsplitCriteria()).toEqual([
       {
-        criterion: 1,
+        criterion: {
+          index: 1,
+          label: "aro",
+          ref: { metric: "expr", label: "aro", expr: aroExpr },
+        },
         block: ["cal", "dee"],
         reason: expect.stringContaining("unknownAttribute"),
       },

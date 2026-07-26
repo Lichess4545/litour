@@ -2,6 +2,7 @@ import {
   type CompetitorDef,
   type CompetitorId,
   DECIDED_BY,
+  type MetricRef,
   type NodePath,
   otherSide,
   type PairingPlan,
@@ -38,10 +39,12 @@ export type StandingsRow = MetricRow & {
   readonly rank: number;
 };
 
-/** One criterion that could not split a tied block, for a given ranking pass. */
 export type UnsplitCriterion = {
-  /** 0 = standings points, N = `pool.tiebreaks[N - 1]`. */
-  readonly criterion: number;
+  readonly criterion: {
+    readonly index: number;
+    readonly label: string;
+    readonly ref?: MetricRef;
+  };
   readonly block: readonly CompetitorId[];
   readonly reason: string;
 };
@@ -395,6 +398,26 @@ const blocksToRanking = (
   return { order: blocks.flat(), ranks };
 };
 
+function criterionLabel(
+  registry: ModelRegistry,
+  index: number,
+  ref: MetricRef | undefined,
+): string {
+  if (index === 0) return "standings points";
+  if (ref === undefined) {
+    throw new Error(
+      `criterion ${index} has no matching entry in pool.tiebreaks`,
+    );
+  }
+  const metric = registry.metrics.get(ref.metric);
+  if (metric === undefined) {
+    throw new Error(
+      `unknown tiebreak metric "${ref.metric}" — the def was not parsed against this registry`,
+    );
+  }
+  return metric.label(ref);
+}
+
 /**
  * Data-driven ranking: refine the field one criterion at a time — standings
  * points first, then each tiebreak in declared order — splitting every
@@ -453,8 +476,13 @@ function refineRanking(
         values.set(competitor, outcome.value);
       }
       if (firstError !== undefined) {
+        const ref = criterion > 0 ? pool.tiebreaks[criterion - 1] : undefined;
         unsplitCriteria.push({
-          criterion,
+          criterion: {
+            index: criterion,
+            label: criterionLabel(registry, criterion, ref),
+            ...(ref === undefined ? {} : { ref }),
+          },
           block: [...block],
           reason: firstError,
         });

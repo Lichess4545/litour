@@ -35,6 +35,23 @@ describe("evalMetricResult", () => {
   });
 });
 
+describe("evalMetricResult with an env that omits attribute", () => {
+  test("an attribute read resolves through the ?? (() => undefined) bridge to unknownAttribute, not a crash", () => {
+    const expr: Expr = {
+      op: "attribute",
+      of: { op: "self" },
+      key: "rating",
+    };
+    const result = evalMetricResult(expr, someRow, someEnv);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        reason: expect.stringContaining("unknownAttribute"),
+      },
+    });
+  });
+});
+
 describe("evalMetric", () => {
   test("still throws on the same input (builtin contract preserved)", () => {
     expect(() => evalMetric(bad, someRow, someEnv)).toThrow();

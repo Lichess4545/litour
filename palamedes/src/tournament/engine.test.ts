@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   armageddonShowdown,
   lichess4545Season,
@@ -10,11 +11,16 @@ import {
   worldChampionship,
 } from "@/chess/formats";
 import { chessRegistry, parseEventDef } from "@/chess/registry";
-import type { ParsedEventDef } from "@/tournament/registry";
+import {
+  defineMetricKind,
+  extendRegistry,
+  type ParsedEventDef,
+  parseEventDef as parseEventDefFor,
+} from "@/tournament/registry";
 import { runEvent as runEventWith } from "./builder";
 import type { Input } from "./core";
 import { competitorId, compRootPath, nodePathSchema, playerId } from "./core";
-import { materialize, proposePairings, withInput } from "./engine";
+import { type Action, materialize, proposePairings, withInput } from "./engine";
 
 const runEvent = (def: Parameters<typeof runEventWith>[0]) =>
   runEventWith(def, chessRegistry);
@@ -350,5 +356,156 @@ describe("review-driven regressions", () => {
       winner: undefined,
     });
     expect(run.winnerName()).toBeUndefined();
+  });
+});
+
+describe("a degraded ranking surfaces at the engine seams (ADR 0015)", () => {
+  const erroringMetric = defineMetricKind({
+    metric: "erroring",
+    schema: z.object({ metric: z.literal("erroring") }),
+    label: () => "erroring",
+    value: () => {
+      throw new Error("value() must not run once valueResult is set");
+    },
+    valueResult: () => ({ ok: false, error: { reason: "boom" } }),
+  });
+  const registryWithErroring = extendRegistry(chessRegistry, {
+    id: "chess-test/engine-degraded-ranking",
+    metrics: [erroringMetric],
+  });
+
+  const roundRobinOf4 = (tiebreaks: readonly Record<string, unknown>[]) => ({
+    id: "rr-degraded",
+    name: "Round robin with a possibly-erroring tiebreak",
+    competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => ({
+      id: name.toLowerCase(),
+      name,
+    })),
+    competition: {
+      id: "rr",
+      entries: [1, 2, 3, 4].map((seed) => ({ kind: "registration", seed })),
+      run: {
+        kind: "pool",
+        pairing: { system: "roundRobin", cycles: 1 },
+        encounter: { kind: "game", clock: { initial: 300, increment: 2 } },
+        score: { kind: "passThrough" },
+        tiebreaks,
+      },
+    },
+  });
+
+  const awaitPairingsOf = (run: ReturnType<typeof runEventWith>) =>
+    run
+      .actions()
+      .find(
+        (a): a is Extract<Action, { kind: "awaitPairings" }> =>
+          a.kind === "awaitPairings",
+      );
+
+  it("buildPairingContext carries unsplitCriteria into the next round's awaitPairings context instead of discarding it", () => {
+    const run = runEventWith(
+      parseEventDefFor(
+        roundRobinOf4([{ metric: "erroring" }]),
+        registryWithErroring,
+      ),
+      registryWithErroring,
+    )
+      .pairRound() // R1: Ada-Dee, Boe-Cal
+      .game("Ada", "Dee", "1/2-1/2")
+      .game("Boe", "Cal", "1-0");
+
+    const awaiting = awaitPairingsOf(run);
+    expect(awaiting?.context.degraded).toEqual([
+      {
+        criterion: { index: 1, label: "erroring", ref: { metric: "erroring" } },
+        block: ["ada", "dee"],
+        reason: "boom",
+      },
+    ]);
+  });
+
+  it("leaves awaitPairings context.degraded empty for a clean pool, distinguishing it from the erroring case above", () => {
+    const run = runEventWith(
+      parseEventDefFor(roundRobinOf4([]), chessRegistry),
+      chessRegistry,
+    )
+      .pairRound()
+      .game("Ada", "Dee", "1/2-1/2")
+      .game("Boe", "Cal", "1-0");
+
+    expect(awaitPairingsOf(run)?.context.degraded).toEqual([]);
+  });
+
+  it("a downstream competition seeded from a degraded pool still proceeds, and the source pool's degradation stays readable via standingsOf rather than being laundered away", () => {
+    const feederDef = parseEventDefFor(
+      {
+        id: "degraded-feeder",
+        name: "Round robin feeding a decider",
+        competitors: ["Ada", "Boe", "Cal", "Dee"].map((name) => ({
+          id: name.toLowerCase(),
+          name,
+        })),
+        competition: {
+          id: "root",
+          run: {
+            kind: "competitions",
+            competitions: [
+              {
+                id: "rr",
+                entries: [1, 2, 3, 4].map((seed) => ({
+                  kind: "registration",
+                  seed,
+                })),
+                run: {
+                  kind: "pool",
+                  pairing: { system: "roundRobin", cycles: 1 },
+                  encounter: {
+                    kind: "game",
+                    clock: { initial: 300, increment: 2 },
+                  },
+                  score: { kind: "passThrough" },
+                  tiebreaks: [{ metric: "erroring" }],
+                },
+              },
+              {
+                id: "decider",
+                entries: [
+                  { kind: "rank", of: "rr", rank: 1 },
+                  { kind: "rank", of: "rr", rank: 2 },
+                ],
+                run: { kind: "game", clock: { initial: 300, increment: 2 } },
+              },
+            ],
+          },
+        },
+      },
+      registryWithErroring,
+    );
+
+    const run = runEventWith(feederDef, registryWithErroring)
+      .pairRound(compRootPath("rr")) // R1: Ada-Dee, Boe-Cal
+      .game("Ada", "Dee", "1-0")
+      .game("Boe", "Cal", "1/2-1/2")
+      .pairRound(compRootPath("rr")) // R2: Dee-Cal, Ada-Boe
+      .game("Dee", "Cal", "0-1")
+      .game("Ada", "Boe", "1/2-1/2")
+      .pairRound(compRootPath("rr")) // R3: Boe-Dee, Cal-Ada
+      .game("Boe", "Dee", "1-0")
+      .game("Cal", "Ada", "1/2-1/2");
+
+    // Ada, Boe, Cal all finish on 2 points; the sole tiebreak always errors,
+    // so the tied block of three is never split — the event still seeds the
+    // decider from that unsplit (but honest) order instead of stalling.
+    expect(run.scheduled().some((g) => g.path.includes("comp-decider"))).toBe(
+      true,
+    );
+
+    expect(run.unsplitCriteria(compRootPath("rr"))).toEqual([
+      {
+        criterion: { index: 1, label: "erroring", ref: { metric: "erroring" } },
+        block: ["ada", "boe", "cal"],
+        reason: "boom",
+      },
+    ]);
   });
 });

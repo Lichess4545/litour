@@ -39,6 +39,7 @@ import {
   type PoolRoundPlans,
   type PoolStandings,
   poolStandings,
+  type UnsplitCriterion,
 } from "./standings";
 
 /**
@@ -696,13 +697,17 @@ export type ScheduledGame = {
   readonly clock: Clock;
 };
 
+export type DegradedPairingContext = PairingContext & {
+  readonly degraded: readonly UnsplitCriterion[];
+};
+
 export type Action =
   | { readonly kind: "createGame"; readonly game: ScheduledGame }
   | {
       readonly kind: "awaitPairings";
       readonly pool: NodePath;
       readonly round: number;
-      readonly context: PairingContext;
+      readonly context: DegradedPairingContext;
     }
   | {
       readonly kind: "awaitLineup";
@@ -954,13 +959,13 @@ function buildPairingContext(
   entrants: readonly CompetitorId[],
   round: number,
   total: number,
-): PairingContext {
+): DegradedPairingContext {
   const playedRounds = new Map<number, readonly PairingPlan[]>();
   for (let r = 1; r < round; r += 1) {
     const plans = pairingsAt(state, ref.path, r);
     if (plans !== undefined) playedRounds.set(r, plans);
   }
-  const { rows } = poolStandings(
+  const { rows, unsplitCriteria } = poolStandings(
     state.registry,
     state,
     pool,
@@ -1029,6 +1034,7 @@ function buildPairingContext(
     scores,
     history,
     previousRound,
+    degraded: unsplitCriteria,
   };
 }
 
