@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { LichessAuth } from "@/server/lichess/introspection";
+import {
+  HIGH_PRIVILEGE_SCOPES,
+  type LichessAuth,
+} from "@/server/lichess/introspection";
 import {
   canCreateStream,
   canWriteStream,
@@ -63,6 +66,15 @@ describe("grantsFor — ADR 0009 D1 matrix", () => {
     ],
   ] as const)("%s", (_label, auth, expected) => {
     expect(grantsFor(auth)).toEqual(new Set<Grant>(expected));
+  });
+});
+
+describe("HIGH_PRIVILEGE_SCOPES — every high-privilege scope yields a grant beyond the baseline set", () => {
+  it.each([...HIGH_PRIVILEGE_SCOPES])("%s", (scope) => {
+    const baseline = grantsFor(makeAuth("ada"));
+    const withScope = grantsFor(makeAuth("ada", [scope]));
+
+    expect(withScope.size).toBeGreaterThan(baseline.size);
   });
 });
 

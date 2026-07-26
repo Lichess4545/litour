@@ -59,7 +59,28 @@
       }
     },
     {
-      "includes": ["src/server/http/**"],
+      "includes": ["src/server/http/**", "!**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "zod": "Import z from \"@hono/zod-openapi\" instead — it runs extendZodWithOpenApi(z) as a side effect, and importing plain \"zod\" here typechecks but throws \"openapi is not a function\" at runtime unless that side effect ran first.",
+                  "@/server/lichess/introspection": {
+                    "importNames": ["createTokenVerifier"],
+                    "message": "createTokenVerifier holds per-process state (negative cache, in-flight map, circuit breaker) that must exist exactly once. Import the pinned singleton verifyLichessToken from \"@/server/lichess/verifier\" instead of constructing your own verifier."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/server/http/**/*.test.ts"],
       "linter": {
         "rules": {
           "style": {
@@ -68,6 +89,31 @@
               "options": {
                 "paths": {
                   "zod": "Import z from \"@hono/zod-openapi\" instead — it runs extendZodWithOpenApi(z) as a side effect, and importing plain \"zod\" here typechecks but throws \"openapi is not a function\" at runtime unless that side effect ran first."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**",
+        "!src/server/http/**",
+        "!src/server/lichess/verifier.ts",
+        "!**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/server/lichess/introspection": {
+                    "importNames": ["createTokenVerifier"],
+                    "message": "createTokenVerifier holds per-process state (negative cache, in-flight map, circuit breaker) that must exist exactly once. Import the pinned singleton verifyLichessToken from \"@/server/lichess/verifier\" instead of constructing your own verifier."
+                  }
                 }
               }
             }
