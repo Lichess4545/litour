@@ -18,6 +18,9 @@ export const apiErrorHandler: ErrorHandler<Env> = (err, c) => {
 const healthRoute = createRoute({
   method: "get",
   path: "/health",
+  summary: "Check API liveness",
+  description:
+    "Confirms the HTTP server is up and responding. A 200 proves only that the process is running; it does not prove the database is reachable. Requires no authentication.",
   responses: {
     200: {
       content: {
