@@ -24,9 +24,11 @@ Two doors already exist in the code, and they are not the same shape:
 - **The expression door.** `exprMetricRef` (`{metric:"expr", label, expr}`,
   `src/chess/tiebreaks/wire.ts`) and `exprScoringRef` (`{kind:"expr", label,
   expr}`, `src/chess/scoring-rules/wire.ts`) parse an inline `Expr` through
-  `exprSchema` at the registry boundary. Both are registered in the builtin
-  catalogs (`tiebreaks/index.ts:125`, `scoring-rules/index.ts:87`), so they
-  appear in the vocabulary payload beside the named builtins.
+  `boundedExprSchema` at the registry boundary — the recursive schema
+  underneath it is private; organizer-authored expressions are bounded
+  (depth and width) before that recursion ever runs. Both are registered in
+  the builtin catalogs (`tiebreaks/index.ts:125`, `scoring-rules/index.ts:87`),
+  so they appear in the vocabulary payload beside the named builtins.
 - **The open-world pairing door.** `validatePoolDef` looks the pairing system
   up and, on a miss, accepts the definition anyway provided `rounds` is
   declared (`src/tournament/registry.ts:1382–1391`: *"Open world: unknown
@@ -137,17 +139,18 @@ extensibility of the *vocabulary* — it is the absence of a vocabulary
 requirement. A definition may name a system the registry has never heard of;
 what it may not do is expect the engine to pair for it.
 
-**What the endpoint actually does today, and the defect that follows.** The
-route returns six flat `string[]` plus `registryId`
-(`src/server/http/routes/vocabulary.ts`). The tier distinction lives entirely
-in the route's OpenAPI `description`, which does call `"expr"` out by name —
-and which also states that *"a definition naming anything outside this
-vocabulary fails validation."* For pairings that is false: an unregistered
-system with explicit `rounds` validates cleanly. The prose is a promise the
-code does not keep, in the direction that matters least for safety (it
-understates what is allowed) and most for a client author (it hides the one
-escape hatch that already exists). Recorded here as a defect with a trigger
-rather than fixed in flight — this ADR does not edit routes another task owns.
+**What the endpoint actually does today.** The route returns six flat
+`string[]` plus `registryId` (`src/server/http/routes/vocabulary.ts`). The
+tier distinction lives entirely in the route's OpenAPI `description`, which
+calls `"expr"` out by name under `scorings` and `metrics`, and states
+correctly for pairing that it is the one open-world exception: an
+unregistered `pairing.system` validates as long as the definition also
+states its round count explicitly, because pairings arrive as inputs rather
+than being fully organizer-authored. At the time this ADR was drafted that
+description instead overstated closedness — it claimed a definition naming
+anything outside the vocabulary fails validation, which was false for
+pairings — and that gap has since been fixed in the route itself; the
+prose now matches what the code does.
 
 ### 3. The deferral ledger
 
@@ -168,7 +171,6 @@ Every deliberate deferral from this engagement, once, with a trigger.
 | — | **Sign-out does not revoke the lichess token.** Better Auth's sign-out clears the local session only; lichess's `DELETE /api/token` is never called, so a signed-out palamedes session leaves the underlying token live until it expires or the user revokes it manually (ADR 0009) | The api-demo's revoke-on-logout is the model, but revoking a token the user may also be using elsewhere is a product decision, not a bug fix | A security review that treats a live post-sign-out token as unacceptable — or the first shared-device usage report |
 | — | **Introspection is one token per call.** Lichess accepts up to 1000 tokens per introspection request; batching is deliberately out of scope, and lichess permits only one in-flight introspection globally with back-off on 429 (`server/lichess/introspection.ts`) | Batching only pays with concurrent distinct tokens to batch, which no traffic pattern has yet produced | Sustained 429s from lichess introspection, or any auth path that must verify more than one token per request |
 | — | **No read-side projection.** Reads fold on read via `readDefinition`/`readChanges`; list reads are O(streams × changes) (ADR 0008) | ADR 0008 names the projection as the escape hatch, explicitly not a prerequisite; the wire contract does not change when it lands | List-read latency becoming operator-visible at the deployed stream count — concretely, the first time the list route needs pagination or is raised as slow |
-| — | **The vocabulary route's description overstates closedness** for pairings (see §2): it says anything outside the vocabulary fails validation, but an unregistered pairing system with explicit `rounds` validates | Found while grounding this ADR; the route belongs to another task in flight and this ADR does not edit code | The next edit to `src/server/http/routes/vocabulary.ts`, or before any third-party client is pointed at `/api/v1/vocabulary` — whichever comes first |
 
 ## Consequences
 

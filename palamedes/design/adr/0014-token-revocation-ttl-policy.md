@@ -34,14 +34,14 @@ Forces, verified against the code:
   cannot be bought larger.
 - The hard gate that makes short-TTL introspection load safe — single-flight
   de-duplication by token hash plus a short circuit-breaker on repeated 429s
-  — is Task 15, shipping WITH the write endpoint this engagement. Absent it,
-  every short-TTL expiry is an independent introspection against the global
-  one-in-flight limit.
+  — is ADR 0018's bounded admission control. Absent it, every short-TTL
+  expiry is an independent introspection against the global one-in-flight
+  limit.
 
 ## Decision
 
 **Reverify high-privilege scopes on a shorter TTL; keep 24h for everything
-else. Ships inside Task 15, in the same commit series as the hard gate —
+else. Shipped standalone, in the same commit as ADR 0018's admission gate —
 never as a distinct gated follow-on.**
 
 - Ordinary and read-only tokens keep `REVERIFY_AFTER_MS` = 24h unchanged.
@@ -57,36 +57,37 @@ never as a distinct gated follow-on.**
   (ADR 0009) and not yet privileged here; it joins the set if and when it
   grants a live permission.
 
-This ships INSIDE Task 15, not as a distinct gated follow-on: the two-tier
-TTL lands in the same commit series as the single-flight + circuit-breaker
-gate, never before it. The 10-minute window multiplies introspection
-pressure on the tokens it covers; that pressure is only safe once concurrent
-checks for one token collapse to a single introspection and repeated 429s
-trip a breaker instead of a retry storm. If Task 15 slips, this TTL stays at
-24h until Task 15 — gate and TTL together — lands.
+This shipped standalone, ahead of Task 15 (the write door), rather than
+waiting to land inside it: the two-tier TTL is in the same commit as ADR
+0018's single-flight + circuit-breaker gate, never before it — it had to
+ship together with the thing that makes it safe, not with the endpoint it
+was originally scoped alongside. The 10-minute window multiplies
+introspection pressure on the tokens it covers; that pressure is only safe
+because concurrent checks for one token collapse to a single introspection
+and repeated 429s trip a breaker instead of a retry storm.
 
-### What a follow-on implementer changes in `createTokenVerifier`
+### What `createTokenVerifier` does with this
 
 The change is local to the cached-row branch; the fresh-introspection path
-just wrote `verifiedAt` and asks no freshness question.
+just writes `verifiedAt` and asks no freshness question.
 
-- Add `const HIGH_PRIVILEGE_REVERIFY_AFTER_MS = 10 * 60 * 1000;` and a
-  module-level `const HIGH_PRIVILEGE_SCOPES: ReadonlySet<string> = new Set(["web:mod"]);`
-  alongside `REVERIFY_AFTER_MS`.
-- In the `cached !== null` branch, after the `lichessExpired` gate, derive
-  the applicable window from the cached scopes: parse `cached.scopes` (reuse
-  `parseScopes`) and, if it intersects `HIGH_PRIVILEGE_SCOPES`, use
-  `HIGH_PRIVILEGE_REVERIFY_AFTER_MS`, else `REVERIFY_AFTER_MS`. Compute
-  `isFresh = nowMs - cached.verifiedAt.getTime() < applicableWindow`.
-- Key the choice off `cached.scopes`, not off any client-supplied value:
-  a token lichess downgraded still shows `web:mod` on the row until the next
-  introspection, so it correctly stays on the short TTL — which is exactly
-  the row we want to reverify soonest.
-- Leave the `lichessExpired` gate, the negative cache, and the fresh-write
-  path untouched.
-- Update the `REVERIFY_AFTER_MS` header NOTE and the `createTokenVerifier`
-  doc comment, which currently state a single 24h window, to describe the
-  two-tier policy and link this ADR.
+- `HIGH_PRIVILEGE_REVERIFY_AFTER_MS = 10 * 60 * 1000` and a module-level
+  `HIGH_PRIVILEGE_SCOPES: ReadonlySet<string> = new Set(["web:mod"])` sit
+  alongside `REVERIFY_AFTER_MS` in `introspection.ts`.
+- In the `cached !== null` branch, after the `lichessExpired` gate, the
+  applicable window is derived from the cached scopes: `parseScopes` reads
+  `cached.scopes`, and `reverifyWindowFor` returns
+  `HIGH_PRIVILEGE_REVERIFY_AFTER_MS` if they intersect
+  `HIGH_PRIVILEGE_SCOPES`, else `REVERIFY_AFTER_MS`. `isFresh` compares
+  `nowMs - cached.verifiedAt.getTime()` against that window.
+- The choice is keyed off `cached.scopes`, not off any client-supplied
+  value: a token lichess downgraded still shows `web:mod` on the row until
+  the next introspection, so it correctly stays on the short TTL — which is
+  exactly the row we want to reverify soonest.
+- The `lichessExpired` gate, the negative cache, and the fresh-write path
+  are untouched.
+- The `REVERIFY_AFTER_MS` header NOTE and the `createTokenVerifier` doc
+  comment describe the two-tier policy and link this ADR.
 
 ### Option not taken
 
@@ -110,14 +111,14 @@ immediate revocation of any specific user (see Consequences).
   can't-wait-10-minutes case.
 - This forecloses reasoning about introspection load from the 24h TTL alone:
   moderator tokens now generate introspection traffic at up to 6×/hour each.
-  Safe only behind Task 15's single-flight + circuit-breaker — without which
-  this decision does not ship. The dependency is a hard precondition, not a
-  nice-to-have.
+  Safe only behind ADR 0018's single-flight + circuit-breaker, which is why
+  the two shipped together rather than this TTL landing first. The
+  dependency was a hard precondition, not a nice-to-have.
 - Adding a scope to `HIGH_PRIVILEGE_SCOPES` (e.g. `tournament:write` once it
   grants `run:write:own` per ADR 0009) is a one-line change that silently
   shortens that scope's revocation latency and lengthens its introspection
-  tail — a change to make deliberately, with the Task 15 gate in mind, not
-  by reflex.
+  tail — a change to make deliberately, with ADR 0018's admission gate in
+  mind, not by reflex.
 - The TTL choice reads off cached scopes, so a row carrying both a
   high-privilege and ordinary scope reverifies on the short window. That is
   the intended, conservative direction: presence of `web:mod` dominates.

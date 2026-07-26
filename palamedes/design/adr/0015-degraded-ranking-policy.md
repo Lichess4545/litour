@@ -55,16 +55,18 @@ through `resolveEntrants`, `nextActions`, `eventWinner`, and `standingsOf` for
 a diagnostic whose only consumers are DTOs — the wrong seam to pay that cost.
 Per-pool degradation stays reachable where it already lives: `standingsOf(pool)`
 returns `PoolStandings.unsplitCriteria`, so a DTO rendering a completed pool
-reads it there without new engine plumbing. **Ships with Task 15:**
-`buildPairingContext` stops discarding `unsplitCriteria` — it carries it into
-`PairingContext`, which reaches the host on the existing `awaitPairings`
-action's `context`, no new action type. **Accepted risk (trigger below):** a
+reads it there without new engine plumbing. **Shipped standalone, ahead of
+Task 15:** `buildPairingContext` stops discarding `unsplitCriteria` — it
+carries it into `PairingContext`, which reaches the host on the existing
+`awaitPairings` action's `context`, no new action type. **Accepted risk
+(trigger below):** a
 proactive engine-level aggregate that flags every degraded completed pool in
 one read, and the viewer surface that renders the warning to an organizer.
 
 **`UnsplitCriterion` carries a readable label and the `MetricRef`, not a raw
-index. Ships with Task 15.** At the `unsplitCriteria.push(...)` site in
-`refineRanking` the registry and pool are both in scope, so the label is
+index. Shipped standalone, ahead of Task 15.** At the
+`unsplitCriteria.push(...)` site in `refineRanking` the registry and pool
+are both in scope, so the label is
 computable there: criterion `0` is the constant `"standings points"`; criterion
 `N` is `metric.label(ref)` for `ref = pool.tiebreaks[N - 1]`, the same label
 `poolStandings` already keys `StandingsRow.metrics` by, so the two agree. The
@@ -107,38 +109,38 @@ story and excluded.
   one `standingsOf` read away (for seeding), and it names the failed rule in
   words.
 
-- **Buildable spec for the ships-with-Task-15 parts.**
-  - *Readable `UnsplitCriterion` (`tournament/standings.ts`):* replace
-    `criterion: number` with `criterion: { index: number; label: string; ref?: MetricRef }`.
-    Fill it at the single `unsplitCriteria.push` site in `refineRanking`
-    (inside the block loop): `index` is the loop's `criterion`; `label` is
-    `"standings points"` when `index === 0`, else `metric.label(ref)`; `ref`
-    is `pool.tiebreaks[index - 1]` for `index > 0`, absent otherwise. Neither
-    `ref` nor `metric` is in scope at the push site — both are local to the
-    `criterionOutcome` closure — so resolve them fresh there:
-    `ref = pool.tiebreaks[index - 1]` and
-    `metric = registry.metrics.get(ref.metric)`, `pool` and `registry` being
-    `refineRanking`'s own parameters. `progressionKeys` returns an
-    empty `unsplitCriteria` via a hardcoded literal in `rankByProgression`, so
-    it needs no change. `builder.ts` imports `UnsplitCriterion` as a type and
-    uses it only as a return-type annotation — no field access — so it needs
-    no change either. Update the exact-match assertions in `standings.test.ts`
-    (the `criterion: 1` / `criterion: 2` cases) to the new shape;
-    `expr-wire-round-trip.test.ts` asserts `[]` and is unaffected.
-  - *`buildPairingContext` carry (`tournament/engine.ts`):* read
-    `unsplitCriteria` from the `poolStandings(...)` call it already makes and
-    add it to the returned `PairingContext` as a new
-    `readonly degraded: readonly UnsplitCriterion[]` (default `[]`). Mind the
-    import direction: `standings.ts` imports `registry.ts`, so
-    `PairingContext` (in `registry.ts`) cannot name `UnsplitCriterion` (in
-    `standings.ts`) without a cycle — move `UnsplitCriterion` to `core.ts`
-    (both import it) or give `PairingContext` a structurally-equal inline shape.
+- **What shipped, standalone and ahead of Task 15.**
+  - *Readable `UnsplitCriterion` (`tournament/standings.ts`):*
+    `criterion: number` became
+    `criterion: { index: number; label: string; ref?: MetricRef }`, filled at
+    the single `unsplitCriteria.push` site in `refineRanking` (inside the
+    block loop, via the new `criterionLabel` helper): `index` is the loop's
+    `criterion`; `label` is `"standings points"` when `index === 0`, else
+    `metric.label(ref)`; `ref` is `pool.tiebreaks[index - 1]` for
+    `index > 0`, absent otherwise. `progressionKeys` still returns an empty
+    `unsplitCriteria` via a hardcoded literal in `rankByProgression`,
+    untouched. `builder.ts` imports `UnsplitCriterion` as a type and uses it
+    only as a return-type annotation, also untouched.
+  - *`buildPairingContext` carry (`tournament/engine.ts`):* rather than
+    widen `PairingContext` (in `registry.ts`) itself and risk the import
+    cycle noted above — `standings.ts` imports `registry.ts`, so
+    `PairingContext` cannot name `UnsplitCriterion` (in `standings.ts`)
+    without one — the shipped code took the structurally-equal-shape
+    option: a new `DegradedPairingContext = PairingContext & { readonly
+    degraded: readonly UnsplitCriterion[] }`, imported by type from
+    `standings.ts`. `buildPairingContext` reads `unsplitCriteria` off the
+    `poolStandings(...)` call it already makes and returns it as
+    `degraded` on that widened type; `Action`'s `awaitPairings` variant
+    carries a `DegradedPairingContext`, not a bare `PairingContext`.
+    `UnsplitCriterion` itself was left in `standings.ts` — it did not move
+    to `core.ts`.
 
 - **Accepted risk, with named post-Task-15 triggers.**
   - The proactive degradation aggregate + organizer-facing viewer warning:
     build when a standings/write-door surface exists to render it. Until then
-    the data is reachable per pool via `standingsOf`; Task 15 lands the write
-    door and the `PairingContext` carry, a later surface renders it.
+    the data is reachable per pool via `standingsOf`, and per round via the
+    `PairingContext` carry (both already shipped); Task 15 lands the write
+    door, and a later surface renders the warning.
   - `MetricEvalResult` structured `kind`: add when the first consumer needs to
     branch on failure kind (a policy that tolerates some failures but not
     others, or a viewer distinguishing failure classes).

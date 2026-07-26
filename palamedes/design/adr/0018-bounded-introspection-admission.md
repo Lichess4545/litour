@@ -1,6 +1,6 @@
 # ADR 0018 — Bounded, non-blocking introspection admission; refusal serves stale within the standing TTL
 
-Status: Proposed (2026-07-26)
+Status: Accepted (2026-07-26)
 
 Supersedes the "priced fix" framing in `design/open-decisions.md` § 2.1;
 hard precondition of ADR 0014.
