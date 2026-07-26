@@ -80,14 +80,40 @@ both were tempting enough to need the refusal on paper:
    the admission gate has no budget for. A cold hash — no row at all — and
    a row already past the 24h ceiling both get `unavailable`: there is
    nothing stale to fall back to.
+5. **An `invalid` verdict deletes the cached positive row.** Decision 4
+   serves a known row as stale past its reverify window; without this
+   delete, that branch would resurrect a just-revoked row once the 5-minute
+   negative-cache entry protecting it lapses — a revoked moderator
+   authenticating for up to the 24h ceiling. The delete is best-effort: its
+   failure is reported and swallowed rather than denying the caller, and it
+   gets its own diagnostic (`revocation-write-failed`) distinct from the
+   benign `cache-write` failure, so on-call can tell "a cache write missed,
+   costs one extra introspection" from "a revocation didn't land, the
+   revoked row is still servable." That distinction is the point: *best-
+   effort is a property of the consequence, not of the table* — a write that
+   looks like a cache eviction but is really a revocation cannot be allowed
+   to fail as silently as an ordinary cache miss can. So when the delete
+   does not land, the negative-cache entry is widened from
+   `NEGATIVE_CACHE_MS` (5 minutes) to the full standing TTL
+   (`REVERIFY_AFTER_MS`) — it now covers exactly what the delete failed to
+   cover, rather than lapsing on its own unrelated schedule. This closes the
+   revocation case only; a scope *downgrade* still yields no `invalid`
+   verdict and no delete (see Consequences).
+6. **The negative cache is re-read at the refusal point, not trusted from
+   entry.** `cached` is read from Postgres before the admission gate; a
+   concurrent introspection of the same hash can prove the token revoked
+   and delete that row in between — single-flight does not collapse the
+   two calls, because the first had already settled by the time the second
+   reached admission. A snapshot read before a gate is stale at the gate,
+   so the in-memory negative cache — cheap enough to check that there is no
+   reason not to — is re-read immediately before a refusal serves stale,
+   not carried forward from the read that happened before the gate.
 
 ### Option not taken
 
 **A bounded queue with a wait deadline.** Rejected: it converts a fast,
 honest 503 into a slow 503 that also holds open a connection and a socket
-while it waits — strictly worse under flood than refusing immediately — and
-it requires real timers, which the module's `now`-injection testing
-contract forbids.
+while it waits — strictly worse under flood than refusing immediately.
 
 ## Consequences
 
@@ -96,6 +122,14 @@ contract forbids.
   TTL and can never degrade below it. A token flood can delay a moderator's
   revocation check but cannot log a moderator out. This is exactly why ADR
   0014 cannot ship without this ADR.
+- **Scope downgrades are not covered by decision 5, and this is accepted.**
+  That rule fires only on an `invalid` verdict; a `valid` verdict carrying
+  FEWER scopes than the cached row deletes nothing. If admission is then
+  refused while that row is still inside its window, the caller receives
+  the older, wider scopes for up to the standing TTL — and an attacker can
+  force that window open on demand by flooding admission. This is stated
+  here as an accepted consequence of this ADR plus ADR 0014, not as an open
+  bug to fix.
 - Under sustained flood, first-time bearer authentication degrades to
   best-effort too. This is **accepted, not solved** — no mechanism internal
   to the verifier can fix it, because a cold hash from an attacker and a
@@ -113,11 +147,43 @@ contract forbids.
   each instance keeps its own breaker with no shared view of the others.
   Acceptable at one instance; horizontal scaling requires revisiting this
   ADR *before* scaling, not after the fact.
+- **The one-verifier-per-process rule is pinned by a test**, not only by the
+  biome `noRestrictedImports` override that already blocks
+  `createTokenVerifier` outside `verifier.ts`: that rule matches literal
+  import specifiers, so a relative-path import, a namespace import, or a
+  dynamic `import()` all evade it — a speed bump, not a boundary. The test
+  asserts that the set of non-test files importing `createTokenVerifier` is
+  exactly `{src/server/lichess/verifier.ts}`. The `globalThis` pin itself is
+  unconditional — not dev-only, unlike the `PrismaClient` precedent in
+  `db.ts` — because a duplicate verifier here doubles lichess-facing
+  concurrency against a global limit of 1, rather than merely costing a
+  second database connection.
 - A leaked admission slot — acquired but never released — is a permanent,
   silent, total outage of introspection for the life of the process. The
   creator-only `finally` release is load-bearing and must stay pinned by
   tests.
-- The `IntrospectionProblem` union widens with three new variants —
-  `throttled`, `stale-served`, `unexpected` — each still carrying only the
-  token hash and an `Error.name` where applicable, never the raw token, per
-  the existing constraint on every other variant in that union.
+- **Work performed while holding the single admission slot is now
+  deadline-bounded** (`slotHeldWorkTimeoutMs`, default 5s), covering the
+  `upsert`, the `deleteMany`, and `response.body.cancel()`. Without it, a
+  hanging Postgres call or a hanging body-cancel parks the only slot — a
+  total introspection outage for as long as it hangs, proven by execution,
+  not theorised. Be honest about what that deadline does not buy: it frees
+  the *admission slot*, not the Postgres connection underneath it — Prisma
+  cannot cancel a query, so the query keeps running and the connection stays
+  checked out. That is the right trade, because the slot is the globally
+  scarce thing (one per process) and connections are pooled — but it means
+  DB connection residency remains bounded only by Postgres, since
+  `src/server/db.ts` sets no `statement_timeout` or query timeout. Named
+  follow-up, with its trigger stated here: the proper fix for a hanging
+  `lichess_token` lock wait is a `statement_timeout` on the pool, which
+  lives outside the verifier and is not built by this ADR.
+- **The breaker's re-open window is measured from settlement, not from
+  probe start.** Measuring from probe start would make the effective
+  cooldown `breakerOpenMs − probeDuration` — demonstrated to allow
+  back-to-back probes with zero delay once probe duration approached the
+  window itself.
+- The `IntrospectionProblem` union widens with four new variants —
+  `revocation-write-failed`, `throttled`, `stale-served`, `unexpected` —
+  each still carrying only the token hash and an `Error.name` where
+  applicable, never the raw token, per the existing constraint on every
+  other variant in that union.

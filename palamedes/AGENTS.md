@@ -50,6 +50,13 @@ scaffold. The contract lives in `design/tournament-model.md`.
   on load order. Enforced by a biome `noRestrictedImports` override on
   `src/server/http/**`; everywhere else (domain schemas, env, tRPC) correctly
   imports plain `zod`.
+- `createTokenVerifier` (`src/server/lichess/introspection.ts`) is
+  constructed exactly once, in `src/server/lichess/verifier.ts` — it holds
+  per-process state (negative cache, in-flight map, circuit breaker) that a
+  second construction site would duplicate rather than share. Enforced by a
+  biome `noRestrictedImports` override PLUS a test, because the biome rule
+  alone is evadable (it matches literal import specifiers, not
+  relative-path imports, namespace imports, or dynamic `import()`).
 - Routes/sub-routers extend the `export const api` fluent chain in
   `src/server/http/app.ts`; `.doc31()` and `registerComponent` stay bare
   statements. See that file for why.
