@@ -8,9 +8,10 @@ from datetime import timedelta
 import reversion
 from cacheops.query import cached_as
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import logout
 from django.core.cache import cache
-from django.core.exceptions import SuspiciousOperation
+from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.core.mail.message import EmailMessage
 from django.core.paginator import Paginator
 from django.db import models
@@ -25,7 +26,15 @@ from django.utils.text import slugify
 from django.views.generic import View
 from icalendar import Calendar, Event
 
-from heltour.tournament import alternates_manager, lichessapi, oauth, signals, uptime
+from heltour.tournament import (
+    alternates_manager,
+    lichessapi,
+    oauth,
+    pairinggen,
+    signals,
+    tasks,
+    uptime,
+)
 from heltour.tournament.trf16_export import season_to_trf16
 from heltour.tournament.forms import (
     ContactForm,
@@ -1703,6 +1712,9 @@ class LeagueDashboardView(LeagueView):
         if 'validate_tokens' in request.POST:
             return self._handle_validate_tokens()
 
+        if 'check_javafo' in request.POST:
+            return self._handle_check_javafo()
+
         if 'update_fide_ratings' in request.POST:
             return self._handle_update_fide_ratings()
 
@@ -1744,6 +1756,24 @@ class LeagueDashboardView(LeagueView):
             self.request,
             "Token validation started. Refresh this page to see results.",
         )
+        return self.view()
+
+    def _handle_check_javafo(self):
+        if not self.request.user.has_perm('tournament.view_dashboard', self.league):
+            raise PermissionDenied
+        web_result = pairinggen.run_and_store_javafo_check("web")
+        pairinggen.mark_javafo_check_queued("celery")
+        tasks.check_javafo.delay()
+        if web_result["ok"]:
+            messages.success(
+                self.request,
+                "JavaFo works in the web process. Refresh to see the celery result.",
+            )
+        else:
+            messages.error(
+                self.request,
+                "JavaFo failed in the web process. Refresh to see the celery result.",
+            )
         return self.view()
 
     def _handle_update_fide_ratings(self):
@@ -1811,6 +1841,11 @@ class LeagueDashboardView(LeagueView):
         token_validation_status = cache.get(f"token_validation_{self.season.pk}")
         system_api_token_status = lichessapi.check_system_api_token()
 
+        javafo_checks = [
+            cache.get(pairinggen.javafo_check_cache_key(process)) or {"process": process}
+            for process in pairinggen.JAVAFO_CHECK_PROCESSES
+        ]
+
         from django_celery_results.models import TaskResult
         recent_task_results = list(
             TaskResult.objects.order_by("-date_created")[:25]
@@ -1834,6 +1869,7 @@ class LeagueDashboardView(LeagueView):
             'knockout_advancement_info': knockout_advancement_info,
             'token_validation_status': token_validation_status,
             'system_api_token_status': system_api_token_status,
+            'javafo_checks': javafo_checks,
             'recent_task_results': recent_task_results,
         }
 

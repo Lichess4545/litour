@@ -1315,6 +1315,15 @@ def generate_pairings(
     signals.pairings_generated.send(sender=generate_pairings, round_=round_)
 
 
+@app.task()
+def check_javafo():
+    result = pairinggen.run_and_store_javafo_check("celery")
+    if not result["ok"]:
+        raise pairinggen.PairingGenerationException(
+            "; ".join(s["error"] for s in result["scenarios"] if not s["ok"])
+        )
+
+
 @receiver(signals.do_generate_pairings, dispatch_uid="heltour.tournament.tasks")
 def do_generate_pairings(
     sender,

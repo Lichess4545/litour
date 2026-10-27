@@ -4,7 +4,9 @@ import subprocess
 import tempfile
 
 import reversion
+from django.core.cache import cache
 from django.db import transaction
+from django.utils import timezone
 
 from django.conf import settings
 from heltour.tournament.models import (
@@ -667,11 +669,17 @@ class JavafoInstance:
             % (settings.JAVAFO_COMMAND, input_file_name, output_file_name, args),
             shell=True,
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        stdout = proc.communicate()[0]
+        stdout, stderr = proc.communicate()
         if proc.returncode != 0:
             raise PairingGenerationException(
-                "Javafo return code: %s. Output: %s" % (proc.returncode, stdout)
+                "Javafo return code: %s. Output: %s Error: %s"
+                % (
+                    proc.returncode,
+                    stdout.decode(errors="replace").strip(),
+                    stderr.decode(errors="replace").strip(),
+                )
             )
 
     def _read_output(self, output_file_name):
@@ -690,6 +698,82 @@ class JavafoInstance:
                         ]
                     )
             return pairs
+
+
+JAVAFO_CHECK_PROCESSES = ("web", "celery")
+JAVAFO_CHECK_TTL_SECONDS = 86400 * 7
+
+
+def javafo_check_cache_key(process):
+    return f"javafo_check_{process}"
+
+
+def _synthetic_round_one(competitors, win_score):
+    half = len(competitors) // 2
+    history = {c: [] for c in competitors}
+    scores = {c: 0 for c in competitors}
+    for top, bottom in zip(competitors[:half], competitors[half:]):
+        history[top].append(JavafoPairing(bottom, "white", 1))
+        history[bottom].append(JavafoPairing(top, "black", 0))
+        scores[top] = win_score
+    for unpaired in competitors[2 * half :]:
+        history[unpaired].append(JavafoPairing(None, None, 1, forfeit=True))
+        scores[unpaired] = win_score
+    return [JavafoPlayer(c, scores[c], history[c]) for c in competitors]
+
+
+def _check_javafo_pairs(players, pairs):
+    first_round_opponents = {p.player: p.pairings[0].opponent for p in players}
+    seen = []
+    for white, black in pairs:
+        if white == black:
+            return f"{white} was paired against itself"
+        if black is not None and first_round_opponents[white] == black:
+            return f"{white} and {black} were paired again"
+        seen.extend(c for c in (white, black) if c is not None)
+    expected = sorted(p.player for p in players)
+    if sorted(seen) != expected:
+        return f"Expected each of {expected} paired once, got {pairs}"
+    return None
+
+
+def _run_javafo_scenario(name, players):
+    try:
+        pairs = JavafoInstance(5, players).run()
+    except Exception as e:
+        return {"name": name, "ok": False, "error": f"{type(e).__name__}: {e}"}
+    error = _check_javafo_pairs(players, pairs)
+    return {"name": name, "ok": error is None, "error": error, "pairs": len(pairs)}
+
+
+def check_javafo(process):
+    """Run JavaFo on made-up lone and team rounds, without touching the database."""
+    lone_players = _synthetic_round_one([f"Player{n}" for n in range(1, 9)], 1)
+    team_players = _synthetic_round_one([f"Team{n}" for n in range(1, 6)], 2)
+    scenarios = [
+        _run_javafo_scenario("lone", lone_players),
+        _run_javafo_scenario("team", team_players),
+    ]
+    return {
+        "process": process,
+        "checked_at": timezone.now(),
+        "ok": all(s["ok"] for s in scenarios),
+        "scenarios": scenarios,
+    }
+
+
+def run_and_store_javafo_check(process):
+    result = check_javafo(process)
+    cache.set(javafo_check_cache_key(process), result, JAVAFO_CHECK_TTL_SECONDS)
+    return result
+
+
+def mark_javafo_check_queued(process):
+    cache.set(
+        javafo_check_cache_key(process),
+        {"process": process, "queued_at": timezone.now()},
+        JAVAFO_CHECK_TTL_SECONDS,
+    )
 
 
 def assign_automatic_forfeits(round_):

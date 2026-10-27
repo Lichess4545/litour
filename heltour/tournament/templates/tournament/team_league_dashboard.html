@@ -193,6 +193,7 @@
                                 <span class="dashboard-note">Never validated</span>
                             {% endif %}
                         </div>
+                        {% include "tournament/_javafo_check.html" %}
                         {% if league.require_fide_id or league.is_fide_rated %}
                             <div class="dashboard-season-action">
                                 <form method="post" style="display: inline;">

@@ -1,5 +1,17 @@
 FROM base
 
+# Install OpenJDK for javafo.jar (background pairing generation runs here)
+USER root
+RUN apt-get update && \
+  apt-get install -y openjdk-17-jre-headless && \
+  rm -rf /var/lib/apt/lists/*
+USER litour
+
+# Verify javafo.jar can be executed and produces expected output
+RUN output=$(java -jar /app/thirdparty/javafo.jar 2>&1) && \
+    echo "$output" | grep -q "JaVaFo (rrweb.org/javafo) - Rel. 2.2 (Build 3223)" || \
+    (echo "JavaFo test failed. Expected 'JaVaFo (rrweb.org/javafo) - Rel. 2.2 (Build 3223)', got: $output" && exit 1)
+
 # Set environment
 ENV PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=heltour.settings
