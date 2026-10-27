@@ -11,3 +11,7 @@ INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "debug_toolbar"]
 MIDDLEWARE = [m for m in MIDDLEWARE if "debug_toolbar" not in m]
 
 SECRET_KEY = "test-secret-key-only-for-testing"
+
+# Only real problems reach the test output
+for _logger in LOGGING["loggers"].values():
+    _logger["level"] = "ERROR"
