@@ -1,0 +1,29 @@
+<div class="dashboard-season-action">
+    <form method="post" style="display: inline;">
+        {% csrf_token %}
+        <button type="submit" name="check_javafo" value="1" class="btn btn-default">
+            Test JavaFo
+        </button>
+    </form>
+    {% for check in javafo_checks %}
+        <span class="dashboard-note">
+            {% if check.checked_at %}
+                {% if check.ok %}
+                    <i class="fa fa-check-circle" style="color: #3c763d;"></i>
+                {% else %}
+                    <i class="fa fa-times-circle" style="color: #a94442;"></i>
+                {% endif %}
+                {{ check.process }}:
+                {% for scenario in check.scenarios %}
+                    {{ scenario.name }} {% if scenario.ok %}OK{% else %}FAILED — {{ scenario.error }}{% endif %}{% if not forloop.last %} ·{% endif %}
+                {% endfor %}
+                · {{ check.checked_at|date:"Y-m-d H:i:s" }} UTC
+            {% elif check.queued_at %}
+                {{ check.process }}: queued {{ check.queued_at|date:"Y-m-d H:i:s" }} UTC, waiting for a worker
+            {% else %}
+                {{ check.process }}: never tested
+            {% endif %}
+        </span>
+        {% if not forloop.last %}<br>{% endif %}
+    {% endfor %}
+</div>
