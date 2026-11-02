@@ -492,6 +492,12 @@ class League(_BaseModel):
     def is_player_scheduled_league(self) -> bool:
         return self.get_leaguesetting().schedule_type == 2
 
+    def is_manually_started_league(self) -> bool:
+        return self.get_leaguesetting().schedule_type == LeagueSetting.ScheduleType.MANUAL
+
+    def starts_games_on_publish(self) -> bool:
+        return self.get_leaguesetting().schedule_type == LeagueSetting.ScheduleType.FIXED_TIME
+
     def get_team_tiebreaks(self):
         """Return ordered list of configured tiebreak names for team leagues"""
         if not self.is_team_league():
@@ -623,6 +629,7 @@ class LeagueSetting(_BaseModel):
     class ScheduleType(models.IntegerChoices):
         FIXED_TIME = 1, "Fixed Time - All games start at set times"
         TIME_WINDOW = 2, "Time Window - Players schedule within deadline"
+        MANUAL = 3, "Manual - An arbiter creates games and starts clocks from the admin"
 
     schedule_type = models.PositiveSmallIntegerField(
         choices=ScheduleType.choices,

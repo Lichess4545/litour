@@ -629,7 +629,7 @@ def notify_players_game_scheduled(round_, pairing, **kwargs):
     league = round_.get_league()
     league_setting = league.get_leaguesetting()
 
-    if not league_setting.start_games:
+    if not league_setting.start_games or league.is_manually_started_league():
         return
 
     time_part = (

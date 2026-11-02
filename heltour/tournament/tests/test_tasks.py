@@ -11,6 +11,7 @@ from heltour.tournament.models import (
     BroadcastRound,
     League,
     LeagueChannel,
+    LeagueSetting,
     LonePlayerPairing,
     LonePlayerScore,
     OauthToken,
@@ -35,6 +36,7 @@ from heltour.tournament.tasks import (
     _create_or_update_broadcast_round,
     _create_team_string,
     _find_closest_rating,
+    _init_start_league_games,
     _start_league_games,
     _start_unscheduled_games,
     active_player_usernames,
@@ -42,6 +44,7 @@ from heltour.tournament.tasks import (
     create_broadcast_round,
     create_team_channel,
     fetch_players_to_update,
+    pairings_published,
     populate_historical_ratings,
     start_games,
     update_broadcast,
@@ -330,6 +333,74 @@ class TestAutostartGames(TestCase):
         self.assertTrue(
             tpp2.black.oauth_token.expires < timezone.now() - timedelta(minutes=30)
         )
+
+    @patch("heltour.tournament.lichessapi.bulk_start_games")
+    def test_manual_league_not_started(self, mock_bulk, *args):
+        TeamPlayerPairing.objects.filter(board_number=1).update(black_confirmed=True)
+        setting = get_league("team").get_leaguesetting()
+        setting.schedule_type = LeagueSetting.ScheduleType.MANUAL
+        setting.save()
+        with Shush():
+            start_games()
+        mock_bulk.assert_not_called()
+
+
+@patch("heltour.tournament.tasks.alternates_manager.round_pairings_published")
+@patch("heltour.tournament.tasks.slackapi.send_control_message")
+@patch("heltour.tournament.tasks.signals")
+class TestStartGamesOnPublish(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        cls.round_ = get_round(league_type="team", round_number=1)
+
+    def _set_schedule_type(self, schedule_type):
+        setting = get_league("team").get_leaguesetting()
+        setting.schedule_type = schedule_type
+        setting.save()
+
+    def test_fixed_time_league_starts_games(self, mock_signals, *args):
+        self._set_schedule_type(LeagueSetting.ScheduleType.FIXED_TIME)
+        with Shush():
+            pairings_published(self.round_.pk)
+        mock_signals.do_start_unscheduled_games.send.assert_called_once()
+
+    def test_manual_league_does_not_start_games(self, mock_signals, *args):
+        self._set_schedule_type(LeagueSetting.ScheduleType.MANUAL)
+        with Shush():
+            pairings_published(self.round_.pk)
+        mock_signals.do_start_unscheduled_games.send.assert_not_called()
+
+    def test_time_window_league_does_not_start_games(self, mock_signals, *args):
+        self._set_schedule_type(LeagueSetting.ScheduleType.TIME_WINDOW)
+        with Shush():
+            pairings_published(self.round_.pk)
+        mock_signals.do_start_unscheduled_games.send.assert_not_called()
+
+
+@patch("heltour.tournament.tasks.signals")
+@patch("heltour.tournament.tasks._start_league_games", return_value=None)
+class TestManualLeagueClockStart(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        setting = get_league("team").get_leaguesetting()
+        setting.start_clocks = True
+        setting.save()
+
+    def _start(self):
+        _init_start_league_games(league=get_league("team"), tokens=[], league_games=[])
+
+    def test_fixed_time_league_starts_clocks(self, mock_start, *args):
+        self._start()
+        self.assertTrue(mock_start.call_args.kwargs["do_clockstart"])
+
+    def test_manual_league_never_starts_clocks(self, mock_start, *args):
+        setting = get_league("team").get_leaguesetting()
+        setting.schedule_type = LeagueSetting.ScheduleType.MANUAL
+        setting.save()
+        self._start()
+        self.assertFalse(mock_start.call_args.kwargs["do_clockstart"])
 
 
 class TestTeamChannel(TestCase):

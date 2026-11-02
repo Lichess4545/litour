@@ -608,7 +608,9 @@ def _init_start_league_games(
     clock = league.time_control_initial()
     increment = league.time_control_increment()
     variant = lichess_variant_for(league.rating_type)
-    do_clockstart = league.get_leaguesetting().start_clocks
+    do_clockstart = (
+        league.get_leaguesetting().start_clocks and not league.is_manually_started_league()
+    )
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round(
         (datetime.utcnow().timestamp() + clockstart_in * 60) * 1000
@@ -654,7 +656,11 @@ def start_games():
     token_dict = {}
     for game in games_to_start:
         gameleague = game.get_league()
-        if gameleague is not None and gameleague.get_leaguesetting().start_games:
+        if (
+            gameleague is not None
+            and gameleague.get_leaguesetting().start_games
+            and not gameleague.is_manually_started_league()
+        ):
             white_token = game.get_white_access_token()
             black_token = game.get_black_access_token()
             if game.tokens_valid():
@@ -1418,7 +1424,7 @@ def pairings_published(round_id, overwrite=False):
             sender=pairings_published, round_id=round_.pk
         )
 
-    if not league.is_player_scheduled_league():
+    if league.starts_games_on_publish():
         signals.do_start_unscheduled_games.send(
             sender=pairings_published,
             round_id=round_id,
