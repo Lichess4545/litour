@@ -8,6 +8,7 @@ from heltour.tournament.models import (
     SeasonPlayer,
 )
 from heltour.tournament.tests.testutils import (
+    create_reg,
     createCommonLeagueData,
     league_tag,
     season_tag,
@@ -104,17 +105,39 @@ class BroadcastPlayersOutputTestCase(TestCase):
         self.assertIn("bob / 67890 / FM / 2250 / Jones, Bob", content)
         self.assertIn("charlie / 11111 /  / 1900 / Brown, Charlie", content)
 
-    def test_players_without_fide_id_skipped(self):
-        player_no_fide = Player.objects.create(
-            lichess_username="nofide", fide_id=""
-        )
+    def test_player_without_fide_id_uses_registration_name(self):
+        reg = create_reg(self.season, "nofide")
+        reg.first_name = "Nomvula"
+        reg.last_name = "Dlamini"
+        reg.save()
         SeasonPlayer.objects.create(
-            season=self.season, player=player_no_fide, is_active=True
+            season=self.season, player=reg.player, registration=reg, is_active=True
         )
 
         self.client.login(username="admin", password="test")
         response = self.client.get(season_url("fide", "broadcast_players"))
-        self.assertNotContains(response, "nofide")
+        self.assertIn("nofide /  /  /  / Dlamini, Nomvula", response.content.decode())
+
+    def test_player_without_fide_id_or_registration_lists_username_only(self):
+        player = Player.objects.create(lichess_username="bare", fide_id="")
+        SeasonPlayer.objects.create(season=self.season, player=player, is_active=True)
+
+        self.client.login(username="admin", password="test")
+        response = self.client.get(season_url("fide", "broadcast_players"))
+        self.assertIn("bare /  /  /  / \n", response.content.decode())
+
+    def test_fide_profile_name_wins_over_registration_name(self):
+        reg = create_reg(self.season, "alice")
+        reg.first_name = "Ali"
+        reg.last_name = "Smythe"
+        reg.save()
+        SeasonPlayer.objects.filter(season=self.season, player=reg.player).update(
+            registration=reg
+        )
+
+        self.client.login(username="admin", password="test")
+        response = self.client.get(season_url("fide", "broadcast_players"))
+        self.assertIn("alice / 12345 / WGM / 2100 / Smith, Alice", response.content.decode())
 
     def test_inactive_players_excluded(self):
         _create_fide_player(
