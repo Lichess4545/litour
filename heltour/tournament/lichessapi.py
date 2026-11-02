@@ -383,6 +383,25 @@ def bulk_start_clocks(
     return json.loads(result)
 
 
+def abort_game(*, gameid: str, token: str, opponent_token: str, timeout: int = 30) -> None:
+    # Calls lichess directly (not via api_worker): the worker always authenticates as the
+    # system account, but only the players' own tokens can abort their game. Passing the
+    # opponent's token aborts the game even after both players have moved.
+    try:
+        response = requests.post(
+            f"{settings.LICHESS_DOMAIN}api/challenge/{gameid}/cancel",
+            params={"opponentToken": opponent_token},
+            headers={**default_headers(), "Authorization": f"Bearer {token}"},
+            timeout=timeout,
+        )
+    except requests.RequestException as e:
+        raise ApiWorkerError(f"Aborting game {gameid} failed: {e}") from e
+    if response.status_code != 200:
+        raise ApiClientError(
+            f"API failure: CLIENT-ERROR: [{response.status_code}] {response.text}"
+        )
+
+
 def update_or_create_broadcast(
     *,
     broadcast_id: str | None = None,

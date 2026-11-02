@@ -608,7 +608,9 @@ def _init_start_league_games(
     clock = league.time_control_initial()
     increment = league.time_control_increment()
     variant = lichess_variant_for(league.rating_type)
-    do_clockstart = league.get_leaguesetting().start_clocks
+    do_clockstart = (
+        league.get_leaguesetting().start_clocks and not league.is_manually_started_league()
+    )
     clockstart_in = league.get_leaguesetting().start_clock_time
     clockstart = round(
         (datetime.utcnow().timestamp() + clockstart_in * 60) * 1000
@@ -654,7 +656,11 @@ def start_games():
     token_dict = {}
     for game in games_to_start:
         gameleague = game.get_league()
-        if gameleague is not None and gameleague.get_leaguesetting().start_games:
+        if (
+            gameleague is not None
+            and gameleague.get_leaguesetting().start_games
+            and not gameleague.is_manually_started_league()
+        ):
             white_token = game.get_white_access_token()
             black_token = game.get_black_access_token()
             if game.tokens_valid():
@@ -1022,6 +1028,43 @@ def _start_clocks(round_id: int) -> None:
 @receiver(signals.do_start_clocks, dispatch_uid="heltour.tournament.tasks")
 def do_start_clocks(sender, round_id: int, **kwargs) -> None:
     _start_clocks.apply_async(args=[round_id])
+
+
+@app.task()
+def _abort_games(round_id: int) -> None:
+    logger.info(f"[START] Aborting games for round {round_id}.")
+    round_ = Round.objects.get(pk=round_id)
+    failed = []
+    for pairing in round_.pairings_with_unfinished_games():
+        gameid = get_gameid_from_gamelink(pairing.game_link)
+        if gameid is None or not pairing.tokens_valid():
+            logger.error(
+                f"[ERROR] Cannot abort {pairing.game_link}: no game id or no valid tokens."
+            )
+            failed.append(pairing.game_link)
+            continue
+        try:
+            lichessapi.abort_game(
+                gameid=gameid,
+                token=pairing.get_white_access_token(),
+                opponent_token=pairing.get_black_access_token(),
+            )
+        except lichessapi.ApiWorkerError as err:
+            logger.error(f"[ERROR] Aborting {pairing.game_link} failed: {err}")
+            failed.append(pairing.game_link)
+            continue
+        pairing.game_link = ""
+        pairing.save()
+    if failed:
+        logger.warning(f"[FINISHED] Could not abort {len(failed)} games: {failed}")
+    else:
+        Round.objects.filter(pk=round_id).update(bulk_id="")
+        logger.info(f"[FINISHED] Aborted all games for round {round_id}.")
+
+
+@receiver(signals.do_abort_games, dispatch_uid="heltour.tournament.tasks")
+def do_abort_games(sender, round_id: int, **kwargs) -> None:
+    _abort_games.apply_async(args=[round_id])
 
 
 @app.task()
@@ -1418,7 +1461,7 @@ def pairings_published(round_id, overwrite=False):
             sender=pairings_published, round_id=round_.pk
         )
 
-    if not league.is_player_scheduled_league():
+    if league.starts_games_on_publish():
         signals.do_start_unscheduled_games.send(
             sender=pairings_published,
             round_id=round_id,
