@@ -1376,6 +1376,15 @@ class Round(_BaseModel):
             | PlayerPairing.objects.filter(loneplayerpairing__round=self)
         ).nocache()
 
+    def pairings_with_unfinished_games(self):
+        return (
+            self.pairings.filter(result="")
+            .exclude(game_link="")
+            .exclude(white=None)
+            .exclude(black=None)
+            .select_related("white", "black")
+        )
+
     def pairing_for(self, player):
         pairings = self.pairings
         return (pairings.filter(white=player) | pairings.filter(black=player)).first()

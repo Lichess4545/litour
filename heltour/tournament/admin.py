@@ -2049,6 +2049,7 @@ class RoundAdmin(_BaseAdmin):
         "update_broadcast_round",
         "start_games",
         "start_clocks",
+        "abort_games",
         "validate_tokens",
         "advance_knockout_tournament_action",
     ]
@@ -2100,6 +2101,11 @@ class RoundAdmin(_BaseAdmin):
                 "<int:object_id>/review_pairings/",
                 self.admin_site.admin_view(self.review_pairings_view),
                 name="review_pairings",
+            ),
+            path(
+                "<int:object_id>/abort_games/",
+                self.admin_site.admin_view(self.abort_games_view),
+                name="abort_games",
             ),
         ]
         return my_urls + urls
@@ -2210,6 +2216,30 @@ class RoundAdmin(_BaseAdmin):
             return
         self.message_user(request, "Attempting to start clocks.", messages.INFO)
         signals.do_start_clocks.send(sender=request.user, round_id=round_.pk)
+
+    def abort_games(self, request, queryset):
+        if queryset.count() > 1:
+            self.message_user(
+                request, "Can only abort games one round at a time.", messages.ERROR
+            )
+            return
+        return redirect("admin:abort_games", object_id=queryset[0].pk)
+
+    def abort_games_view(self, request, object_id):
+        round_ = get_object_or_404(self.get_queryset(request), pk=object_id)
+        if request.method == "POST" and "confirm" in request.POST:
+            signals.do_abort_games.send(sender=request.user, round_id=round_.pk)
+            self.message_user(request, "Attempting to abort games.", messages.INFO)
+            return redirect("admin:tournament_round_changelist")
+        context = {
+            "has_permission": True,
+            "opts": self.model._meta,
+            "site_url": "/",
+            "original": round_,
+            "title": "Confirm aborting games",
+            "pairings": round_.pairings_with_unfinished_games(),
+        }
+        return render(request, "tournament/admin/abort_games.html", context)
 
     def validate_tokens(self, request, queryset):
         try:

@@ -26,11 +26,13 @@ from heltour.tournament.models import (
     TeamPairing,
     TeamPlayerPairing,
     TeamScore,
+    get_gamelink_from_gameid,
 )
 from heltour.tournament.slackapi import NameTaken, SlackError, SlackGroup
 from django.core.cache import cache
 
 from heltour.tournament.tasks import (
+    _abort_games,
     _create_broadcast_grouping,
     _create_or_update_broadcast,
     _create_or_update_broadcast_round,
@@ -401,6 +403,64 @@ class TestManualLeagueClockStart(TestCase):
         setting.save()
         self._start()
         self.assertFalse(mock_start.call_args.kwargs["do_clockstart"])
+
+
+@patch("heltour.tournament.lichessapi.add_watch", return_value=None)
+class TestAbortGames(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        createCommonLeagueData()
+        cls.round_ = get_round(league_type="lone", round_number=1)
+        Round.objects.filter(pk=cls.round_.pk).update(bulk_id="bulk1")
+        for number in range(1, 5):
+            token = OauthToken.objects.create(
+                access_token=f"token{number}",
+                expires=timezone.now() + timedelta(days=1),
+            )
+            Player.objects.filter(lichess_username=f"Player{number}").update(
+                oauth_token=token
+            )
+
+    def setUp(self):
+        self.unfinished = LonePlayerPairing.objects.create(
+            round=self.round_,
+            white=get_player("Player1"),
+            black=get_player("Player2"),
+            game_link=get_gamelink_from_gameid("game0001"),
+            pairing_order=1,
+        )
+        self.finished = LonePlayerPairing.objects.create(
+            round=self.round_,
+            white=get_player("Player3"),
+            black=get_player("Player4"),
+            game_link=get_gamelink_from_gameid("game0002"),
+            result="1-0",
+            pairing_order=2,
+        )
+
+    @patch("heltour.tournament.lichessapi.abort_game")
+    def test_aborts_unfinished_games(self, mock_abort, *args):
+        with Shush():
+            _abort_games(self.round_.pk)
+        mock_abort.assert_called_once_with(
+            gameid="game0001", token="token1", opponent_token="token2"
+        )
+        self.unfinished.refresh_from_db()
+        self.finished.refresh_from_db()
+        self.assertEqual(self.unfinished.game_link, "")
+        self.assertEqual(self.finished.game_link, get_gamelink_from_gameid("game0002"))
+        self.assertEqual(Round.objects.get(pk=self.round_.pk).bulk_id, "")
+
+    @patch(
+        "heltour.tournament.lichessapi.abort_game",
+        side_effect=ApiClientError("API failure: CLIENT-ERROR: [400] no"),
+    )
+    def test_failed_abort_keeps_game_link_and_bulk_id(self, mock_abort, *args):
+        with Shush():
+            _abort_games(self.round_.pk)
+        self.unfinished.refresh_from_db()
+        self.assertEqual(self.unfinished.game_link, get_gamelink_from_gameid("game0001"))
+        self.assertEqual(Round.objects.get(pk=self.round_.pk).bulk_id, "bulk1")
 
 
 class TestTeamChannel(TestCase):

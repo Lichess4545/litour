@@ -1031,6 +1031,43 @@ def do_start_clocks(sender, round_id: int, **kwargs) -> None:
 
 
 @app.task()
+def _abort_games(round_id: int) -> None:
+    logger.info(f"[START] Aborting games for round {round_id}.")
+    round_ = Round.objects.get(pk=round_id)
+    failed = []
+    for pairing in round_.pairings_with_unfinished_games():
+        gameid = get_gameid_from_gamelink(pairing.game_link)
+        if gameid is None or not pairing.tokens_valid():
+            logger.error(
+                f"[ERROR] Cannot abort {pairing.game_link}: no game id or no valid tokens."
+            )
+            failed.append(pairing.game_link)
+            continue
+        try:
+            lichessapi.abort_game(
+                gameid=gameid,
+                token=pairing.get_white_access_token(),
+                opponent_token=pairing.get_black_access_token(),
+            )
+        except lichessapi.ApiWorkerError as err:
+            logger.error(f"[ERROR] Aborting {pairing.game_link} failed: {err}")
+            failed.append(pairing.game_link)
+            continue
+        pairing.game_link = ""
+        pairing.save()
+    if failed:
+        logger.warning(f"[FINISHED] Could not abort {len(failed)} games: {failed}")
+    else:
+        Round.objects.filter(pk=round_id).update(bulk_id="")
+        logger.info(f"[FINISHED] Aborted all games for round {round_id}.")
+
+
+@receiver(signals.do_abort_games, dispatch_uid="heltour.tournament.tasks")
+def do_abort_games(sender, round_id: int, **kwargs) -> None:
+    _abort_games.apply_async(args=[round_id])
+
+
+@app.task()
 def validate_season_tokens(season_id: int) -> None:
     season = Season.objects.get(pk=season_id)
     league = season.league
