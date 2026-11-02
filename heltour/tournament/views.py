@@ -3140,6 +3140,16 @@ class PairingsExportView(LeagueView):
         return self.render('tournament/pairings_export.html', context)
 
 
+def _registration_name(registration):
+    if registration is None:
+        return ""
+    return ", ".join(
+        part.strip()
+        for part in (registration.last_name, registration.first_name)
+        if part.strip()
+    )
+
+
 class BroadcastPlayersView(LeagueView):
     def view(self):
         if not self.request.user.has_perm('tournament.view_dashboard', self.league):
@@ -3147,17 +3157,15 @@ class BroadcastPlayersView(LeagueView):
 
         season_players = SeasonPlayer.objects.filter(
             season=self.season, is_active=True
-        ).select_related('player').order_by('player__lichess_username')
+        ).select_related('player', 'registration').order_by('player__lichess_username')
 
         lines = []
         for sp in season_players:
             player = sp.player
-            if not player.fide_id:
-                continue
-            profile = player.fide_profile or {}
+            profile = (player.fide_profile or {}) if player.fide_id else {}
             title = profile.get("title", "")
             rating = profile.get(player._fide_rating_key(self.league), "")
-            name = profile.get("name", "")
+            name = profile.get("name", "") or _registration_name(sp.registration)
             lines.append(
                 f"{player.lichess_username} / {player.fide_id} / {title} / {rating} / {name}"
             )
