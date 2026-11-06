@@ -113,8 +113,12 @@ class Match:
         for game in self.games:
             p1_pts, p2_pts = game.points(scoring)
 
-            # Determine which competitor each player belongs to
-            if game.player1.competitor_id == self.competitor1_id:
+            # Determine which competitor each player belongs to. A forfeited seat has
+            # no player (competitor_id -1), so fall back to the other player's team.
+            if (
+                game.player1.competitor_id == self.competitor1_id
+                or game.player2.competitor_id == self.competitor2_id
+            ):
                 # Player1 is on team1, player2 is on team2
                 c1_points += p1_pts
                 c2_points += p2_pts

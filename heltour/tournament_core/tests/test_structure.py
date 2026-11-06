@@ -138,6 +138,31 @@ class TournamentUtilsTests(unittest.TestCase):
         self.assertEqual(results[4].match_points, 1)
         self.assertEqual(results[4].game_points, 2.0)
 
+    def test_team_forfeit_win_against_empty_white_seat(self):
+        """A forfeit win against an empty white seat goes to the black player's team."""
+        player_team_mapping = {101: 1, 102: 1, 103: 1, 104: 1, 201: 2, 202: 2, 203: 2, 204: 2}
+        match = create_team_match(
+            1,
+            2,
+            [
+                (-1, 201, GameResult.P2_FORFEIT_WIN),  # Board 1: T1 seat empty
+                (202, 102, GameResult.DRAW),
+                (103, 203, GameResult.DRAW),
+                (204, 104, GameResult.DRAW),
+            ],
+            player_team_mapping,
+        )
+
+        tournament = create_tournament_from_matches([1, 2], [(1, match)], STANDARD_SCORING)
+        results = tournament.calculate_results()
+
+        self.assertEqual(results[1].game_points, 1.5)
+        self.assertEqual(results[1].match_points, 0)
+        self.assertEqual(results[1].match_results[0].games_won, 0)
+        self.assertEqual(results[2].game_points, 2.5)
+        self.assertEqual(results[2].match_points, 2)
+        self.assertEqual(results[2].match_results[0].games_won, 1)
+
     def test_three_point_system(self):
         """Test tournament with 3-1-0 point system."""
         players = [1, 2]
