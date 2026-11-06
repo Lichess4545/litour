@@ -310,6 +310,61 @@ class TestTRF16WriterEdgeCases(unittest.TestCase):
         self.assertEqual(parsed[1].results[2], (None, "-", "-"))
 
 
+def _read_team_line_fixed_columns(line):
+    """Read a 013 line by FIDE TRF16 columns, as Swiss-Manager does.
+
+    Team name occupies columns 5-36; start numbers are 4-wide fields at
+    columns 37-40, 42-45, 47-50, ...
+    """
+    name = line[4:36].rstrip()
+    player_ids = []
+    for start in range(36, len(line), 5):
+        field = line[start : start + 4].strip()
+        if field:
+            player_ids.append(int(field))
+    return name, player_ids
+
+
+class TestTRF16WriterTeamColumns(unittest.TestCase):
+    def _team_lines(self, teams):
+        header = _make_header(num_players=0, num_rated_players=0, num_teams=len(teams))
+        output = write_trf16(header, {}, teams)
+        return [line for line in output.split("\n") if line.startswith("013 ")]
+
+    def test_short_name_is_padded_to_fixed_columns(self):
+        teams = {
+            "West_Kazakhstan": TRF16Team(
+                name="West_Kazakhstan", player_ids=[60, 61, 62, 63, 64, 65]
+            ),
+        }
+
+        (line,) = self._team_lines(teams)
+
+        self.assertEqual(
+            _read_team_line_fixed_columns(line),
+            ("West_Kazakhstan", [60, 61, 62, 63, 64, 65]),
+        )
+
+    def test_non_ascii_name_is_padded_by_characters(self):
+        teams = {
+            "чрк .каскелен": TRF16Team(name="чрк .каскелен", player_ids=[45, 46, 47, 48]),
+        }
+
+        (line,) = self._team_lines(teams)
+
+        self.assertEqual(
+            _read_team_line_fixed_columns(line), ("чрк .каскелен", [45, 46, 47, 48])
+        )
+
+    def test_long_name_is_truncated_to_32_characters(self):
+        long_name = "A Team Name That Is Far Longer Than Thirty Two Characters"
+        teams = {long_name: TRF16Team(name=long_name, player_ids=[1, 2, 1234])}
+
+        (line,) = self._team_lines(teams)
+
+        self.assertEqual(_read_team_line_fixed_columns(line), (long_name[:32], [1, 2, 1234]))
+
+
 class TestTRF16WriterFromExistingSample(unittest.TestCase):
     """Parse existing TRF16 sample → extract data → write → re-parse → verify."""
 

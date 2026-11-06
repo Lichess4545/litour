@@ -52,8 +52,8 @@ def _write_players(lines: List[str], players: Dict[int, TRF16Player]) -> None:
 
 def _write_teams(lines: List[str], teams: Dict[str, TRF16Team]) -> None:
     for team in teams.values():
-        ids_str = "  ".join(f"{pid:4d}" for pid in team.player_ids)
-        lines.append(f"013 {team.name}  {ids_str}")
+        ids_str = "".join(f" {pid:4d}" for pid in team.player_ids)
+        lines.append(f"013 {team.name[:32]:<32s}{ids_str}")
 
 
 def _format_player_line(start_num: int, p: TRF16Player) -> str:
