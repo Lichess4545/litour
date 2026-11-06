@@ -352,9 +352,7 @@ class TestTRF16WriterTeamColumns(unittest.TestCase):
 
         (line,) = self._team_lines(teams)
 
-        self.assertEqual(
-            _read_team_line_fixed_columns(line), ("чрк .каскелен", [45, 46, 47, 48])
-        )
+        self.assertEqual(_read_team_line_fixed_columns(line), ("чрк .каскелен", [45, 46, 47, 48]))
 
     def test_long_name_is_truncated_to_32_characters(self):
         long_name = "A Team Name That Is Far Longer Than Thirty Two Characters"
